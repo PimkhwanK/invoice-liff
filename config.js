@@ -8,6 +8,6 @@
  * ห้ามใส่ Channel access token, Channel secret หรือ userId ในไฟล์ใด ๆ ของโฟลเดอร์นี้
  */
 window.APP_CONFIG = {
-  LIFF_ID: '',
+  LIFF_ID: '2011752962-XEyAA1HD',
   API_URL: 'https://script.google.com/macros/s/AKfycbxY7jfg8K2ixWO2XNj4Q3FezsyrD4OBEkJK38za7uVl5bMJWqOYm5tDnGAhQBqzwC-9/exec'
 };
