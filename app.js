@@ -164,11 +164,15 @@
     view.replaceChildren(el('div', 'card empty', 'กำลังโหลด…'));
     if (!CFG.LIFF_ID || !CFG.API_URL) return showError(MSG.notConfigured, null, 'not_configured');
     if (typeof liff === 'undefined') return showError(MSG.sdk, { label: 'ลองใหม่', run: function () { location.reload(); } }, 'sdk');
+    // เปิดด้วย https://liff.line.me/{LIFF ID}/issue → LINE เปิดหน้านี้ก่อนพร้อม ?liff.state=/issue
+    // แล้ว liff.init จะพาไปหน้า issue เอง จึงไม่ต้องเรียก API ของหน้าทดสอบ
+    var goingElsewhere = new URLSearchParams(location.search).has('liff.state');
     try {
       await liff.init({ liffId: CFG.LIFF_ID });
     } catch (e) {
       return showError(MSG.init, { label: 'ลองใหม่', run: function () { location.reload(); } }, 'init');
     }
+    if (goingElsewhere) return;
     if (!liff.isLoggedIn()) {
       liff.login({ redirectUri: location.href });
       return;

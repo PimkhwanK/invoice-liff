@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>ออกบิล</title>
+<link rel="stylesheet" href="form.css">
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="topbar">
+    <h1 id="title">ออกเอกสาร</h1>
+    <div class="sub" id="subtitle">กำลังโหลด…</div>
+  </div>
+  <div id="view" aria-live="polite"><div class="empty">กำลังโหลด…</div></div>
+</div>
+
+<div class="totalbar hidden" id="totalbar">
+  <div class="inner">
+    <div class="sums num">
+      <div>ก่อน VAT <span id="t-net">0.00</span> · VAT <span id="t-vat">0.00</span></div>
+      <div>รวมทั้งสิ้น <b id="t-total">0.00</b></div>
+    </div>
+    <button type="button" class="btn primary" id="btn-review">ตรวจสอบ ›</button>
+  </div>
+</div>
+
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="config.js"></script>
+<script src="money.js"></script>
+<script src="bahtText.js"></script>
+<script src="thaiDate.js"></script>
+<script src="address.js"></script>
+<script src="invoice.js"></script>
+<script src="search.js"></script>
+<script src="common.js"></script>
+<script src="issue.js"></script>
+</body>
+</html>
