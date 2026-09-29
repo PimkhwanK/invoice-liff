@@ -11,19 +11,23 @@
 <div class="wrap" id="app">
   <div class="topbar">
     <h1>จัดการข้อมูล</h1>
-    <div class="sub">ร้านค้า สินค้า และยกเลิกเอกสาร</div>
+    <div class="sub" id="subtitle">ร้านค้า · สินค้า · ยกเลิกเอกสาร</div>
   </div>
-  <div id="view">
-    <section class="card soon" id="soon">
-      <div class="ic">⚙</div>
-      <h2>เร็ว ๆ นี้</h2>
-      <p class="muted">หน้านี้กำลังพัฒนา ระหว่างนี้แก้ร้านค้าและสินค้าได้ใน Google Sheet โดยตรง</p>
-      <button type="button" class="btn primary block hidden" id="btn-close">กลับไปแชท</button>
-    </section>
-  </div>
+  <nav class="tabs hidden" id="tabs">
+    <button type="button" data-tab="shops">ร้านค้า</button>
+    <button type="button" data-tab="products">สินค้า</button>
+    <button type="button" data-tab="cancel">ยกเลิกเอกสาร</button>
+  </nav>
+  <div id="view" aria-live="polite"><div class="empty">กำลังโหลด…</div></div>
 </div>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="config.js"></script>
-<script src="soon.js"></script>
+<script src="money.js"></script>
+<script src="thaiDate.js"></script>
+<script src="address.js"></script>
+<script src="invoice.js"></script>
+<script src="search.js"></script>
+<script src="common.js"></script>
+<script src="manage.js"></script>
 </body>
 </html>

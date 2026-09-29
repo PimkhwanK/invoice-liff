@@ -11,19 +11,16 @@
 <div class="wrap" id="app">
   <div class="topbar">
     <h1>ประวัติเอกสาร</h1>
-    <div class="sub">ค้นหาร้าน ดูเอกสารทุกใบ และเปิด PDF</div>
+    <div class="sub" id="subtitle">ค้นหาชื่อร้าน แล้วแตะเพื่อดูเอกสารทุกใบของร้านนั้น</div>
   </div>
-  <div id="view">
-    <section class="card soon" id="soon">
-      <div class="ic">📚</div>
-      <h2>เร็ว ๆ นี้</h2>
-      <p class="muted">หน้านี้กำลังพัฒนา ระหว่างนี้พิมพ์ <b>บิล &lt;เลขที่&gt;</b> ในแชท เช่น บิล 9001 เพื่อดูการ์ดเอกสาร</p>
-      <button type="button" class="btn primary block hidden" id="btn-close">กลับไปแชท</button>
-    </section>
-  </div>
+  <div id="view" aria-live="polite"><div class="empty">กำลังโหลด…</div></div>
 </div>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="config.js"></script>
-<script src="soon.js"></script>
+<script src="money.js"></script>
+<script src="thaiDate.js"></script>
+<script src="search.js"></script>
+<script src="common.js"></script>
+<script src="history.js"></script>
 </body>
 </html>

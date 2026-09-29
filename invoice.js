@@ -49,6 +49,18 @@ function isValidTaxId(taxId) {
   return s === '' || /^\d{13}$/.test(s);
 }
 
+/**
+ * เลขประจำตัวผู้เสียภาษี 13 หลักที่หลักสุดท้าย (check digit) ถูกต้อง
+ * หลักที่ 13 = (11 − (ผลรวม หลักที่ i × (14 − i) ของหลัก 1–12) mod 11) mod 10
+ */
+function taxIdCheckDigitOk(taxId) {
+  var s = String(taxId == null ? '' : taxId).trim();
+  if (!/^\d{13}$/.test(s)) return false;
+  var sum = 0;
+  for (var i = 0; i < 12; i++) sum += Number(s.charAt(i)) * (13 - i);
+  return (11 - (sum % 11)) % 10 === Number(s.charAt(12));
+}
+
 function taxIdWarning(shop) {
   if (!shop || isValidTaxId(shop.tax_id)) return null;
   return 'เลขประจำตัวผู้เสียภาษีของร้าน "' + shop.short_name + '" (' + shop.tax_id + ') ไม่ใช่ตัวเลข 13 หลัก กรุณาตรวจสอบ';
@@ -407,6 +419,7 @@ if (typeof module !== 'undefined' && module.exports) {
     docTypes: docTypes,
     isCashSale: isCashSale,
     isValidTaxId: isValidTaxId,
+    taxIdCheckDigitOk: taxIdCheckDigitOk,
     taxIdWarning: taxIdWarning,
     nextDocNo: nextDocNo,
     nextShopId: nextShopId,

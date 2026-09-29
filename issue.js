@@ -4,7 +4,7 @@
  * คำนวณด้วยไฟล์ชุดเดียวกับเซิร์ฟเวอร์ (money.js, invoice.js ... สำเนาตรงตัวของ src/core)
  * ต่างจากระบบจำลอง:
  *   - เรียก Apps Script ผ่าน LiffApp.api (ส่ง idToken) แทน Sim.api
- *   - ยังไม่มีปุ่ม "คัดลอกจากบิลเก่า" (รอบที่ 4)
+ *   - ปุ่ม "คัดลอกจากบิลเก่า" (รอบที่ 4): ใช้จำนวน/ราคา/ส่วนลด/แถม/หมายเหตุจากบิลเก่า ข้ามสินค้าที่เลิกขาย (เหมือนระบบจำลอง)
  *   - ยืนยันแล้วเซิร์ฟเวอร์สร้าง PDF ต่อทันที (แสดง "กำลังสร้าง PDF…") ถ้า PDF ล้มเหลว เอกสารยังถูกบันทึก
  *     → หน้า "บันทึกเอกสารแล้ว" + ปุ่ม "ลองสร้าง PDF ใหม่" (regeneratePdf) สำเร็จแล้วค่อยส่งข้อความเข้าแชท
  *   - ออกบิลสำเร็จในแอป LINE: liff.sendMessages("บิล <เลขที่>") แล้วปิดหน้า / นอกแอป LINE: แสดงหน้าสำเร็จ + ปุ่มเปิด PDF
@@ -81,7 +81,7 @@
       '  <div id="lines"></div>' +
       '  <div class="row" style="margin-top:10px">' +
       '    <button type="button" class="btn block grow" id="btn-add">＋ เพิ่มสินค้า</button>' +
-      // ปุ่ม "คัดลอกจากบิลเก่า" ซ่อนไว้ก่อน — ทำในรอบที่ 4 (ต้องมี API ประวัติเอกสาร)
+      '    <button type="button" class="btn" id="btn-copy" title="คัดลอกรายการจากบิลเก่าของร้านนี้">⧉ คัดลอกจากบิลเก่า</button>' +
       '  </div>' +
       '</section>';
 
@@ -95,6 +95,7 @@
     document.getElementById('doc-ref').addEventListener('input', function (e) { S.doc.ref = e.target.value; });
     document.getElementById('due-date').addEventListener('change', function (e) { S.doc.due_date = e.target.value; S.dueTouched = true; updateDue(); });
     document.getElementById('btn-add').addEventListener('click', openProductPicker);
+    document.getElementById('btn-copy').addEventListener('click', openCopyFromOld);
 
     renderShop();
     renderLines();
@@ -125,6 +126,7 @@
   // ---------- ร้านค้า
   function renderShop() {
     var box = document.getElementById('shop-box');
+    document.getElementById('btn-copy').disabled = !S.shop;
     if (!S.shop) {
       box.innerHTML = '<button type="button" class="btn block" id="btn-shop">🔍 เลือกร้านค้า</button>';
       box.querySelector('#btn-shop').addEventListener('click', openShopPicker);
@@ -272,6 +274,40 @@
     });
     draw();
     q.focus();
+  }
+
+  // ---------- คัดลอกจากบิลเก่า (ย้ายจาก public/liff/liff.js)
+  async function openCopyFromOld() {
+    if (!S.shop) return;
+    var s = LiffApp.sheet('คัดลอกจากบิลเก่า — ' + S.shop.short_name, '<div class="empty">กำลังโหลด…</div>');
+    var body = s.el.querySelector('.body');
+    var r = await LiffApp.api('listDocuments', { shopId: S.shop.shop_id, limit: 20 });
+    if (!r.ok) { body.innerHTML = '<div class="alert err">' + esc(r.error) + '</div>'; return; }
+    if (!r.documents.length) { body.innerHTML = '<div class="empty" id="copy-empty">ร้านนี้ยังไม่มีบิลเก่า</div>'; return; }
+    body.innerHTML = '<p class="small muted" style="margin-top:0">เลือกบิลเพื่อดึงรายการสินค้า จำนวน ราคา ส่วนลด และของแถม มาใส่ในฟอร์ม</p><ul class="list pick-list" id="copy-list">' +
+      r.documents.map(function (d) {
+        return '<li class="tap" data-no="' + d.doc_no + '"><div class="t"><div class="n">#' + d.doc_no + ' · ' + formatThaiDate(d.doc_date) + '</div>' +
+          '<div class="s">' + esc(d.doc_type) + '</div></div><div class="right"><b class="num">' + money(d.total) + '</b><br>' +
+          (d.status === 'cancelled' ? '<span class="badge red">ยกเลิก</span>' : '') + '</div></li>';
+      }).join('') + '</ul>';
+    body.addEventListener('click', async function (e) {
+      var li = e.target.closest('li[data-no]');
+      if (!li) return;
+      if (S.lines.length && !confirm('แทนที่รายการสินค้า ' + S.lines.length + ' บรรทัดที่มีอยู่ด้วยรายการจากบิล #' + li.dataset.no + '?')) return;
+      var g = await LiffApp.api('getDocument', { docNo: Number(li.dataset.no) });
+      if (!g.ok) { LiffApp.toast(g.error, true); return; }
+      S.lines = [];
+      var skipped = [];
+      g.items.forEach(function (it) {
+        var p = S.init.products.find(function (x) { return x.barcode === it.barcode; }); // init มีเฉพาะสินค้าที่ยังขาย
+        if (!p) { skipped.push(it.name); return; }
+        addLine(p, { qty: it.qty, price: it.is_free ? p.price : it.price, discount: it.discount, is_free: !!it.is_free, note: it.note || '' });
+      });
+      s.close();
+      renderLines();
+      LiffApp.toast('คัดลอก ' + S.lines.length + ' บรรทัดจากบิล #' + li.dataset.no +
+        (skipped.length ? '\nข้าม ' + skipped.length + ' รายการที่เลิกขายแล้ว: ' + skipped.join(', ') : ''), skipped.length > 0);
+    });
   }
 
   // ---------- ยอดรวม

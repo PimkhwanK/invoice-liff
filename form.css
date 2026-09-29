@@ -200,5 +200,32 @@ dl.kv dd { margin: 0; }
 .alert h2 { color: inherit; margin: 0 0 4px; }
 .alert p { margin: 4px 0; color: var(--ink); }
 .alert .btn { margin-top: 10px; }
-.soon { text-align: center; padding: 32px 16px; }
-.soon .ic { font-size: 48px; line-height: 1; }
+
+/* ---------- รอบที่ 4: ประวัติเอกสาร / จัดการข้อมูล (ย้ายจากหน้าของระบบจำลอง) ---------- */
+.tabs { display: flex; overflow-x: auto; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 40; }
+.tabs button { flex: 1 0 auto; border: 0; background: none; font: inherit; font-size: 15px; padding: 12px 14px; color: var(--muted); border-bottom: 3px solid transparent; cursor: pointer; }
+.tabs button.on { color: var(--ink); font-weight: 700; border-bottom-color: var(--green); }
+.toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
+.toolbar input { flex: 1; min-width: 0; }
+.item { display: flex; gap: 10px; align-items: center; }
+.item .t { flex: 1; min-width: 0; }
+.item .t .n { font-weight: 700; }
+.item .t .s { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; }
+.doc .no { font-weight: 700; font-size: 17px; }
+.doc .no.cancel { text-decoration: line-through; color: var(--muted); }
+.doc .meta { font-size: 13px; color: var(--muted); grid-column: 1 / -1; }
+.doc .amt { font-weight: 700; text-align: right; }
+.doc .acts { grid-column: 1 / -1; display: flex; gap: 6px; margin-top: 6px; align-items: center; flex-wrap: wrap; }
+.summary { display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.summary b { color: var(--ink); }
+.shop-row { display: flex; gap: 10px; align-items: center; }
+.shop-row .t { flex: 1; min-width: 0; }
+.shop-row .n { font-weight: 700; }
+.shop-row .s { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shop-row .c { text-align: right; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.chosen { display: flex; gap: 10px; align-items: flex-start; }
+.chosen .t { flex: 1; min-width: 0; }
+.chosen .n { font-weight: 700; font-size: 17px; }
+.two > .field { margin-top: 0; } /* ช่องคู่ (โทรศัพท์ / แฟกซ์) ให้หัวเรียงระดับเดียวกัน */
+.two + .field, .field + .two, .two + .two { margin-top: 10px; }
