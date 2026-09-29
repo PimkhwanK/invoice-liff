@@ -4,8 +4,10 @@
  * คำนวณด้วยไฟล์ชุดเดียวกับเซิร์ฟเวอร์ (money.js, invoice.js ... สำเนาตรงตัวของ src/core)
  * ต่างจากระบบจำลอง:
  *   - เรียก Apps Script ผ่าน LiffApp.api (ส่ง idToken) แทน Sim.api
- *   - ยังไม่มีปุ่ม "คัดลอกจากบิลเก่า" (รอบที่ 4) และยังไม่มี PDF (รอบที่ 3)
- *   - ออกบิลสำเร็จในแอป LINE: liff.sendMessages("บิล <เลขที่>") แล้วปิดหน้า / นอกแอป LINE: แสดงหน้าสำเร็จ
+ *   - ยังไม่มีปุ่ม "คัดลอกจากบิลเก่า" (รอบที่ 4)
+ *   - ยืนยันแล้วเซิร์ฟเวอร์สร้าง PDF ต่อทันที (แสดง "กำลังสร้าง PDF…") ถ้า PDF ล้มเหลว เอกสารยังถูกบันทึก
+ *     → หน้า "บันทึกเอกสารแล้ว" + ปุ่ม "ลองสร้าง PDF ใหม่" (regeneratePdf) สำเร็จแล้วค่อยส่งข้อความเข้าแชท
+ *   - ออกบิลสำเร็จในแอป LINE: liff.sendMessages("บิล <เลขที่>") แล้วปิดหน้า / นอกแอป LINE: แสดงหน้าสำเร็จ + ปุ่มเปิด PDF
  */
 (function () {
   var esc = LiffApp.esc;
@@ -191,7 +193,7 @@
         '<div><label>ราคา/หน่วย</label><input type="number" inputmode="decimal" class="num" data-f="price" min="0" step="any" value="' + esc(l.is_free ? 0 : l.price) + '"' + (l.is_free ? ' disabled' : '') + '></div>' +
         '<div><label>ส่วนลด (บาท)</label><input type="number" inputmode="decimal" class="num" data-f="discount" min="0" step="any" value="' + esc(l.is_free ? 0 : l.discount) + '"' + (l.is_free ? ' disabled' : '') + '></div>' +
         '</div>' +
-        '<div class="note"><input type="text" data-f="note" maxlength="200" placeholder="หมายเหตุ (ถ้ามี)" value="' + esc(l.note) + '"></div>' +
+        '<div class="note"><input type="text" data-f="note" maxlength="200" placeholder="หมายเหตุ (ถ้ามี ไม่เกิน ' + esc(cfg().text_max_note || 20) + ' ตัวอักษร)" value="' + esc(l.note) + '"></div>' +
         '<div class="foot"><label class="chk"><input type="checkbox" data-f="is_free"' + (l.is_free ? ' checked' : '') + '> แถม</label>' +
         '<span class="amt num" data-amt></span></div>' +
         '</div>';
@@ -365,8 +367,10 @@
     btn.disabled = true;
     back.disabled = true;
     btn.textContent = 'กำลังออกเอกสาร…';
-    msg.innerHTML = '';
+    // ออกเลขแล้วเซิร์ฟเวอร์สร้าง PDF ต่อในคำขอเดียวกัน (ใช้เวลาหลายวินาที)
+    msg.innerHTML = '<div class="alert ok" id="pdf-wait" style="margin-bottom:10px">กำลังสร้าง PDF… อาจใช้เวลา 10–20 วินาที กรุณาอย่าปิดหน้านี้</div>';
     var r = await LiffApp.api('createDocument', { requestId: S.requestId, document: buildDocumentPayload() });
+    msg.innerHTML = '';
     if (!r.ok) {
       if (r.code === 'forbidden') return LiffApp.showApiError(r);
       btn.disabled = false;
@@ -381,7 +385,47 @@
       }
       return;
     }
+    if (r.pdfError) return showPdfFailed(r);
     await finish(r);
+  }
+
+  // ---------- PDF ล้มเหลว (เอกสารถูกบันทึกแล้ว)
+  /** บอกเลขที่ที่บันทึกแล้ว + ปุ่ม "ลองสร้าง PDF ใหม่" (regeneratePdf) สำเร็จแล้วค่อยส่ง "บิล <เลขที่>" เข้าแชท */
+  function showPdfFailed(r) {
+    totalbar.classList.add('hidden');
+    document.getElementById('title').textContent = 'บันทึกเอกสารแล้ว';
+    document.getElementById('subtitle').textContent = 'เลขที่ #' + r.docNo + ' · ยังไม่มี PDF';
+    view.innerHTML =
+      '<div class="success"><div class="muted">เลขที่เอกสาร</div><div class="no" id="saved-no">#' + esc(r.docNo) + '</div>' +
+      '<div>' + esc(r.legalName || (S.shop && S.shop.legal_name) || '') + '</div><div class="num" style="font-size:20px;font-weight:700;margin-top:4px">' + money(r.total) + ' บาท</div></div>' +
+      '<div class="card alert err" id="pdf-error">' + esc(r.pdfError) + '</div>' +
+      '<div class="card stack">' +
+      '<button type="button" class="btn primary block" id="btn-pdf-retry">ลองสร้าง PDF ใหม่</button>' +
+      '<button type="button" class="btn block" id="btn-pdf-skip">ข้ามไปก่อน (ส่งการ์ดโดยยังไม่มี PDF)</button>' +
+      '<div class="small muted">เอกสารถูกบันทึกแล้ว เลขที่ไม่เปลี่ยน กดลองใหม่กี่ครั้งก็ไม่ออกเลขซ้ำ</div>' +
+      '</div>';
+    document.getElementById('btn-pdf-retry').addEventListener('click', function () { retryPdf(r); });
+    document.getElementById('btn-pdf-skip').addEventListener('click', function () { finish(Object.assign({}, r, { pdfUrl: '' })); });
+    scrollTop();
+  }
+
+  async function retryPdf(r) {
+    var btn = document.getElementById('btn-pdf-retry');
+    var skip = document.getElementById('btn-pdf-skip');
+    var box = document.getElementById('pdf-error');
+    btn.disabled = true;
+    skip.disabled = true;
+    btn.textContent = 'กำลังสร้าง PDF…';
+    var res = await LiffApp.api('regeneratePdf', { docNo: r.docNo });
+    if (res.ok) {
+      await finish(Object.assign({}, r, { pdfUrl: res.pdfUrl, pdfError: '' }));
+      return;
+    }
+    if (res.code === 'forbidden' || res.code === 'token_expired') return LiffApp.showApiError(res);
+    btn.disabled = false;
+    skip.disabled = false;
+    btn.textContent = 'ลองสร้าง PDF ใหม่';
+    box.textContent = res.error || 'สร้าง PDF ไม่สำเร็จ กรุณาลองใหม่';
   }
 
   // ---------- สำเร็จ
@@ -412,7 +456,9 @@
       (r.warnings && r.warnings.length ? '<div class="card alert warn"><ul style="margin:0">' + r.warnings.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></div>' : '') +
       '<div class="card alert ok" id="success-note">' + esc(note) + '</div>' +
       '<div class="card stack">' +
-      '<div class="small muted">ยังไม่มี PDF (จะเพิ่มในรอบถัดไป)</div>' +
+      (r.pdfUrl
+        ? '<a class="btn block" id="btn-pdf" href="' + esc(r.pdfUrl) + '" target="_blank" rel="noopener">📄 เปิด PDF</a>'
+        : '<div class="small muted" id="no-pdf">ยังไม่มี PDF — สร้างภายหลังได้ (ผู้ดูแลรัน debugRegeneratePdf)</div>') +
       '<button type="button" class="btn primary block" id="btn-new">ออกบิลใหม่</button>' +
       '</div>';
     document.getElementById('btn-new').addEventListener('click', load);

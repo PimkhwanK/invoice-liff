@@ -125,9 +125,82 @@ function isNumberLike(v) {
 }
 
 /**
+ * ความยาวสูงสุดของข้อความที่พิมพ์ลง PDF — Apps Script วัดความกว้างจริงแบบ Chrome ไม่ได้ จึงจำกัดจำนวนตัวอักษรแทน
+ * แก้ได้ในแท็บตั้งค่า (ชื่อค่าตาม key ด้านล่าง) ค่าเริ่มต้นตั้งจากข้อมูลจริงที่ยาวที่สุด + เผื่อ
+ * นับด้วย textDisplayLength (ไม่นับสระบน/ล่างและวรรณยุกต์)
+ */
+var TEXT_LIMIT_DEFAULTS = {
+  text_max_customer_name: 45, // ชื่อลูกค้า (ชื่อเต็มตามใบกำกับ) — ยาวที่สุดในข้อมูลจริง 37
+  text_max_address_line: 50,  // ที่อยู่แต่ละบรรทัด (หลังตัดเป็น 2 บรรทัด) — ยาวที่สุด 45
+  text_max_item_name: 50,     // ช่องรายการสินค้า = ชื่อสินค้า + " (หมายเหตุ)" — ชื่อสินค้ายาวที่สุด 45
+  text_max_note: 20,          // หมายเหตุของแต่ละบรรทัด
+  text_max_ref: 15            // อ้างถึง (ช่องแคบ)
+};
+
+/** ขีดจำกัดความยาวจาก config (ค่าที่ไม่ใช่ตัวเลขบวกใช้ค่าเริ่มต้น) */
+function textLimits(config) {
+  var out = {};
+  for (var k in TEXT_LIMIT_DEFAULTS) {
+    var v = config ? Number(config[k]) : NaN;
+    out[k] = config && config[k] !== '' && config[k] !== null && isFinite(v) && v > 0 ? Math.floor(v) : TEXT_LIMIT_DEFAULTS[k];
+  }
+  return out;
+}
+
+/** จำนวนตัวอักษรที่กินที่ในบรรทัด: ไม่นับสระบน/ล่างและวรรณยุกต์ของไทย (ซ้อนอยู่บนตัวอื่น ไม่เพิ่มความกว้าง) */
+function textDisplayLength(s) {
+  s = String(s == null ? '' : s);
+  var n = 0;
+  for (var i = 0; i < s.length; i++) {
+    var c = s.charCodeAt(i);
+    if (c === 0x0E31 || (c >= 0x0E34 && c <= 0x0E3A) || (c >= 0x0E47 && c <= 0x0E4E)) continue;
+    n++;
+  }
+  return n;
+}
+
+/** ข้อความในช่องรายการสินค้าของ PDF: "ชื่อ (หมายเหตุ)" */
+function itemLineText(name, note) {
+  return String(name == null ? '' : name) + (note ? ' (' + note + ')' : '');
+}
+
+/**
+ * ข้อความที่ยาวเกินช่องใน PDF (ชื่อลูกค้า, ที่อยู่แต่ละบรรทัด, ชื่อสินค้า, หมายเหตุ, อ้างถึง)
+ * @param {object} shop ร้านที่เลือก (ตรวจแล้วว่า active) หรือ null
+ */
+function textLimitErrors(input, ctx, shop) {
+  var lim = textLimits(ctx.config);
+  var errors = [];
+  function check(label, text, max, hint) {
+    var n = textDisplayLength(text);
+    if (n > max) errors.push(label + ' ยาว ' + n + ' ตัวอักษร (เกิน ' + max + ') ข้อความจะล้นช่องใน PDF — ' + hint);
+  }
+  if (shop) {
+    var snap = shopSnapshot(shop);
+    check('ชื่อลูกค้า', snap.shop_legal_name, lim.text_max_customer_name, 'กรุณาย่อชื่อเต็มของร้านในข้อมูลร้านค้า');
+    check('ที่อยู่บรรทัด 1 ของร้าน', snap.shop_address1, lim.text_max_address_line, 'กรุณาย่อที่อยู่ของร้านในข้อมูลร้านค้า');
+    check('ที่อยู่บรรทัด 2 ของร้าน', snap.shop_address2, lim.text_max_address_line, 'กรุณาย่อที่อยู่ของร้านในข้อมูลร้านค้า');
+  }
+  check('ช่อง "อ้างถึง"', input.ref ? String(input.ref) : '', lim.text_max_ref, 'กรุณาย่อข้อความ');
+  var items = Array.isArray(input.items) ? input.items : [];
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i] || {};
+    var p = 'บรรทัดที่ ' + (i + 1) + ': ';
+    var note = it.note ? String(it.note) : ''; // แบบเดียวกับ buildDocument
+    check(p + 'หมายเหตุ', note, lim.text_max_note, 'กรุณาย่อหมายเหตุ');
+    var product = it.barcode ? findBy(ctx.products, 'barcode', it.barcode) : null;
+    if (product) {
+      check(p + (note ? 'ชื่อสินค้ารวมหมายเหตุ' : 'ชื่อสินค้า'), itemLineText(product.name, note), lim.text_max_item_name,
+        note ? 'กรุณาย่อหมายเหตุ' : 'กรุณาย่อชื่อสินค้าในข้อมูลสินค้า');
+    }
+  }
+  return errors;
+}
+
+/**
  * ตรวจข้อมูลก่อนออกเอกสาร
  * @param {object} input { doc_type, doc_date, ref, sale_type, due_date, shop_id, items:[{barcode, qty, price, discount, is_free, note}] }
- * @param {object} ctx { shops, products, documents, config, today }
+ * @param {object} ctx { shops, products, documents, config, today, checkTextLimits? }
  * @returns {{errors:string[], warnings:string[]}}
  */
 function validateDocumentInput(input, ctx) {
@@ -194,6 +267,10 @@ function validateDocumentInput(input, ctx) {
       }
     }
   }
+
+  // ข้อความยาวเกินช่องใน PDF: เปิดเมื่อ ctx.checkTextLimits (Apps Script เปิดเสมอ)
+  // ระบบจำลองวัดความกว้างจริงด้วย Chrome อยู่แล้ว จึงไม่เปิด (ข้อมูลจำลองมีชื่อร้านยาวที่ Chrome ย่อฟอนต์ให้พอดีได้)
+  if (ctx.checkTextLimits) errors = errors.concat(textLimitErrors(input, ctx, shop && isTrue(shop.active) ? shop : null));
 
   if (errors.length === 0) {
     var totals = calcTotals(items, config.vat_rate);
@@ -336,6 +413,11 @@ if (typeof module !== 'undefined' && module.exports) {
     creditDaysOf: creditDaysOf,
     computeDueDate: computeDueDate,
     dateWarnings: dateWarnings,
+    TEXT_LIMIT_DEFAULTS: TEXT_LIMIT_DEFAULTS,
+    textLimits: textLimits,
+    textDisplayLength: textDisplayLength,
+    itemLineText: itemLineText,
+    textLimitErrors: textLimitErrors,
     validateDocumentInput: validateDocumentInput,
     shopSnapshot: shopSnapshot,
     buildDocument: buildDocument,

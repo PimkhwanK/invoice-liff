@@ -24,6 +24,13 @@ function formatThaiDate(iso) {
   return day + '/' + THAI_MONTHS_SHORT[p[1] - 1] + '/' + (p[0] + 543);
 }
 
+/** '2026-01-05' → '5/ม.ค./2569' (วันไม่เติม 0 — แบบบิลเดิมใน PDF จาก Google Sheets) */
+function formatThaiDateNoPad(iso) {
+  if (!isIsoDate(iso)) return '';
+  var p = iso.split('-').map(Number);
+  return p[2] + '/' + THAI_MONTHS_SHORT[p[1] - 1] + '/' + (p[0] + 543);
+}
+
 /** '2026-09-24' → '24 กันยายน 2569' */
 function formatThaiDateLong(iso) {
   if (!isIsoDate(iso)) return '';
@@ -64,6 +71,7 @@ if (typeof module !== 'undefined' && module.exports) {
     THAI_MONTHS_SHORT: THAI_MONTHS_SHORT,
     isIsoDate: isIsoDate,
     formatThaiDate: formatThaiDate,
+    formatThaiDateNoPad: formatThaiDateNoPad,
     formatThaiDateLong: formatThaiDateLong,
     addDaysIso: addDaysIso,
     isoDateInTz: isoDateInTz,
