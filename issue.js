@@ -34,7 +34,7 @@
 
   // ---------- โหลดข้อมูล
   async function load() {
-    view.innerHTML = '<div class="empty">กำลังโหลด…</div>';
+    LiffApp.loading('กำลังโหลดร้านค้า สินค้า และเลขที่ถัดไป…');
     totalbar.classList.add('hidden');
     var r = await LiffApp.api('init');
     if (!r.ok) return LiffApp.showApiError(r);
@@ -279,8 +279,9 @@
   // ---------- คัดลอกจากบิลเก่า (ย้ายจาก public/liff/liff.js)
   async function openCopyFromOld() {
     if (!S.shop) return;
-    var s = LiffApp.sheet('คัดลอกจากบิลเก่า — ' + S.shop.short_name, '<div class="empty">กำลังโหลด…</div>');
+    var s = LiffApp.sheet('คัดลอกจากบิลเก่า — ' + S.shop.short_name, '');
     var body = s.el.querySelector('.body');
+    LiffApp.loading('กำลังโหลดบิลเก่าของร้านนี้…', body);
     var r = await LiffApp.api('listDocuments', { shopId: S.shop.shop_id, limit: 20 });
     if (!r.ok) { body.innerHTML = '<div class="alert err">' + esc(r.error) + '</div>'; return; }
     if (!r.documents.length) { body.innerHTML = '<div class="empty" id="copy-empty">ร้านนี้ยังไม่มีบิลเก่า</div>'; return; }
@@ -344,7 +345,7 @@
   async function showReview() {
     var btn = document.getElementById('btn-review');
     btn.disabled = true;
-    btn.textContent = 'กำลังตรวจ…';
+    btn.textContent = 'กำลังตรวจข้อมูล…';
     var payload = buildDocumentPayload();
     var r = await LiffApp.api('previewDocument', { document: payload });
     btn.disabled = false;

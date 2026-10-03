@@ -121,6 +121,28 @@ input.num { text-align: right; }
 .list > li.tap:active { background: #f9fafb; }
 .empty { text-align: center; color: var(--muted); padding: 24px 8px; }
 
+/* ---------- ข้อความระหว่างรอ (LiffApp.loading) ---------- */
+.loading { text-align: center; color: var(--muted); padding: 28px 16px; }
+.loading .msg { color: var(--ink); font-weight: 700; margin-top: 10px; }
+.loading .slow { margin-top: 8px; }
+.spinner {
+  display: inline-block; width: 26px; height: 26px; border-radius: 50%;
+  border: 3px solid var(--line); border-top-color: var(--green); animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+
+/* ---------- ดู PDF (view.html) ---------- */
+.pdf-bar { position: sticky; top: 0; z-index: 5; display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--card); border-bottom: 1px solid var(--line); }
+.pdf-bar .zoom { display: flex; gap: 4px; align-items: center; }
+.pdf-bar .zoom .btn { min-width: 40px; justify-content: center; }
+.pdf-bar #zoom-label { min-width: 46px; text-align: center; font-size: 13px; color: var(--muted); }
+.pdf-bar .grow { flex: 1 1 auto; }
+.pdf-pages { overflow: auto; -webkit-overflow-scrolling: touch; background: #e5e7eb; padding: 8px 0; }
+.pdf-pages canvas { display: block; margin: 0 auto 8px; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .2); }
+.doc-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.doc-head .no { font-size: 18px; font-weight: 700; }
+
 /* ---------- แผ่นเลื่อนขึ้น (bottom sheet) ---------- */
 .sheet-back { position: fixed; inset: 0; background: rgba(0, 0, 0, .4); z-index: 100; display: flex; align-items: flex-end; justify-content: center; }
 .sheet {

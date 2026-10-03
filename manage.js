@@ -2,7 +2,8 @@
  * manage.js — หน้าจัดการข้อมูลบน LIFF จริง (ย้ายจาก public/manage.html ของระบบจำลอง หน้าตาและขั้นตอนเดิม)
  *   แท็บร้านค้า: ค้นหา / เพิ่ม (ลำดับ = สูงสุด + 1 ที่เซิร์ฟเวอร์) / แก้ / ปิด-เปิดใช้งาน — ห้ามลบ เอกสารเก่าไม่เปลี่ยน (snapshot)
  *   แท็บสินค้า: เพิ่ม (บาร์โค้ดห้ามซ้ำ) / แก้ / เลิกขาย — ห้ามลบ
- *   แท็บยกเลิกเอกสาร: ต้องใส่เหตุผลแล้วกดยืนยัน → สถานะยกเลิก + PDF เดิมถูกเขียนทับด้วยฉบับที่มีลายน้ำ "ยกเลิก" (ลิงก์เดิม)
+ *   แท็บยกเลิกเอกสาร: ต้องใส่เหตุผลแล้วกดยืนยัน → cancelDocument บันทึกสถานะแล้วตอบทันที
+ *     → แสดง "บันทึกการยกเลิกแล้ว กำลังทำ PDF ลายน้ำ…" แล้วเรียก regeneratePdf { replace } เขียนทับ PDF เดิม (ลิงก์เดิม)
  * ต่างจากระบบจำลอง: เรียก Apps Script ผ่าน LiffApp.api (ส่ง idToken) / คำเตือน check digit ของเลขภาษีมาจากเซิร์ฟเวอร์
  */
 (function () {
@@ -38,8 +39,10 @@
     return false;
   }
 
+  var LOADING = { shops: 'กำลังโหลดรายชื่อร้านค้า…', products: 'กำลังโหลดรายการสินค้า…', cancel: 'กำลังโหลดเอกสารที่ยกเลิกได้…' };
+
   async function render() {
-    view.innerHTML = '<div class="empty">กำลังโหลด…</div>';
+    LiffApp.loading(LOADING[tab]);
     await { shops: renderShops, products: renderProducts, cancel: renderCancel }[tab]();
     appEl.scrollTop = 0;
   }
@@ -197,7 +200,7 @@
       document.getElementById('list').innerHTML = r.documents.filter(function (d) { return !term || String(d.doc_no).indexOf(term) >= 0; }).map(function (d) {
         return '<li class="item" data-no="' + d.doc_no + '"><div class="t"><div class="n">#' + d.doc_no + ' · ' + esc(d.shop_short_name) + '</div>' +
           '<div class="s">' + formatThaiDate(d.doc_date) + ' · ' + formatMoney(d.total) + ' บาท</div></div>' +
-          (d.hasPdf ? '<a class="btn sm" href="' + esc(d.pdfUrl) + '" target="_blank" rel="noopener">PDF</a>' : '<span class="badge amber">ไม่มี PDF</span>') +
+          (d.hasPdf ? '<a class="btn sm" href="view?no=' + d.doc_no + '">PDF</a>' : '<span class="badge amber">ไม่มี PDF</span>') +
           '<button type="button" class="btn sm danger" data-cancel="' + d.doc_no + '">ยกเลิก</button></li>';
       }).join('') || '<li class="empty">ไม่มีเอกสารที่ยกเลิกได้</li>';
     }
@@ -217,40 +220,35 @@
     var reason = sh.el.querySelector('#reason');
     var msg = sh.el.querySelector('#c-msg');
     var ok = sh.el.querySelector('#c-ok');
+    // ขั้น 1: บันทึกการยกเลิก (เซิร์ฟเวอร์ตอบทันที) → ขั้น 2: ทำ PDF ลายน้ำ (regeneratePdf replace) ต่อเอง
     ok.addEventListener('click', async function () {
-      if (ok.dataset.retry) return retryPdf();
+      if (ok.dataset.retry) return makePdf();
       if (!reason.value.trim()) { msg.innerHTML = '<div class="alert err" id="c-error">กรุณาระบุเหตุผลที่ยกเลิก</div>'; return; }
       ok.disabled = true;
-      ok.textContent = 'กำลังยกเลิกและทำ PDF…';
+      ok.textContent = 'กำลังบันทึกการยกเลิก…';
       var r = await LiffApp.api('cancelDocument', { docNo: d.doc_no, reason: reason.value });
-      ok.disabled = false;
-      ok.textContent = 'ยืนยันยกเลิก';
       if (!r.ok) {
+        ok.disabled = false;
+        ok.textContent = 'ยืนยันยกเลิก';
         if (fatal(r)) { sh.close(); return; }
         msg.innerHTML = '<div class="alert err" id="c-error">' + errText(r.error) + '</div>';
         return;
       }
-      if (r.pdfError) {
-        // ยกเลิกแล้ว แต่ทำ PDF ลายน้ำไม่สำเร็จ → ปุ่มเดิมกลายเป็น "ลองทำ PDF ใหม่"
-        reason.disabled = true;
-        msg.innerHTML = '<div class="alert err" id="c-error">' + errText(r.pdfError) + '</div>';
-        ok.dataset.retry = '1';
-        ok.textContent = 'ลองทำ PDF ใหม่';
-        return;
-      }
-      sh.close();
-      LiffApp.toast('ยกเลิกเอกสาร #' + d.doc_no + ' แล้ว (PDF มีลายน้ำ "ยกเลิก")');
-      render();
+      reason.disabled = true;
+      ok.dataset.retry = '1'; // ยกเลิกแล้ว: ปุ่มนี้ต่อจากนี้ = ทำ PDF ใหม่ (ห้ามส่งยกเลิกซ้ำ)
+      makePdf();
     });
-    async function retryPdf() {
+    async function makePdf() {
       ok.disabled = true;
       ok.textContent = 'กำลังทำ PDF…';
+      msg.innerHTML = '<div class="alert ok" id="c-wait">บันทึกการยกเลิกแล้ว กำลังทำ PDF ลายน้ำ… (อาจใช้เวลา 10–20 วินาที ปิดหน้านี้ได้ แต่ PDF อาจยังไม่มีลายน้ำ)</div>';
       var r = await LiffApp.api('regeneratePdf', { docNo: d.doc_no, replace: true });
       ok.disabled = false;
-      ok.textContent = 'ลองทำ PDF ใหม่';
       if (!r.ok) {
         if (fatal(r)) { sh.close(); return; }
-        msg.innerHTML = '<div class="alert err" id="c-error">' + errText(r.error) + '</div>';
+        // ยกเลิกแล้ว แต่ทำ PDF ลายน้ำไม่สำเร็จ → ปุ่มเดิมกลายเป็น "ลองทำ PDF ใหม่"
+        ok.textContent = 'ลองทำ PDF ใหม่';
+        msg.innerHTML = '<div class="alert err" id="c-error">' + errText('ยกเลิกเอกสารเลขที่ ' + d.doc_no + ' แล้ว แต่' + (r.error || 'ทำ PDF ใหม่ไม่สำเร็จ')) + '</div>';
         return;
       }
       sh.close();

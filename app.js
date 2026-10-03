@@ -2,7 +2,7 @@
  * app.js — หน้า LIFF ทดสอบการเชื่อมต่อ: LINE Login → idToken → Apps Script API (อ่านอย่างเดียว)
  *
  * ขั้นตอน: liff.init → (ยังไม่ login → liff.login) → liff.getIDToken()
- *          → เรียก whoami, listShops, listProducts พร้อมกัน → แสดงชื่อผู้ใช้ จำนวนร้าน/สินค้า และช่องค้นหาร้าน
+ *          → เรียก homeData (คำขอเดียว: ชื่อ + ร้าน + สินค้า) → แสดงชื่อผู้ใช้ จำนวนร้าน/สินค้า และช่องค้นหาร้าน
  * ค้นหาร้านใช้ searchShops จาก search.js (สำเนาของ src/core/search.js ในระบบจำลอง)
  * ส่งเฉพาะ idToken ให้เซิร์ฟเวอร์ตรวจ ไม่ส่ง userId (เซิร์ฟเวอร์ไม่เชื่อ userId ที่ส่งมาอยู่แล้ว)
  */
@@ -161,7 +161,7 @@
   }
 
   async function start() {
-    view.replaceChildren(el('div', 'card empty', 'กำลังโหลด…'));
+    view.replaceChildren(el('div', 'card empty', 'กำลังเชื่อมต่อ LINE…'));
     if (!CFG.LIFF_ID || !CFG.API_URL) return showError(MSG.notConfigured, null, 'not_configured');
     if (typeof liff === 'undefined') return showError(MSG.sdk, { label: 'ลองใหม่', run: function () { location.reload(); } }, 'sdk');
     // เปิดด้วย https://liff.line.me/{LIFF ID}/issue → LINE เปิดหน้านี้ก่อนพร้อม ?liff.state=/issue
@@ -180,11 +180,10 @@
     var idToken = liff.getIDToken();
     if (!idToken) return showError(MSG.noToken, relogin, 'no_id_token');
 
-    var results = await Promise.all(['whoami', 'listShops', 'listProducts'].map(function (a) { return callApi(a, idToken); }));
-    for (var i = 0; i < results.length; i++) {
-      if (!results[i].ok) return showApiError(results[i]);
-    }
-    render(results[0].name, results[1].shops || [], results[2].products || []);
+    view.replaceChildren(el('div', 'card empty', 'กำลังโหลดชื่อผู้ใช้ ร้านค้า และสินค้า…'));
+    var r = await callApi('homeData', idToken); // คำขอเดียว (รอบที่ 5A)
+    if (!r.ok) return showApiError(r);
+    render(r.name, r.shops || [], r.products || []);
   }
 
   start();

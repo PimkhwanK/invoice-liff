@@ -37,6 +37,23 @@ var LiffApp = (function () {
   function view() { return document.getElementById('view'); }
 
   /**
+   * ข้อความระหว่างรอ (บอกว่ากำลังทำอะไร ไม่ใช่แค่วงกลมหมุน) — รอนานเกิน 6 วินาทีมีคำอธิบายเพิ่ม
+   * @param {string} text เช่น "กำลังโหลดรายชื่อร้านและเอกสาร…"
+   * @param {Element} [target] ค่าเริ่มต้น #view
+   */
+  function loading(text, target) {
+    var box = el('<div class="loading" id="loading" role="status"><span class="spinner" aria-hidden="true"></span>' +
+      '<div class="msg" id="loading-msg"></div><div class="small muted slow hidden" id="loading-slow">' +
+      'ใช้เวลานานกว่าปกติ — ถ้าไม่ได้ใช้งานมาสักพัก ระบบต้องตื่นก่อน ครั้งแรกอาจใช้ 5–15 วินาที</div></div>');
+    box.querySelector('.msg').textContent = text;
+    (target || view()).replaceChildren(box);
+    setTimeout(function () {
+      if (box.isConnected) box.querySelector('.slow').classList.remove('hidden');
+    }, 6000);
+    return box;
+  }
+
+  /**
    * แสดงข้อผิดพลาดเต็มหน้า
    * @param {{title:string, text:string, hint?:string}} m
    * @param {{label:string, run:function}} [action] ปุ่มแก้ไข เช่น ลองใหม่
@@ -78,6 +95,16 @@ var LiffApp = (function () {
     var idToken = '';
     try { idToken = liff.getIDToken() || ''; } catch (e) { idToken = ''; }
     var body = Object.assign({}, payload || {}, { action: action, idToken: idToken });
+    var t0 = Date.now();
+    try {
+      return await apiFetch(body);
+    } finally {
+      // เวลาที่หน้าเว็บรอ (รวมเน็ต + redirect ของ Apps Script) ดูได้ใน console — เทียบกับ "[เวลา]" ในหน้าการดำเนินการ
+      try { console.info('[เวลา] ' + action + ' ' + (Date.now() - t0) + 'ms (หน้าเว็บรอ)'); } catch (e) { /* ไม่เป็นไร */ }
+    }
+  }
+
+  async function apiFetch(body) {
     var res;
     try {
       res = await fetch(CFG.API_URL, {
@@ -124,6 +151,7 @@ var LiffApp = (function () {
   async function start() {
     if (!CFG.LIFF_ID || !CFG.API_URL) { showError(MSG.notConfigured, null, 'not_configured'); return false; }
     if (typeof liff === 'undefined') { showError(MSG.sdk, reload, 'sdk'); return false; }
+    loading('กำลังเชื่อมต่อ LINE…');
     try {
       await liff.init({ liffId: CFG.LIFF_ID });
     } catch (e) {
@@ -142,6 +170,12 @@ var LiffApp = (function () {
 
   function inClient() {
     try { return typeof liff !== 'undefined' && liff.isInClient(); } catch (e) { return false; }
+  }
+
+  /** เปิดลิงก์ในเบราว์เซอร์ภายนอก (ในแอป LINE ใช้ liff.openWindow external) คืน true ถ้าเปิดเองแล้ว */
+  function openExternal(url) {
+    if (!inClient() || typeof liff.openWindow !== 'function') return false;
+    try { liff.openWindow({ url: url, external: true }); return true; } catch (e) { return false; }
   }
 
   var toastTimer = null;
@@ -183,6 +217,7 @@ var LiffApp = (function () {
 
   return {
     start: start, api: api, showError: showError, showApiError: showApiError, isRetryable: isRetryable,
-    inClient: inClient, relogin: relogin, toast: toast, uuid: uuid, sheet: sheet, esc: esc, el: el
+    inClient: inClient, relogin: relogin, toast: toast, uuid: uuid, sheet: sheet, esc: esc, el: el, loading: loading,
+    openExternal: openExternal
   };
 })();

@@ -4,37 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<title>ออกบิล</title>
+<title>ดู PDF</title>
 <link rel="stylesheet" href="form.css">
 </head>
 <body>
 <div class="wrap" id="app">
   <div class="topbar">
-    <h1 id="title">ออกเอกสาร</h1>
-    <div class="sub" id="subtitle">กำลังโหลด…</div>
+    <h1 id="title">ดู PDF</h1>
+    <div class="sub" id="subtitle">ใบกำกับภาษี</div>
   </div>
   <div id="view" aria-live="polite"><div class="loading" role="status"><span class="spinner" aria-hidden="true"></span><div class="msg">กำลังเปิดหน้า…</div></div></div>
 </div>
-
-<div class="totalbar hidden" id="totalbar">
-  <div class="inner">
-    <div class="sums num">
-      <div>ก่อน VAT <span id="t-net">0.00</span> · VAT <span id="t-vat">0.00</span></div>
-      <div>รวมทั้งสิ้น <b id="t-total">0.00</b></div>
-    </div>
-    <button type="button" class="btn primary" id="btn-review">ตรวจสอบ ›</button>
-  </div>
-</div>
-
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<!-- pdf.js เวอร์ชันตายตัว จาก cdnjs + ตรวจ SRI (ไฟล์ถูกแก้ = เบราว์เซอร์ไม่โหลด) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" integrity="sha512-q+4liFwdPC/bNdhUpZx6aXDx/h77yEQtn4I1slHydcbZK34nLaR3cAeYSJshoxIOq3mjEf7xJE8YWIUHMn+oCQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="config.js"></script>
 <script src="money.js"></script>
-<script src="bahtText.js"></script>
 <script src="thaiDate.js"></script>
-<script src="address.js"></script>
-<script src="invoice.js"></script>
-<script src="search.js"></script>
 <script src="common.js"></script>
-<script src="issue.js"></script>
+<script src="view.js"></script>
 </body>
 </html>
