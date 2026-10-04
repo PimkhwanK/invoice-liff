@@ -1,6 +1,8 @@
 /*
  * issue.js — ฟอร์มออกบิลบน LIFF จริง (ย้ายมาจาก public/liff/liff.js ของระบบจำลอง หน้าตาและขั้นตอนเดิม)
- *   เลือกร้าน → เพิ่มสินค้า → ตรวจสอบ (previewDocument) → ยืนยัน (createDocument)
+ *   เลือกร้าน → เพิ่มสินค้า → ตรวจสอบ (บนมือถือ preview.js) → ยืนยัน (createDocument deferPdf → regeneratePdf → ส่งเข้าแชท)
+ * รอบ 5A-2: เปิดหน้าแสดงข้อมูลที่จำไว้ทันที (LiffApp.fresh) / ตรวจสอบไม่รอเซิร์ฟเวอร์ / ยืนยันแสดงความคืบหน้าทีละขั้น
+ *   เซิร์ฟเวอร์ตรวจและคำนวณซ้ำตอนบันทึก ยอดไม่ตรงกับที่มือถือแสดง (expected) = ไม่บันทึก (code mismatch)
  * คำนวณด้วยไฟล์ชุดเดียวกับเซิร์ฟเวอร์ (money.js, invoice.js ... สำเนาตรงตัวของ src/core)
  * ต่างจากระบบจำลอง:
  *   - เรียก Apps Script ผ่าน LiffApp.api (ส่ง idToken) แทน Sim.api
@@ -33,23 +35,45 @@
   function money(n) { return formatMoney(n); }
 
   // ---------- โหลดข้อมูล
+  /** วันนี้ตามเวลาไทยจากนาฬิกาของมือถือ (ใช้ตอนแสดงจากข้อมูลที่จำไว้ — วันที่ในข้อมูลที่จำไว้อาจเป็นเมื่อวาน) */
+  function phoneToday() { return isoDateTimeBangkok(new Date()).slice(0, 10); }
+
+  // ---------- โหลดข้อมูล: แสดงจากที่จำไว้ทันที แล้วดึงใหม่เบื้องหลัง (LiffApp.fresh)
   async function load() {
-    LiffApp.loading('กำลังโหลดร้านค้า สินค้า และเลขที่ถัดไป…');
     totalbar.classList.add('hidden');
-    var r = await LiffApp.api('init');
-    if (!r.ok) return LiffApp.showApiError(r);
+    S.screen = 'loading';
+    await LiffApp.fresh('init', 'init', {}, function (r, how) {
+      if (how.update) return refreshInit(r);
+      S.init = how.cached ? Object.assign({}, r, { today: phoneToday() }) : r;
+      S.doc = { doc_type: r.config.doc_types[0], doc_date: S.init.today, ref: '', sale_type: r.config.sale_type_labels[0], due_date: '' };
+      S.shop = null;
+      S.lines = [];
+      S.dueTouched = false;
+      showForm();
+    }, { loadingText: 'กำลังโหลดร้านค้า สินค้า และเลขที่ถัดไป…' });
+  }
+
+  /** ข้อมูลใหม่จากเซิร์ฟเวอร์มาถึงหลังแสดงจากที่จำไว้ — ฟอร์มยังว่างอยู่ = วาดใหม่ / กรอกไปแล้ว = แค่ใช้ข้อมูลใหม่ (ไม่ล้างสิ่งที่กรอก) */
+  function refreshInit(r) {
+    var untouched = S.screen === 'form' && !S.shop && !S.lines.length;
+    var sameDay = S.doc && S.doc.doc_date === S.init.today;
     S.init = r;
-    S.doc = { doc_type: r.config.doc_types[0], doc_date: r.today, ref: '', sale_type: r.config.sale_type_labels[0], due_date: '' };
-    S.shop = null;
-    S.lines = [];
-    S.dueTouched = false;
-    showForm();
+    if (sameDay && S.doc) S.doc.doc_date = r.today;
+    if (S.doc && r.config.doc_types.indexOf(S.doc.doc_type) < 0) S.doc.doc_type = r.config.doc_types[0];
+    if (S.doc && r.config.sale_type_labels.indexOf(S.doc.sale_type) < 0) S.doc.sale_type = r.config.sale_type_labels[0];
+    if (untouched) { showForm(); return; }
+    if (S.screen === 'form') setSubtitle();
+  }
+
+  function setSubtitle() {
+    document.getElementById('subtitle').textContent = 'เลขที่ถัดไปโดยประมาณ #' + S.init.nextDocNo + ' (ออกเลขจริงตอนยืนยัน) · ' + S.init.name;
   }
 
   // ---------- ฟอร์ม
   function showForm() {
+    S.screen = 'form';
     document.getElementById('title').textContent = 'ออกเอกสาร';
-    document.getElementById('subtitle').textContent = 'เลขที่ถัดไปโดยประมาณ #' + S.init.nextDocNo + ' (ออกเลขจริงตอนยืนยัน) · ' + S.init.name;
+    setSubtitle();
     totalbar.classList.remove('hidden');
     var c = cfg();
     view.innerHTML =
@@ -342,20 +366,16 @@
   // ---------- หน้าตรวจสอบ
   document.getElementById('btn-review').addEventListener('click', showReview);
 
-  async function showReview() {
-    var btn = document.getElementById('btn-review');
-    btn.disabled = true;
-    btn.textContent = 'กำลังตรวจข้อมูล…';
+  /**
+   * ตรวจบนมือถือทันที (preview.js — invoice.js / money.js ชุดเดียวกับเซิร์ฟเวอร์ + ขีดจำกัดจากแท็บตั้งค่า) ไม่รอเซิร์ฟเวอร์
+   * ยอดที่แสดงส่งไปเป็น expected ตอนยืนยัน → เซิร์ฟเวอร์คำนวณซ้ำ ถ้าไม่ตรงจะไม่บันทึก
+   */
+  function showReview() {
     var payload = buildDocumentPayload();
-    var r = await LiffApp.api('previewDocument', { document: payload });
-    btn.disabled = false;
-    btn.textContent = 'ตรวจสอบ ›';
-    if (!r.ok) {
-      if (r.code === 'token_expired' || r.code === 'forbidden') return LiffApp.showApiError(r);
-      LiffApp.toast(r.error || 'ตรวจสอบไม่สำเร็จ กรุณาลองใหม่', true);
-      return;
-    }
+    var r = previewLocal(payload, S.init);
     S.requestId = LiffApp.uuid(); // รหัสคำขอของรอบยืนยันนี้
+    S.expected = r.totals;
+    S.screen = 'review';
 
     totalbar.classList.add('hidden');
     document.getElementById('title').textContent = 'ตรวจสอบก่อนยืนยัน';
@@ -397,6 +417,19 @@
     scrollTop();
   }
 
+  /** ความคืบหน้าทีละขั้น: บันทึกเอกสาร → สร้าง PDF → ส่งเข้าแชท (นอกแอป LINE ไม่มีขั้นส่ง) */
+  function steps(box) {
+    var list = [['save', 'บันทึกเอกสาร…'], ['pdf', 'สร้าง PDF… (อาจใช้เวลา 10–20 วินาที)']];
+    if (LiffApp.inClient()) list.push(['send', 'ส่งเข้าแชท…']);
+    box.innerHTML = '<ol class="steps" id="steps">' + list.map(function (s) { return '<li data-step="' + s[0] + '">' + s[1] + '</li>'; }).join('') + '</ol>';
+    return function (step, state, text) {
+      var li = document.querySelector('#steps li[data-step="' + step + '"]');
+      if (!li) return;
+      li.className = state;
+      if (text) li.textContent = text;
+    };
+  }
+
   async function confirmCreate() {
     var btn = document.getElementById('btn-confirm');
     var back = document.getElementById('btn-back');
@@ -404,16 +437,21 @@
     btn.disabled = true;
     back.disabled = true;
     btn.textContent = 'กำลังออกเอกสาร…';
-    // ออกเลขแล้วเซิร์ฟเวอร์สร้าง PDF ต่อในคำขอเดียวกัน (ใช้เวลาหลายวินาที)
-    msg.innerHTML = '<div class="alert ok" id="pdf-wait" style="margin-bottom:10px">กำลังสร้าง PDF… อาจใช้เวลา 10–20 วินาที กรุณาอย่าปิดหน้านี้</div>';
-    var r = await LiffApp.api('createDocument', { requestId: S.requestId, document: buildDocumentPayload() });
-    msg.innerHTML = '';
+    var mark = steps(msg);
+    // ขั้นที่ 1: บันทึก (ออกเลข) แล้วตอบทันที — เซิร์ฟเวอร์ตรวจและคำนวณซ้ำ เทียบยอดกับที่มือถือแสดง (expected)
+    mark('save', 'doing');
+    var r = await LiffApp.api('createDocument', { requestId: S.requestId, document: buildDocumentPayload(), expected: S.expected, deferPdf: true });
     if (!r.ok) {
+      msg.innerHTML = '';
       if (r.code === 'forbidden') return LiffApp.showApiError(r);
       btn.disabled = false;
       back.disabled = false;
       // เน็ตหลุด / มีคนออกบิลพร้อมกัน: กดใหม่ใช้ requestId เดิม ระบบจะไม่ออกเลขซ้ำ
       btn.textContent = LiffApp.isRetryable(r) ? 'ลองอีกครั้ง' : 'ยืนยันออกเอกสาร';
+      if (r.code === 'mismatch' || r.code === 'invalid') {
+        btn.disabled = true; // ต้องกลับไปแก้/ตรวจใหม่ก่อน
+        refreshInBackground(); // ข้อมูลที่จำไว้อาจเก่า → ดึงใหม่ให้รอบตรวจถัดไป
+      }
       msg.innerHTML = '<div class="alert err" id="confirm-error" style="margin-bottom:10px">' + esc(r.error || 'ออกเอกสารไม่สำเร็จ').replace(/\n/g, '<br>') + '</div>';
       if (r.code === 'token_expired') {
         var re = LiffApp.el('<button type="button" class="btn block" style="margin-bottom:10px">เข้าสู่ระบบใหม่</button>');
@@ -422,13 +460,44 @@
       }
       return;
     }
-    if (r.pdfError) return showPdfFailed(r);
+    mark('save', 'done', 'บันทึกเอกสารแล้ว เลขที่ #' + r.docNo);
+    rememberIssued(r.docNo);
+    // ขั้นที่ 2: สร้าง PDF (คำขอที่สอง — ใบเดิมที่มี PDF แล้วได้ลิงก์เดิม)
+    if (!r.pdfUrl) {
+      mark('pdf', 'doing');
+      var p = await LiffApp.api('regeneratePdf', { docNo: r.docNo });
+      if (!p.ok) {
+        if (p.code === 'forbidden') return LiffApp.showApiError(p);
+        mark('pdf', 'fail');
+        return showPdfFailed(Object.assign({}, r, { pdfError: 'บันทึกเอกสารเลขที่ ' + r.docNo + ' แล้ว แต่' + (p.error || 'สร้าง PDF ไม่สำเร็จ') }));
+      }
+      r = Object.assign({}, r, { pdfUrl: p.pdfUrl });
+    }
+    mark('pdf', 'done', 'สร้าง PDF แล้ว');
+    // ขั้นที่ 3: ส่งเข้าแชท (finish)
+    mark('send', 'doing');
     await finish(r);
+  }
+
+  /** หลังออกบิล: เลขถัดไปที่จำไว้ = เลขนี้ + 1 และวันที่ของใบล่าสุด (ข้อมูลจริงจะมาแทนเมื่อเปิดหน้าครั้งต่อไป) */
+  function rememberIssued(docNo) {
+    var c = LiffApp.remember('init');
+    var data = c ? c.data : S.init;
+    if (!data) return;
+    data.nextDocNo = Math.max(Number(data.nextDocNo) || 0, Number(docNo) + 1);
+    data.lastDoc = { doc_no: Number(docNo), doc_date: S.doc.doc_date, status: 'issued' };
+    LiffApp.keep('init', data);
+  }
+
+  async function refreshInBackground() {
+    var r = await LiffApp.api('init');
+    if (r.ok) { LiffApp.keep('init', r); S.init = r; }
   }
 
   // ---------- PDF ล้มเหลว (เอกสารถูกบันทึกแล้ว)
   /** บอกเลขที่ที่บันทึกแล้ว + ปุ่ม "ลองสร้าง PDF ใหม่" (regeneratePdf) สำเร็จแล้วค่อยส่ง "บิล <เลขที่>" เข้าแชท */
   function showPdfFailed(r) {
+    S.screen = 'done';
     totalbar.classList.add('hidden');
     document.getElementById('title').textContent = 'บันทึกเอกสารแล้ว';
     document.getElementById('subtitle').textContent = 'เลขที่ #' + r.docNo + ' · ยังไม่มี PDF';
@@ -483,6 +552,7 @@
   }
 
   function showSuccess(r, note) {
+    S.screen = 'done';
     totalbar.classList.add('hidden');
     document.getElementById('title').textContent = 'ออกเอกสารสำเร็จ';
     document.getElementById('subtitle').textContent = '';

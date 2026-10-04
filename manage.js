@@ -41,21 +41,29 @@
 
   var LOADING = { shops: 'กำลังโหลดรายชื่อร้านค้า…', products: 'กำลังโหลดรายการสินค้า…', cancel: 'กำลังโหลดเอกสารที่ยกเลิกได้…' };
 
-  async function render() {
-    LiffApp.loading(LOADING[tab]);
-    await { shops: renderShops, products: renderProducts, cancel: renderCancel }[tab]();
-    appEl.scrollTop = 0;
-  }
+  var SOURCES = { shops: ['m-shops', 'listShops', {}], products: ['m-products', 'listProducts', { all: true }], cancel: ['m-cancel', 'listDocuments', { status: 'issued', limit: 50 }] };
 
-  function loadFailed(r) {
-    if (fatal(r)) return;
-    view.innerHTML = '<div class="card alert err" id="load-error">' + errText(r.error || 'โหลดข้อมูลไม่สำเร็จ') + '</div>';
+  /**
+   * แสดงรายการของแท็บ: จากที่จำไว้ทันที แล้วดึงใหม่เบื้องหลัง (LiffApp.fresh) — ข้อมูลใหม่ต่างจากเดิม = วาดใหม่ (คงคำค้น)
+   * @param {boolean} saved true = เพิ่งบันทึก/ยกเลิก → ลืมรายการที่จำไว้ของแท็บนี้ก่อน (ไม่แสดงข้อมูลก่อนแก้)
+   */
+  async function render(saved) {
+    var t = tab;
+    var src = SOURCES[t];
+    if (saved === true) { LiffApp.drop(src[0]); LiffApp.drop('history'); LiffApp.drop('init'); }
+    await LiffApp.fresh(src[0], src[1], src[2], function (r, how) {
+      if (tab !== t) return; // เปลี่ยนแท็บไปแล้ว
+      if (how.update && document.querySelector('.sheet-back')) return; // กำลังแก้ข้อมูลในแผ่นอยู่ ไม่วาดทับ
+      var q = document.getElementById('q');
+      var term = how.update && q ? q.value : '';
+      ({ shops: renderShops, products: renderProducts, cancel: renderCancel })[t](r);
+      if (term) { var q2 = document.getElementById('q'); q2.value = term; q2.dispatchEvent(new Event('input')); }
+      if (!how.update) appEl.scrollTop = 0;
+    }, { loadingText: LOADING[t] });
   }
 
   // ---------- ร้านค้า
-  async function renderShops() {
-    var r = await LiffApp.api('listShops');
-    if (!r.ok) return loadFailed(r);
+  function renderShops(r) {
     var rows = r.shops;
     view.innerHTML = '<section class="card"><div class="toolbar"><input type="search" id="q" placeholder="ค้นหาร้าน" autocomplete="off">' +
       '<button type="button" class="btn primary" id="add">＋ เพิ่มร้าน</button></div><ul class="list" id="list"></ul></section>';
@@ -119,14 +127,12 @@
       }
       sh.close();
       LiffApp.toast((r.created ? 'เพิ่มร้าน #' + r.shop.shop_id + ' แล้ว' : 'บันทึกแล้ว') + (r.warnings.length ? '\n' + r.warnings.join('\n') : ''), r.warnings.length > 0);
-      render();
+      render(true);
     });
   }
 
   // ---------- สินค้า
-  async function renderProducts() {
-    var r = await LiffApp.api('listProducts', { all: true });
-    if (!r.ok) return loadFailed(r);
+  function renderProducts(r) {
     var rows = r.products;
     view.innerHTML = '<section class="card"><div class="toolbar"><input type="search" id="q" placeholder="ค้นหาสินค้า" autocomplete="off">' +
       '<button type="button" class="btn primary" id="add">＋ เพิ่มสินค้า</button></div><ul class="list" id="list"></ul></section>';
@@ -182,14 +188,12 @@
       }
       sh.close();
       LiffApp.toast((r.created ? 'เพิ่มสินค้าแล้ว' : 'บันทึกแล้ว') + (r.warnings.length ? '\n' + r.warnings.join('\n') : ''), r.warnings.length > 0);
-      render();
+      render(true);
     });
   }
 
   // ---------- ยกเลิกเอกสาร
-  async function renderCancel() {
-    var r = await LiffApp.api('listDocuments', { status: 'issued', limit: 50 });
-    if (!r.ok) return loadFailed(r);
+  function renderCancel(r) {
     view.innerHTML =
       '<section class="card"><p class="small muted" style="margin-top:0">ห้ามลบเอกสาร — การยกเลิกจะเปลี่ยนสถานะเป็น "ยกเลิก" เก็บเหตุผล และทำ PDF ใหม่ที่มีลายน้ำ "ยกเลิก" ทับไฟล์เดิม (ลิงก์ที่ส่งให้ลูกค้าไปแล้วจะเห็นลายน้ำ) เลขที่เอกสารจะไม่ถูกนำกลับมาใช้</p>' +
       '<div class="toolbar"><input type="search" id="q" inputmode="numeric" placeholder="กรองด้วยเลขที่" autocomplete="off"></div>' +
@@ -253,11 +257,11 @@
       }
       sh.close();
       LiffApp.toast('ยกเลิกเอกสาร #' + d.doc_no + ' แล้ว (PDF มีลายน้ำ "ยกเลิก")');
-      render();
+      render(true);
     }
     // เมื่อปิดแผ่น ให้รายการอัปเดตเสมอ (เผื่อยกเลิกไปแล้วแต่ PDF ล้มเหลว)
     sh.el.addEventListener('click', function (e) {
-      if (ok.dataset.retry && (e.target === sh.el || e.target.closest('[data-close]'))) render();
+      if (ok.dataset.retry && (e.target === sh.el || e.target.closest('[data-close]'))) render(true);
     });
   }
 

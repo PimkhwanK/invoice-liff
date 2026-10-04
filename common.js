@@ -6,6 +6,8 @@
  *   LiffApp.showApiError(r)         แสดงข้อผิดพลาดเต็มหน้า (ไม่มีสิทธิ์ / เชื่อมต่อไม่ได้ / หมดอายุ ...)
  *   LiffApp.inClient()              เปิดในแอป LINE หรือไม่
  *   LiffApp.toast / sheet / uuid / esc / el   เหมือน Sim.* ของระบบจำลอง
+ *   LiffApp.fresh(name, action, payload, render)   แสดงข้อมูลที่จำไว้ทันที แล้วดึงใหม่เบื้องหลัง (รอบ 5A-2)
+ *   LiffApp.remember / keep / forget          ข้อมูลที่จำไว้ใน localStorage (ไม่มี idToken / ล้างเมื่อไม่มีสิทธิ์)
  *
  * fetch ด้วย Content-Type text/plain (ไม่เกิด CORS preflight ที่ Apps Script ตอบไม่ได้) และตาม redirect 302 ของ Apps Script
  */
@@ -76,9 +78,134 @@ var LiffApp = (function () {
     }
     var t = document.getElementById('totalbar');
     if (t) t.classList.add('hidden');
+    var tabsEl = document.getElementById('tabs');
+    if (tabsEl) tabsEl.classList.add('hidden');
+    syncing(false);
     var sub = document.getElementById('subtitle');
     if (sub) sub.textContent = '';
     view().replaceChildren(card);
+  }
+
+  // ---------- จำข้อมูลบนมือถือ (localStorage) — แสดงทันทีแล้วค่อยดึงใหม่เบื้องหลัง (stale-while-revalidate)
+  // เก็บเฉพาะข้อมูลที่ใช้แสดงผล (ร้าน สินค้า ตั้งค่า ชื่อผู้ใช้ เอกสารล่าสุด) ห้ามเก็บ idToken
+  // แยกตามบัญชี LINE (แฮชของ sub ไม่เก็บ userId ตรง ๆ) / เซิร์ฟเวอร์ตอบว่าไม่มีสิทธิ์ → ล้างทั้งหมด
+  // การบันทึกทุกอย่างยังตรวจที่เซิร์ฟเวอร์ ข้อมูลที่จำไว้ใช้แสดงผลเท่านั้น
+  var STORE_PREFIX = 'invoice-liff:v1:';
+  var AUTH_FAIL = { forbidden: 1, no_token: 1, token_invalid: 1, config: 1 };
+
+  function storeOk() {
+    try { return typeof localStorage !== 'undefined' && !!localStorage; } catch (e) { return false; }
+  }
+
+  /** แฮชสั้นของ sub (FNV-1a) — แยกข้อมูลของแต่ละบัญชี LINE บนเครื่องเดียวกัน */
+  function accountKey() {
+    var sub = '';
+    try { sub = (liff.getDecodedIDToken() || {}).sub || ''; } catch (e) { sub = ''; }
+    if (!sub) return '';
+    var h = 2166136261; // FNV-1a (เขียนเป็นเลขฐานสิบ: เลขฐานสิบหกบางตัวหน้าตาเหมือนเบอร์โทร check-public จับ)
+    for (var i = 0; i < sub.length; i++) { h ^= sub.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    return h.toString(36);
+  }
+
+  function storeKey(name) {
+    var acc = accountKey();
+    return acc ? STORE_PREFIX + acc + ':' + name : '';
+  }
+
+  /** ข้อมูลที่จำไว้ {at, data} หรือ null */
+  function remember(name) {
+    var k = storeKey(name);
+    if (!k || !storeOk()) return null;
+    try {
+      var v = JSON.parse(localStorage.getItem(k) || 'null');
+      return v && typeof v === 'object' && 'data' in v ? v : null;
+    } catch (e) { return null; }
+  }
+
+  /** จำข้อมูล (ตัด idToken ออกเสมอ) — พื้นที่เต็ม → ไม่จำ (ใช้งานต่อได้ปกติ) */
+  function keep(name, data) {
+    var k = storeKey(name);
+    if (!k || !storeOk()) return false;
+    try {
+      var copy = JSON.parse(JSON.stringify(data));
+      delete copy.idToken;
+      localStorage.setItem(k, JSON.stringify({ at: Date.now(), data: copy }));
+      return true;
+    } catch (e) {
+      try { localStorage.removeItem(k); } catch (e2) { /* ไม่เป็นไร */ }
+      return false;
+    }
+  }
+
+  /** ลืมข้อมูลชื่อนี้ (เช่น หลังบันทึก ไม่ให้แสดงรายการก่อนแก้) */
+  function drop(name) {
+    var k = storeKey(name);
+    if (!k || !storeOk()) return;
+    try { localStorage.removeItem(k); } catch (e) { /* ไม่เป็นไร */ }
+  }
+
+  /** ล้างข้อมูลที่จำไว้ทั้งหมด (ทุกบัญชี) */
+  function forget() {
+    if (!storeOk()) return;
+    try {
+      var keys = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(STORE_PREFIX) === 0) keys.push(k);
+      }
+      keys.forEach(function (k) { localStorage.removeItem(k); });
+    } catch (e) { /* ไม่เป็นไร */ }
+  }
+
+  /** ป้าย "กำลังอัปเดตข้อมูลล่าสุด…" ใต้หัวข้อ ระหว่างดึงข้อมูลใหม่เบื้องหลัง */
+  function syncing(on) {
+    var bar = document.querySelector('.topbar');
+    var s = document.getElementById('sync');
+    if (!on) { if (s) s.remove(); return; }
+    if (s || !bar) return;
+    s = el('<div class="sync" id="sync" role="status"><span class="spinner sm" aria-hidden="true"></span> กำลังอัปเดตข้อมูลล่าสุด…</div>');
+    bar.appendChild(s);
+  }
+
+  /**
+   * แสดงจากที่จำไว้ทันที แล้วดึงใหม่เบื้องหลัง ถ้าเปลี่ยนค่อยเรียก render อีกครั้ง
+   * @param {string} name ชื่อข้อมูลที่จำ เช่น 'init'
+   * @param {string} action / payload คำขอไปเซิร์ฟเวอร์
+   * @param {function(object, {cached:boolean, update:boolean})} render
+   * @param {{loadingText:string, slim?:function(object):object}} opts slim = ย่อข้อมูลก่อนจำ (เช่น เก็บเอกสารแค่ล่าสุด)
+   * @returns {Promise<object|null>} คำตอบจากเซิร์ฟเวอร์ (null ถ้าไม่สำเร็จ)
+   */
+  async function fresh(name, action, payload, render, opts) {
+    opts = opts || {};
+    var c = remember(name);
+    if (c) render(c.data, { cached: true, update: false });
+    else loading(opts.loadingText || 'กำลังโหลด…');
+    if (c) syncing(true);
+    var r = await api(action, payload);
+    syncing(false);
+    if (!r.ok) {
+      if (c && !AUTH_FAIL[r.code] && r.code !== 'token_expired') {
+        toast('อัปเดตข้อมูลไม่สำเร็จ — กำลังแสดงข้อมูลที่จำไว้', true);
+        return null;
+      }
+      showApiError(r); // ไม่มีสิทธิ์ → api() ล้างข้อมูลที่จำไว้แล้ว และหน้าจอแทนที่ข้อมูลเดิมทั้งหมด
+      return null;
+    }
+    var slim = opts.slim ? opts.slim(r) : r;
+    if (!c) {
+      keep(name, slim);
+      render(r, { cached: false, update: false });
+      return r;
+    }
+    if (JSON.stringify(stripMeta(slim)) !== JSON.stringify(stripMeta(c.data))) render(r, { cached: false, update: true });
+    keep(name, slim);
+    return r;
+  }
+
+  function stripMeta(d) {
+    var o = {};
+    for (var k in d) if (k !== 'idToken') o[k] = d[k];
+    return o;
   }
 
   var reload = { label: 'ลองใหม่', run: function () { location.reload(); } };
@@ -97,7 +224,9 @@ var LiffApp = (function () {
     var body = Object.assign({}, payload || {}, { action: action, idToken: idToken });
     var t0 = Date.now();
     try {
-      return await apiFetch(body);
+      var r = await apiFetch(body);
+      if (r && !r.ok && AUTH_FAIL[r.code]) forget(); // ไม่มีสิทธิ์ → ลืมทุกอย่างที่จำไว้บนเครื่องนี้
+      return r;
     } finally {
       // เวลาที่หน้าเว็บรอ (รวมเน็ต + redirect ของ Apps Script) ดูได้ใน console — เทียบกับ "[เวลา]" ในหน้าการดำเนินการ
       try { console.info('[เวลา] ' + action + ' ' + (Date.now() - t0) + 'ms (หน้าเว็บรอ)'); } catch (e) { /* ไม่เป็นไร */ }
@@ -218,6 +347,6 @@ var LiffApp = (function () {
   return {
     start: start, api: api, showError: showError, showApiError: showApiError, isRetryable: isRetryable,
     inClient: inClient, relogin: relogin, toast: toast, uuid: uuid, sheet: sheet, esc: esc, el: el, loading: loading,
-    openExternal: openExternal
+    openExternal: openExternal, fresh: fresh, remember: remember, keep: keep, forget: forget, drop: drop
   };
 })();

@@ -12,15 +12,33 @@
   var shops = [];
   var docs = [];
 
+  var HISTORY_KEEP = 2000; // จำเอกสารล่าสุดไว้บนมือถือไม่เกินนี้ (ข้อมูลครบมาจากเซิร์ฟเวอร์ทุกครั้งที่เปิด)
+  var current = null;      // ร้านที่กำลังดู (null = หน้าค้นหา)
+  var backTermNow = '';
+
+  // แสดงจากที่จำไว้ทันที แล้วดึงใหม่เบื้องหลัง (คำขอเดียว: ร้านทั้งหมด + เอกสารทั้งหมด)
   async function load() {
-    LiffApp.loading('กำลังโหลดรายชื่อร้านและเอกสาร…');
-    var r = await LiffApp.api('historyData'); // คำขอเดียว: ร้านทั้งหมด + เอกสารทั้งหมด
-    if (!r.ok) return LiffApp.showApiError(r);
-    shops = r.shops.slice().sort(function (a, b) { return a.short_name.localeCompare(b.short_name, 'th'); });
-    docs = r.documents;
-    var pre = new URLSearchParams(location.search).get('shopId');
-    var shop = pre && shops.find(function (s) { return String(s.shop_id) === pre; });
-    if (shop) showShop(shop); else showSearch('');
+    await LiffApp.fresh('history', 'historyData', {}, function (r, how) {
+      shops = r.shops.slice().sort(function (a, b) { return a.short_name.localeCompare(b.short_name, 'th'); });
+      docs = r.documents;
+      if (how.update) return redraw();
+      var pre = new URLSearchParams(location.search).get('shopId');
+      var shop = pre && shops.find(function (s) { return String(s.shop_id) === pre; });
+      if (shop) showShop(shop); else showSearch('');
+    }, {
+      loadingText: 'กำลังโหลดรายชื่อร้านและเอกสาร…',
+      slim: function (r) { return Object.assign({}, r, { documents: r.documents.slice(0, HISTORY_KEEP) }); }
+    });
+  }
+
+  /** ข้อมูลใหม่มาถึง: วาดหน้าเดิมใหม่ (คงคำค้น / ร้านที่ดูอยู่) */
+  function redraw() {
+    var q = document.getElementById('q');
+    if (q) return drawShops(q.value);
+    if (current) {
+      var shop = shops.find(function (s) { return String(s.shop_id) === String(current.shop_id); });
+      if (shop) showShop(shop, backTermNow, true);
+    }
   }
 
   function setShopParam(id) {
@@ -31,6 +49,7 @@
 
   // ---------- ค้นหาร้าน
   function showSearch(term) {
+    current = null;
     setShopParam(null);
     view.innerHTML =
       '<section class="card"><label class="f" for="q">ค้นหาชื่อร้าน</label>' +
@@ -61,7 +80,9 @@
   }
 
   // ---------- เอกสารของร้าน
-  function showShop(shop, backTerm) {
+  function showShop(shop, backTerm, keepScroll) {
+    current = shop;
+    backTermNow = backTerm || '';
     setShopParam(shop.shop_id);
     var mine = documentsOfShop(docs, shop.shop_id);
     var issued = mine.filter(function (d) { return d.status !== 'cancelled'; });
@@ -79,7 +100,7 @@
       var b = e.target.closest('[data-regen]');
       if (b) regenerate(b);
     });
-    appEl.scrollTop = 0;
+    if (!keepScroll) appEl.scrollTop = 0;
   }
 
   /** ปุ่ม "สร้าง PDF ใหม่" สำหรับใบที่ไม่มี PDF (เซิร์ฟเวอร์ตรวจ idToken + แท็บผู้ใช้) */

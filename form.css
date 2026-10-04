@@ -130,6 +130,19 @@ input.num { text-align: right; }
   border: 3px solid var(--line); border-top-color: var(--green); animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+.spinner.sm { width: 12px; height: 12px; border-width: 2px; vertical-align: -1px; }
+.sync { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* ---------- ความคืบหน้าตอนออกบิล (บันทึก → PDF → ส่งเข้าแชท) ---------- */
+.steps { list-style: none; margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--green-soft); }
+.steps li { padding: 3px 0 3px 26px; position: relative; color: var(--muted); }
+.steps li::before { content: '○'; position: absolute; left: 4px; }
+.steps li.doing { color: var(--ink); font-weight: 700; }
+.steps li.doing::before { content: ''; left: 2px; top: 7px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--green); animation: spin .8s linear infinite; }
+.steps li.done { color: var(--green-dark); }
+.steps li.done::before { content: '✓'; }
+.steps li.fail { color: var(--red); }
+.steps li.fail::before { content: '✕'; }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
 
 /* ---------- ดู PDF (view.html) ---------- */
