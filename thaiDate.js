@@ -38,6 +38,21 @@ function formatThaiDateLong(iso) {
   return p[2] + ' ' + THAI_MONTHS_FULL[p[1] - 1] + ' ' + (p[0] + 543);
 }
 
+/** '2026-09-28' → '28 ก.ย. 2569' (แสดงใต้ช่องวันที่ในฟอร์ม) */
+function formatThaiDateShort(iso) {
+  if (!isIsoDate(iso)) return '';
+  var p = iso.split('-').map(Number);
+  return p[2] + ' ' + THAI_MONTHS_SHORT[p[1] - 1] + ' ' + (p[0] + 543);
+}
+
+/** จำนวนวันจาก a ถึง b (b − a) เช่น ('2026-09-28', '2026-10-01') → 3 / วันที่ไม่ถูกต้อง → NaN */
+function isoDayDiff(a, b) {
+  if (!isIsoDate(a) || !isIsoDate(b)) return NaN;
+  var x = a.split('-').map(Number);
+  var y = b.split('-').map(Number);
+  return Math.round((Date.UTC(y[0], y[1] - 1, y[2]) - Date.UTC(x[0], x[1] - 1, x[2])) / 86400000);
+}
+
 /** บวกวันให้ ISO date */
 function addDaysIso(iso, days) {
   if (!isIsoDate(iso)) return '';
@@ -73,6 +88,8 @@ if (typeof module !== 'undefined' && module.exports) {
     formatThaiDate: formatThaiDate,
     formatThaiDateNoPad: formatThaiDateNoPad,
     formatThaiDateLong: formatThaiDateLong,
+    formatThaiDateShort: formatThaiDateShort,
+    isoDayDiff: isoDayDiff,
     addDaysIso: addDaysIso,
     isoDateInTz: isoDateInTz,
     isoDateTimeBangkok: isoDateTimeBangkok,

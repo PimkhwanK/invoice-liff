@@ -12,7 +12,7 @@ var PREVIEW_NOTE_MAX = 200; // ตรงกับ API_NOTE_MAX ใน Api.gs
 /**
  * @param {object} input เอกสารจากฟอร์ม (รูปแบบเดียวกับที่ส่งให้ createDocument)
  * @param {object} init ผลของ action init (ร้าน/สินค้าที่ใช้งานอยู่, config, today, nextDocNo, lastDoc)
- * @returns {{ok:true, errors:string[], warnings:string[], totals:object, amount_text:string, due_date:string, nextDocNo:number}}
+ * @returns {{ok:true, errors:string[], warnings:string[], dateConfirm:object|null, totals:object, amount_text:string, due_date:string, nextDocNo:number}}
  */
 function previewLocal(input, init) {
   var config = init.config;
@@ -26,7 +26,8 @@ function previewLocal(input, init) {
     documents: init.lastDoc ? [init.lastDoc] : [], // คำเตือนวันที่ดูแค่ใบล่าสุดที่ไม่ยกเลิก
     config: config,
     today: init.today,
-    checkTextLimits: true
+    checkTextLimits: true,
+    liveChecks: true // รอบ 5B: กฎวันที่ / ราคา 0 / ยอดเกินช่อง — ตรงกับ apiInvoiceContext ใน Api.gs
   };
   var v = validateDocumentInput(input, ctx);
   var errors = v.errors.slice();
@@ -40,6 +41,7 @@ function previewLocal(input, init) {
     ok: true,
     errors: errors,
     warnings: v.warnings,
+    dateConfirm: v.dateConfirm || null, // วันที่ไม่ใช่วันนี้ → กล่องเตือน + ต้องติ๊กยืนยัน
     totals: totals,
     amount_text: bahtText(totals.total),
     due_date: isCashSale(input.sale_type, config) ? '' : (input.due_date || computeDueDate(input.doc_date, shop, config, input.sale_type)),

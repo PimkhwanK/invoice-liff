@@ -62,7 +62,7 @@
     if (S.doc && r.config.doc_types.indexOf(S.doc.doc_type) < 0) S.doc.doc_type = r.config.doc_types[0];
     if (S.doc && r.config.sale_type_labels.indexOf(S.doc.sale_type) < 0) S.doc.sale_type = r.config.sale_type_labels[0];
     if (untouched) { showForm(); return; }
-    if (S.screen === 'form') setSubtitle();
+    if (S.screen === 'form') { setSubtitle(); updateDocDateHint(); }
   }
 
   function setSubtitle() {
@@ -84,7 +84,8 @@
         return '<label><input type="radio" name="doc_type" value="' + esc(t) + '"' + (t === S.doc.doc_type ? ' checked' : '') + '>' + esc(t) + '</label>';
       }).join('') + '</div></div>' +
       '  <div class="field two">' +
-      '    <div><label class="f" for="doc-date">วันที่</label><input type="date" id="doc-date" value="' + esc(S.doc.doc_date) + '"></div>' +
+      '    <div><label class="f" for="doc-date">วันที่</label><input type="date" id="doc-date" value="' + esc(S.doc.doc_date) + '">' +
+      '      <div class="hint th-date" id="doc-date-th"></div></div>' +
       '    <div><label class="f" for="doc-ref">อ้างถึง</label><input type="text" id="doc-ref" placeholder="เช่น เลข PO" maxlength="100" value="' + esc(S.doc.ref) + '"></div>' +
       '  </div>' +
       '  <div class="field"><label class="f">ชนิดการขาย</label><div class="seg-choice" id="sale-type">' +
@@ -92,7 +93,7 @@
         return '<label><input type="radio" name="sale_type" value="' + esc(t) + '"' + (t === S.doc.sale_type ? ' checked' : '') + '>' + esc(t) + '</label>';
       }).join('') + '</div></div>' +
       '  <div class="field"><label class="f" for="due-date">วันครบกำหนดชำระ</label><input type="date" id="due-date">' +
-      '    <div class="hint" id="due-hint"></div></div>' +
+      '    <div class="hint th-date" id="due-date-th"></div><div class="hint" id="due-hint"></div></div>' +
       '</section>' +
 
       '<section class="card">' +
@@ -115,7 +116,7 @@
     view.querySelectorAll('input[name=sale_type]').forEach(function (i) {
       i.addEventListener('change', function () { S.doc.sale_type = i.value; S.dueTouched = false; updateDue(); });
     });
-    document.getElementById('doc-date').addEventListener('change', function (e) { S.doc.doc_date = e.target.value; S.dueTouched = false; updateDue(); });
+    document.getElementById('doc-date').addEventListener('change', function (e) { S.doc.doc_date = e.target.value; S.dueTouched = false; updateDocDateHint(); updateDue(); });
     document.getElementById('doc-ref').addEventListener('input', function (e) { S.doc.ref = e.target.value; });
     document.getElementById('due-date').addEventListener('change', function (e) { S.doc.due_date = e.target.value; S.dueTouched = true; updateDue(); });
     document.getElementById('btn-add').addEventListener('click', openProductPicker);
@@ -123,17 +124,31 @@
 
     renderShop();
     renderLines();
+    updateDocDateHint();
     updateDue();
+  }
+
+  /** ใต้ช่องวันที่: วันที่แบบไทย เช่น "28 ก.ย. 2569" + ห่างจากวันนี้กี่วัน (กฎวันที่ตรวจจริงตอนกด "ตรวจสอบ") */
+  function updateDocDateHint() {
+    var el = document.getElementById('doc-date-th');
+    if (!el) return;
+    var d = S.doc.doc_date;
+    var diff = isoDayDiff(S.init.today, d);
+    el.textContent = !isIsoDate(d) ? 'ยังไม่ได้เลือกวันที่'
+      : formatThaiDateShort(d) + (diff === 0 ? ' (วันนี้)' : diff < 0 ? ' (ย้อนหลัง ' + (-diff) + ' วัน)' : ' (ล่วงหน้า ' + diff + ' วัน)');
+    el.classList.toggle('off', isIsoDate(d) && diff !== 0);
   }
 
   function updateDue() {
     var input = document.getElementById('due-date');
     var hint = document.getElementById('due-hint');
     if (!input) return;
+    var th = document.getElementById('due-date-th');
     if (isCash()) {
       S.doc.due_date = '';
       input.value = '';
       input.disabled = true;
+      th.textContent = '';
       hint.textContent = 'ขายเงินสด ไม่มีวันครบกำหนดชำระ';
       return;
     }
@@ -142,6 +157,7 @@
     var fromShop = S.shop && S.shop.credit_days !== '' && S.shop.credit_days != null;
     if (!S.dueTouched) S.doc.due_date = S.doc.doc_date ? addDaysIso(S.doc.doc_date, days) : '';
     input.value = S.doc.due_date;
+    th.textContent = formatThaiDateShort(S.doc.due_date);
     hint.textContent = S.dueTouched
       ? 'แก้เองแล้ว (ค่าที่ระบบคำนวณ: ' + formatThaiDate(addDaysIso(S.doc.doc_date, days)) + ')'
       : 'วันที่ + เครดิต ' + days + ' วัน' + (fromShop ? 'ของร้าน' : (S.shop ? ' (ค่าเริ่มต้น ร้านนี้ไม่ได้ตั้งเครดิต)' : ' (ค่าเริ่มต้น)')) + ' — แก้ได้';
@@ -357,6 +373,7 @@
       sale_type: S.doc.sale_type,
       due_date: isCash() ? '' : S.doc.due_date,
       shop_id: S.shop ? S.shop.shop_id : '',
+      date_confirmed: S.dateConfirmed || '', // ติ๊ก "ยืนยันว่าตั้งใจลงวันที่นี้" แล้ว = วันที่นั้น (เซิร์ฟเวอร์ตรวจว่าตรงกับ doc_date)
       items: S.lines.map(function (l) {
         return { barcode: l.barcode, qty: l.qty, price: l.is_free ? 0 : l.price, discount: l.is_free ? 0 : (l.discount === '' ? 0 : l.discount), is_free: l.is_free, note: l.note.trim() };
       })
@@ -371,6 +388,7 @@
    * ยอดที่แสดงส่งไปเป็น expected ตอนยืนยัน → เซิร์ฟเวอร์คำนวณซ้ำ ถ้าไม่ตรงจะไม่บันทึก
    */
   function showReview() {
+    S.dateConfirmed = ''; // ทุกรอบตรวจต้องติ๊กยืนยันวันที่ใหม่
     var payload = buildDocumentPayload();
     var r = previewLocal(payload, S.init);
     S.requestId = LiffApp.uuid(); // รหัสคำขอของรอบยืนยันนี้
@@ -384,6 +402,7 @@
     var s = S.shop;
     view.innerHTML =
       (r.errors.length ? '<div class="card alert err" id="review-errors"><b>ต้องแก้ไขก่อนออกเอกสาร</b><ul>' + r.errors.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>' : '') +
+      (r.dateConfirm && !r.errors.length ? dateConfirmBox(r.dateConfirm) : '') +
       (r.warnings.length ? '<div class="card alert warn" id="review-warnings"><b>คำเตือน (ออกเอกสารได้)</b><ul>' + r.warnings.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>' : '') +
       '<section class="card"><h2>' + esc(payload.doc_type) + '</h2><dl class="kv">' +
       '<dt>วันที่</dt><dd>' + esc(formatThaiDate(payload.doc_date) || '-') + '</dd>' +
@@ -414,7 +433,23 @@
 
     document.getElementById('btn-back').addEventListener('click', function () { showForm(); scrollTop(); });
     document.getElementById('btn-confirm').addEventListener('click', confirmCreate);
+    var tick = document.getElementById('date-confirm');
+    if (tick) {
+      // วันที่ไม่ใช่วันนี้: ปุ่มยืนยันกดได้หลังติ๊กเท่านั้น
+      document.getElementById('btn-confirm').disabled = true;
+      tick.addEventListener('change', function () {
+        S.dateConfirmed = tick.checked ? r.dateConfirm.date : '';
+        document.getElementById('btn-confirm').disabled = !tick.checked;
+      });
+    }
     scrollTop();
+  }
+
+  /** กล่องเตือนสีเหลือง: วันที่เอกสารไม่ใช่วันนี้ (ไม่เกินขีดจำกัด) + ช่องติ๊กยืนยัน */
+  function dateConfirmBox(c) {
+    return '<div class="card alert warn" id="date-confirm-box"><b>วันที่เอกสารไม่ใช่วันนี้</b><ul>' +
+      c.messages.map(function (m) { return '<li>' + esc(m) + '</li>'; }).join('') + '</ul>' +
+      '<label class="chk date-ok"><input type="checkbox" id="date-confirm"> ยืนยันว่าตั้งใจลงวันที่นี้</label></div>';
   }
 
   /** ความคืบหน้าทีละขั้น: บันทึกเอกสาร → สร้าง PDF → ส่งเข้าแชท (นอกแอป LINE ไม่มีขั้นส่ง) */

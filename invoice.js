@@ -8,9 +8,10 @@
 // (var ที่ไม่ได้กำหนดค่าจะไม่ทับ global เดิม)
 if (typeof require === 'function' && typeof module !== 'undefined') {
   var _money = require('./money');
-  var calcLine = _money.calcLine, calcTotals = _money.calcTotals, round2 = _money.round2, formatMoney = _money.formatMoney;
+  var calcLine = _money.calcLine, calcTotals = _money.calcTotals, round2 = _money.round2, formatMoney = _money.formatMoney, toSatang = _money.toSatang;
   var _date = require('./thaiDate');
   var isIsoDate = _date.isIsoDate, addDaysIso = _date.addDaysIso, formatThaiDate = _date.formatThaiDate;
+  var formatThaiDateShort = _date.formatThaiDateShort, isoDayDiff = _date.isoDayDiff, THAI_MONTHS_SHORT = _date.THAI_MONTHS_SHORT;
   var splitAddress = require('./address').splitAddress;
 }
 
@@ -125,6 +126,75 @@ function dateWarnings(docDate, documents, today) {
   return out;
 }
 
+/**
+ * ขีดจำกัดวันที่เอกสารจากแท็บตั้งค่า (ใช้เมื่อเปิด ctx.liveChecks)
+ * ย้อนหลัง/ล่วงหน้าได้ไม่เกินกี่วันจากวันนี้ — ค่าที่ไม่ใช่จำนวนเต็มตั้งแต่ 0 ขึ้นไปใช้ค่าเริ่มต้น
+ */
+var DATE_LIMIT_DEFAULTS = { max_backdate_days: 60, max_future_days: 7 };
+
+function dateLimits(config) {
+  var out = {};
+  for (var k in DATE_LIMIT_DEFAULTS) {
+    var raw = config ? config[k] : undefined;
+    var v = Number(raw);
+    out[k] = raw !== '' && raw !== null && raw !== undefined && isFinite(v) && v >= 0 && Math.floor(v) === v ? v : DATE_LIMIT_DEFAULTS[k];
+  }
+  return out;
+}
+
+/** ยอดสูงสุดที่ช่องตัวเลขในใบกำกับรับได้ (สตางค์) = 9,999,999.99 บาท */
+var MAX_DOC_TOTAL_SATANG = 999999999;
+
+/** เอกสารเลขสูงสุดที่ยังไม่ถูกยกเลิก หรือ null */
+function latestIssuedDoc(documents) {
+  var latest = null;
+  for (var i = 0; i < documents.length; i++) {
+    var d = documents[i];
+    if (d.status === 'cancelled') continue;
+    if (!latest || Number(d.doc_no) > Number(latest.doc_no)) latest = d;
+  }
+  return latest;
+}
+
+/**
+ * กฎวันที่เอกสาร (เปิดเมื่อ ctx.liveChecks) เทียบกับ "วันนี้" ตามเวลาไทย
+ *  - วันนี้ → ปกติ (ยังเตือนถ้าอยู่ก่อนวันที่ของบิลใบล่าสุด)
+ *  - ย้อนหลัง/ล่วงหน้าไม่เกินขีดจำกัด → confirm (ผู้ใช้ต้องติ๊กยืนยันก่อนออก) + ข้อความเตือนในกล่องเดียวกัน
+ *  - เกินขีดจำกัด → error (ห้ามออก)
+ * @returns {{errors:string[], warnings:string[], confirm:null|{date:string, days:number, future:boolean, messages:string[]}}}
+ */
+function docDateCheck(docDate, documents, today, config) {
+  var out = { errors: [], warnings: [], confirm: null };
+  if (!isIsoDate(docDate) || !isIsoDate(today)) return out;
+  var lim = dateLimits(config);
+  var diff = isoDayDiff(today, docDate); // บวก = ล่วงหน้า, ลบ = ย้อนหลัง
+  var shown = formatThaiDateShort(docDate);
+  if (diff < -lim.max_backdate_days) {
+    out.errors.push('วันที่เอกสาร (' + shown + ') ย้อนหลัง ' + (-diff) + ' วัน เกินที่กำหนด (ไม่เกิน ' + lim.max_backdate_days + ' วัน) — ออกเอกสารไม่ได้ กรุณาแก้วันที่');
+    return out;
+  }
+  if (diff > lim.max_future_days) {
+    out.errors.push('วันที่เอกสาร (' + shown + ') ล่วงหน้า ' + diff + ' วัน เกินที่กำหนด (ไม่เกิน ' + lim.max_future_days + ' วัน) — ออกเอกสารไม่ได้ กรุณาแก้วันที่');
+    return out;
+  }
+  var latest = latestIssuedDoc(documents || []);
+  var order = latest && isIsoDate(latest.doc_date) && docDate < latest.doc_date
+    ? 'อยู่ก่อนวันที่ของบิลใบล่าสุด #' + latest.doc_no + ' (' + formatThaiDateShort(latest.doc_date) + ') — เลขที่จะไม่เรียงตามวันที่'
+    : '';
+  if (diff === 0) {
+    if (order) out.warnings.push('วันที่เอกสาร (' + shown + ') ' + order);
+    return out;
+  }
+  var messages = ['วันที่เอกสาร (' + shown + ') ' + (diff < 0 ? 'ย้อนหลัง ' + (-diff) : 'ล่วงหน้า ' + diff) + ' วัน จากวันนี้ (' + formatThaiDateShort(today) + ')'];
+  if (order) messages.push('วันที่นี้' + order);
+  if (docDate.slice(0, 7) < today.slice(0, 7)) {
+    var m = docDate.split('-').map(Number);
+    messages.push('ย้อนไปเดือน ' + THAI_MONTHS_SHORT[m[1] - 1] + ' ' + (m[0] + 543) + ' — เดือนนั้นอาจยื่นภาษีไปแล้ว ควรเช็กกับนักบัญชี');
+  }
+  out.confirm = { date: docDate, days: Math.abs(diff), future: diff > 0, messages: messages };
+  return out;
+}
+
 function findBy(list, key, value) {
   for (var i = 0; i < list.length; i++) {
     if (String(list[i][key]) === String(value)) return list[i];
@@ -212,8 +282,9 @@ function textLimitErrors(input, ctx, shop) {
 /**
  * ตรวจข้อมูลก่อนออกเอกสาร
  * @param {object} input { doc_type, doc_date, ref, sale_type, due_date, shop_id, items:[{barcode, qty, price, discount, is_free, note}] }
- * @param {object} ctx { shops, products, documents, config, today, checkTextLimits? }
- * @returns {{errors:string[], warnings:string[]}}
+ * @param {object} ctx { shops, products, documents, config, today, checkTextLimits?, liveChecks?, requireDateConfirm? }
+ *   liveChecks (Apps Script + LIFF จริง เท่านั้น ระบบจำลองไม่เปิด): กฎวันที่ (docDateCheck), เตือนราคา 0 ที่ไม่ใช่ของแถม, ยอดเกินช่องในใบกำกับ
+ * @returns {{errors:string[], warnings:string[], dateConfirm?:object|null}} dateConfirm มีเมื่อเปิด liveChecks
  */
 function validateDocumentInput(input, ctx) {
   var errors = [];
@@ -270,6 +341,9 @@ function validateDocumentInput(input, ctx) {
     if (!free) {
       if (!isNumberLike(it.price)) errors.push(p + 'กรุณาระบุราคา');
       else if (Number(it.price) < 0) errors.push(p + 'ราคาติดลบไม่ได้');
+      else if (ctx.liveChecks && Number(it.price) === 0) {
+        warnings.push(p + (product ? '"' + product.name + '" ' : '') + 'ราคา 0 บาท แต่ไม่ได้ติ๊ก "แถม" — ถ้าเป็นของแถมกรุณาติ๊กแถม');
+      }
       var disc = it.discount === '' || it.discount === undefined || it.discount === null ? 0 : it.discount;
       if (!isNumberLike(disc)) errors.push(p + 'ส่วนลดไม่ถูกต้อง');
       else if (Number(disc) < 0) errors.push(p + 'ส่วนลดติดลบไม่ได้');
@@ -287,6 +361,27 @@ function validateDocumentInput(input, ctx) {
   if (errors.length === 0) {
     var totals = calcTotals(items, config.vat_rate);
     if (totals.total < 0) errors.push('ยอดรวมทั้งสิ้นติดลบไม่ได้');
+    else if (ctx.liveChecks) {
+      // ช่องตัวเลขในใบกำกับรับได้ไม่เกิน 9,999,999.99 (รวมเงินก่อนส่วนลด ≥ ยอดรวมทั้งสิ้นเสมอ จึงตรวจรวมเงินด้วย)
+      var over = toSatang(totals.total) > MAX_DOC_TOTAL_SATANG ? ['ยอดรวมทั้งสิ้น', totals.total]
+        : toSatang(totals.sum_amount) > MAX_DOC_TOTAL_SATANG ? ['รวมเงิน (ก่อนส่วนลด)', totals.sum_amount] : null;
+      if (over) {
+        errors.push(over[0] + ' ' + formatMoney(over[1]) + ' บาท เกินช่องในใบกำกับ (สูงสุด ' + formatMoney(MAX_DOC_TOTAL_SATANG / 100) +
+          ' บาท) — กรุณาแยกเป็นหลายใบ');
+      }
+    }
+  }
+
+  // ctx.liveChecks (Apps Script + หน้า LIFF จริง): กฎวันที่ตามขีดจำกัดในแท็บตั้งค่า / ระบบจำลองใช้คำเตือนแบบเดิม
+  if (ctx.liveChecks) {
+    var dc = docDateCheck(input.doc_date, ctx.documents || [], ctx.today, config);
+    errors = errors.concat(dc.errors);
+    warnings = warnings.concat(dc.warnings);
+    // ctx.requireDateConfirm (createDocument): วันที่ไม่ใช่วันนี้ต้องส่งการยืนยันของวันที่นั้นมาด้วย
+    if (dc.confirm && ctx.requireDateConfirm && input.date_confirmed !== input.doc_date) {
+      errors.push('วันที่เอกสาร (' + formatThaiDateShort(input.doc_date) + ') ไม่ใช่วันนี้ ต้องติ๊ก "ยืนยันว่าตั้งใจลงวันที่นี้" ในหน้าตรวจสอบก่อน');
+    }
+    return { errors: errors, warnings: warnings, dateConfirm: dc.confirm };
   }
 
   if (isIsoDate(input.doc_date)) {
@@ -426,6 +521,11 @@ if (typeof module !== 'undefined' && module.exports) {
     creditDaysOf: creditDaysOf,
     computeDueDate: computeDueDate,
     dateWarnings: dateWarnings,
+    DATE_LIMIT_DEFAULTS: DATE_LIMIT_DEFAULTS,
+    dateLimits: dateLimits,
+    MAX_DOC_TOTAL_SATANG: MAX_DOC_TOTAL_SATANG,
+    latestIssuedDoc: latestIssuedDoc,
+    docDateCheck: docDateCheck,
     TEXT_LIMIT_DEFAULTS: TEXT_LIMIT_DEFAULTS,
     textLimits: textLimits,
     textDisplayLength: textDisplayLength,
