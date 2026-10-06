@@ -1,20 +1,39 @@
 /*
- * common.js — ตัวช่วยที่หน้า LIFF (ออกบิล / เร็ว ๆ นี้) ใช้ร่วมกัน แทน Sim.* ของระบบจำลอง
+ * common.js — ตัวช่วยที่หน้า LIFF ใช้ร่วมกัน แทน Sim.* ของระบบจำลอง
  *
  *   LiffApp.start()                 liff.init → (ยังไม่ login → liff.login) → ตรวจว่ามี idToken  คืน true ถ้าพร้อมเรียก API
  *   LiffApp.api(action, payload)    POST ไป Apps Script พร้อม idToken (ไม่ส่ง userId — เซิร์ฟเวอร์ไม่เชื่ออยู่แล้ว)
- *   LiffApp.showApiError(r)         แสดงข้อผิดพลาดเต็มหน้า (ไม่มีสิทธิ์ / เชื่อมต่อไม่ได้ / หมดอายุ ...)
+ *   LiffApp.showApiError(r, scr)    แสดงข้อผิดพลาดเต็มหน้า (ไม่มีสิทธิ์ / เชื่อมต่อไม่ได้ / หมดอายุ ...)
  *   LiffApp.isDenied(code)          ไม่มีสิทธิ์ใช้งาน (not_registered / disabled / forbidden ของเซิร์ฟเวอร์รุ่นเก่า)
- *   LiffApp.showDenied(code)        หน้าไม่มีสิทธิ์ (รอบ 6 ข้อ 3): ยังไม่ได้ลงทะเบียน → ชื่อ + รหัส + ส่งให้ผู้ดูแล / ถูกปิด → ติดต่อผู้ดูแล
+ *   LiffApp.showDenied(code, scr)   หน้าไม่มีสิทธิ์ (รอบ 6 ข้อ 3): ยังไม่ได้ลงทะเบียน → ชื่อ + รหัส + ส่งให้ผู้ดูแล / ถูกปิด → ติดต่อผู้ดูแล
  *   LiffApp.inClient()              เปิดในแอป LINE หรือไม่
  *   LiffApp.toast / sheet / uuid / esc / el   เหมือน Sim.* ของระบบจำลอง
- *   LiffApp.fresh(name, action, payload, render)   แสดงข้อมูลที่จำไว้ทันที แล้วดึงใหม่เบื้องหลัง (รอบ 5A-2)
  *   LiffApp.remember / keep / forget          ข้อมูลที่จำไว้ใน localStorage (ไม่มี idToken / ล้างเมื่อไม่มีสิทธิ์)
+ *
+ * รอบ 6 ข้อ 3.5 (แอปหน้าเดียว shell.js): แต่ละหน้าจอมีส่วนหัว / #view / #totalbar ของตัวเอง และเก็บไว้นอกเอกสารตอนไม่ได้แสดง
+ *   scr = { root, dock } ของหน้าจอ — ตัวช่วยที่แตะหน้าจอ (loading, showError, syncing ...) รับ scr ได้ ไม่ส่ง = หน้าจอที่แสดงอยู่ (LiffApp.setScope)
+ *   หน้าตรวจระบบ (check.html) ไม่มี shell → ใช้ทั้งเอกสารเหมือนเดิม
+ *   LiffApp.hooks.timing(ชื่อ, ms) / hooks.denied(code) — shell ใช้แสดงแถบเวลา (?debug=1) และซ่อนเมนูเมื่อไม่มีสิทธิ์
  *
  * fetch ด้วย Content-Type text/plain (ไม่เกิด CORS preflight ที่ Apps Script ตอบไม่ได้) และตาม redirect 302 ของ Apps Script
  */
 var LiffApp = (function () {
   var CFG = window.APP_CONFIG || {};
+  var hooks = { timing: null, denied: null };
+  var scope = null; // function → scr ของหน้าจอที่แสดงอยู่ (shell.js ตั้ง)
+
+  function setScope(fn) { scope = fn; }
+
+  /** หา element ตาม id ในหน้าจอ scr (ส่วนหัว/เนื้อหา แล้วแถบล่างของหน้าจอนั้น) — ไม่มี shell = ทั้งเอกสาร */
+  function find(id, scr) {
+    scr = scr || (scope ? scope() : null);
+    if (!scr) return document.getElementById(id);
+    return scr.root.querySelector('#' + id) || (scr.dock ? scr.dock.querySelector('#' + id) : null);
+  }
+
+  function timing(name, ms) {
+    if (hooks.timing) { try { hooks.timing(name, ms); } catch (e) { /* ไม่เป็นไร */ } }
+  }
 
   var MSG = {
     notConfigured: { title: 'ยังไม่ได้ตั้งค่า', text: 'ยังไม่ได้ใส่ LIFF_ID หรือ API_URL ในไฟล์ config.js' },
@@ -38,7 +57,7 @@ var LiffApp = (function () {
     return t.content.firstElementChild;
   }
 
-  function view() { return document.getElementById('view'); }
+  function view(scr) { return find('view', scr); }
 
   /**
    * ข้อความระหว่างรอ (บอกว่ากำลังทำอะไร ไม่ใช่แค่วงกลมหมุน) — รอนานเกิน 6 วินาทีมีคำอธิบายเพิ่ม
@@ -62,7 +81,7 @@ var LiffApp = (function () {
    * @param {{title:string, text:string, hint?:string}} m
    * @param {{label:string, run:function}} [action] ปุ่มแก้ไข เช่น ลองใหม่
    */
-  function showError(m, action, code) {
+  function showError(m, action, code, scr) {
     var card = el('<section class="card alert err" id="error"><h2></h2><p></p></section>');
     if (code) card.setAttribute('data-code', code);
     card.querySelector('h2').textContent = m.title;
@@ -78,14 +97,14 @@ var LiffApp = (function () {
       b.addEventListener('click', action.run);
       card.appendChild(b);
     }
-    var t = document.getElementById('totalbar');
+    var t = find('totalbar', scr);
     if (t) t.classList.add('hidden');
-    var tabsEl = document.getElementById('tabs');
+    var tabsEl = find('tabs', scr);
     if (tabsEl) tabsEl.classList.add('hidden');
-    syncing(false);
-    var sub = document.getElementById('subtitle');
+    syncing(false, scr);
+    var sub = find('subtitle', scr);
     if (sub) sub.textContent = '';
-    view().replaceChildren(card);
+    view(scr).replaceChildren(card);
   }
 
   // ---------- จำข้อมูลบนมือถือ (localStorage) — แสดงทันทีแล้วค่อยดึงใหม่เบื้องหลัง (stale-while-revalidate)
@@ -162,55 +181,18 @@ var LiffApp = (function () {
     } catch (e) { /* ไม่เป็นไร */ }
   }
 
+  /** คำตอบที่แปลว่าต้องยืนยันตัวตนใหม่ / ไม่มีสิทธิ์ (ข้อมูลที่จำไว้ใช้ต่อไม่ได้) */
+  function isAuthFail(code) { return !!AUTH_FAIL[code] || code === 'token_expired'; }
+
   /** ป้าย "กำลังอัปเดตข้อมูลล่าสุด…" ใต้หัวข้อ ระหว่างดึงข้อมูลใหม่เบื้องหลัง */
-  function syncing(on) {
-    var bar = document.querySelector('.topbar');
-    var s = document.getElementById('sync');
+  function syncing(on, scr) {
+    scr = scr || (scope ? scope() : null);
+    var bar = scr ? scr.root.querySelector('.topbar') : document.querySelector('.topbar');
+    var s = find('sync', scr);
     if (!on) { if (s) s.remove(); return; }
     if (s || !bar) return;
     s = el('<div class="sync" id="sync" role="status"><span class="spinner sm" aria-hidden="true"></span> กำลังอัปเดตข้อมูลล่าสุด…</div>');
     bar.appendChild(s);
-  }
-
-  /**
-   * แสดงจากที่จำไว้ทันที แล้วดึงใหม่เบื้องหลัง ถ้าเปลี่ยนค่อยเรียก render อีกครั้ง
-   * @param {string} name ชื่อข้อมูลที่จำ เช่น 'init'
-   * @param {string} action / payload คำขอไปเซิร์ฟเวอร์
-   * @param {function(object, {cached:boolean, update:boolean})} render
-   * @param {{loadingText:string, slim?:function(object):object}} opts slim = ย่อข้อมูลก่อนจำ (เช่น เก็บเอกสารแค่ล่าสุด)
-   * @returns {Promise<object|null>} คำตอบจากเซิร์ฟเวอร์ (null ถ้าไม่สำเร็จ)
-   */
-  async function fresh(name, action, payload, render, opts) {
-    opts = opts || {};
-    var c = remember(name);
-    if (c) render(c.data, { cached: true, update: false });
-    else loading(opts.loadingText || 'กำลังโหลด…');
-    if (c) syncing(true);
-    var r = await api(action, payload);
-    syncing(false);
-    if (!r.ok) {
-      if (c && !AUTH_FAIL[r.code] && r.code !== 'token_expired') {
-        toast('อัปเดตข้อมูลไม่สำเร็จ — กำลังแสดงข้อมูลที่จำไว้', true);
-        return null;
-      }
-      showApiError(r); // ไม่มีสิทธิ์ → api() ล้างข้อมูลที่จำไว้แล้ว และหน้าจอแทนที่ข้อมูลเดิมทั้งหมด
-      return null;
-    }
-    var slim = opts.slim ? opts.slim(r) : r;
-    if (!c) {
-      keep(name, slim);
-      render(r, { cached: false, update: false });
-      return r;
-    }
-    if (JSON.stringify(stripMeta(slim)) !== JSON.stringify(stripMeta(c.data))) render(r, { cached: false, update: true });
-    keep(name, slim);
-    return r;
-  }
-
-  function stripMeta(d) {
-    var o = {};
-    for (var k in d) if (k !== 'idToken') o[k] = d[k];
-    return o;
   }
 
   var reload = { label: 'ลองใหม่', run: function () { location.reload(); } };
@@ -233,8 +215,10 @@ var LiffApp = (function () {
       if (r && !r.ok && AUTH_FAIL[r.code]) forget(); // ไม่มีสิทธิ์ → ลืมทุกอย่างที่จำไว้บนเครื่องนี้
       return r;
     } finally {
-      // เวลาที่หน้าเว็บรอ (รวมเน็ต + redirect ของ Apps Script) ดูได้ใน console — เทียบกับ "[เวลา]" ในหน้าการดำเนินการ
-      try { console.info('[เวลา] ' + action + ' ' + (Date.now() - t0) + 'ms (หน้าเว็บรอ)'); } catch (e) { /* ไม่เป็นไร */ }
+      // เวลาที่หน้าเว็บรอ (รวมเน็ต + redirect ของ Apps Script) ดูได้ใน console และแถบเวลา (?debug=1) — เทียบกับ "[เวลา]" ในหน้าการดำเนินการ
+      var ms = Date.now() - t0;
+      try { console.info('[เวลา] ' + action + ' ' + ms + 'ms (หน้าเว็บรอ)'); } catch (e) { /* ไม่เป็นไร */ }
+      timing(action, ms);
     }
   }
 
@@ -266,16 +250,16 @@ var LiffApp = (function () {
   }
 
   /** แปลงคำตอบที่ไม่สำเร็จเป็นข้อความเต็มหน้า */
-  function showApiError(r) {
-    if (r.code === 'network') return showError(MSG.network, reload, r.code);
-    if (r.code === 'http') return showError(MSG.http, reload, r.code);
-    if (r.code === 'bad_response') return showError(MSG.badResponse, reload, r.code);
-    if (isDenied(r.code)) return showDenied(r.code);
+  function showApiError(r, scr) {
+    if (r.code === 'network') return showError(MSG.network, reload, r.code, scr);
+    if (r.code === 'http') return showError(MSG.http, reload, r.code, scr);
+    if (r.code === 'bad_response') return showError(MSG.badResponse, reload, r.code, scr);
+    if (isDenied(r.code)) return showDenied(r.code, scr);
     if (r.code === 'no_token' || r.code === 'token_invalid') {
-      return showError({ title: 'ยืนยันตัวตนไม่ได้', text: 'ยืนยันตัวตนกับ LINE ไม่สำเร็จ กรุณาปิดหน้านี้แล้วเปิดใหม่จากแชท LINE' }, relogin, r.code);
+      return showError({ title: 'ยืนยันตัวตนไม่ได้', text: 'ยืนยันตัวตนกับ LINE ไม่สำเร็จ กรุณาปิดหน้านี้แล้วเปิดใหม่จากแชท LINE' }, relogin, r.code, scr);
     }
-    if (r.code === 'token_expired') return showError({ title: 'การเข้าสู่ระบบหมดอายุ', text: r.error }, relogin, r.code);
-    return showError({ title: 'เกิดข้อผิดพลาด', text: r.error || 'กรุณาลองใหม่อีกครั้ง' }, reload, r.code);
+    if (r.code === 'token_expired') return showError({ title: 'การเข้าสู่ระบบหมดอายุ', text: r.error }, relogin, r.code, scr);
+    return showError({ title: 'เกิดข้อผิดพลาด', text: r.error || 'กรุณาลองใหม่อีกครั้ง' }, reload, r.code, scr);
   }
 
   // ---------- หน้าไม่มีสิทธิ์ใช้งาน (รอบ 6 ข้อ 3 — สีจาก theme.css)
@@ -304,7 +288,7 @@ var LiffApp = (function () {
    * แสดงหน้าไม่มีสิทธิ์แทนเนื้อหาทั้งหมดของหน้า (ข้อมูลที่จำไว้ถูกล้างใน api() แล้ว)
    * @param {string} code 'disabled' = ถูกปิดสิทธิ์ / อื่น ๆ (not_registered, forbidden) = ยังไม่ได้ลงทะเบียน
    */
-  function showDenied(code) {
+  function showDenied(code, scr) {
     var disabled = code === 'disabled';
     var card = el('<section class="denied" id="error" role="alert"><div class="icon" aria-hidden="true"></div><h2></h2><p></p></section>');
     card.setAttribute('data-code', disabled ? 'disabled' : 'not_registered');
@@ -315,10 +299,11 @@ var LiffApp = (function () {
     card.querySelector('p').textContent = disabled ? 'กรุณาติดต่อผู้ดูแลระบบ' : 'ส่งรหัสด้านล่างให้ผู้ดูแลระบบ เพื่อเปิดสิทธิ์ใช้งาน';
     if (!disabled) addRequest(card, lineIdentity());
     document.body.classList.add('denied-mode');
-    syncing(false);
-    var sub = document.getElementById('subtitle');
+    syncing(false, scr);
+    var sub = find('subtitle', scr);
     if (sub) sub.textContent = '';
-    view().replaceChildren(card);
+    view(scr).replaceChildren(card);
+    if (hooks.denied) hooks.denied(code); // แอปหน้าเดียว: ทุกหน้าจอแสดงหน้านี้ ซ่อนเมนู
   }
 
   /** ชื่อ + รหัส + ปุ่ม "ส่งรหัสให้ผู้ดูแล" (shareTargetPicker) / "คัดลอกรหัส" */
@@ -369,12 +354,14 @@ var LiffApp = (function () {
     if (!CFG.LIFF_ID || !CFG.API_URL) { showError(MSG.notConfigured, null, 'not_configured'); return false; }
     if (typeof liff === 'undefined') { showError(MSG.sdk, reload, 'sdk'); return false; }
     loading('กำลังเชื่อมต่อ LINE…');
+    var t0 = Date.now();
     try {
       await liff.init({ liffId: CFG.LIFF_ID });
     } catch (e) {
       showError(MSG.init, reload, 'init');
       return false;
     }
+    timing('liff.init', Date.now() - t0);
     if (!liff.isLoggedIn()) {
       liff.login({ redirectUri: location.href });
       return false;
@@ -424,18 +411,31 @@ var LiffApp = (function () {
     back.querySelector('h2').textContent = title;
     back.querySelector('.body').innerHTML = bodyHtml;
     if (footerHtml) back.querySelector('footer').innerHTML = footerHtml;
-    function close() { back.remove(); document.removeEventListener('keydown', onKey); }
+    function close() {
+      back.remove();
+      document.removeEventListener('keydown', onKey);
+      openSheets = openSheets.filter(function (c) { return c !== close; });
+    }
     function onKey(e) { if (e.key === 'Escape') close(); }
+    // ปิดด้วยการคลิก (พื้นหลัง / ปุ่ม data-close) ส่ง event "click" ต่อให้ผู้เรียกฟังได้ก่อนปิด
     back.addEventListener('click', function (e) { if (e.target === back || e.target.closest('[data-close]')) close(); });
     document.addEventListener('keydown', onKey);
     document.body.appendChild(back);
+    openSheets.push(close);
     return { el: back, close: close };
+  }
+  var openSheets = [];
+
+  /** ปิดแผ่นเลื่อนขึ้นทั้งหมด (เปลี่ยนหน้าจอในแอป / กดย้อนกลับ) */
+  function closeSheets() {
+    openSheets.slice().forEach(function (close) { close(); });
   }
 
   return {
     start: start, api: api, showError: showError, showApiError: showApiError, isRetryable: isRetryable,
-    isDenied: isDenied, showDenied: showDenied, accessRequestText: accessRequestText,
-    inClient: inClient, relogin: relogin, toast: toast, uuid: uuid, sheet: sheet, esc: esc, el: el, loading: loading,
-    openExternal: openExternal, fresh: fresh, remember: remember, keep: keep, forget: forget, drop: drop
+    isDenied: isDenied, isAuthFail: isAuthFail, showDenied: showDenied, accessRequestText: accessRequestText,
+    inClient: inClient, relogin: relogin, toast: toast, uuid: uuid, sheet: sheet, closeSheets: closeSheets, esc: esc, el: el, loading: loading,
+    syncing: syncing, setScope: setScope, find: find, hooks: hooks,
+    openExternal: openExternal, remember: remember, keep: keep, forget: forget, drop: drop
   };
 })();

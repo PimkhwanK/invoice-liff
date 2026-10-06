@@ -9,24 +9,18 @@
 <link rel="stylesheet" href="theme.css">
 </head>
 <body>
+<!-- แอป LIFF หน้าเดียว (รอบ 6 ข้อ 3.5): issue.html / history.html / manage.html / view.html เป็นไฟล์เดียวกันทุกตัวอักษร
+     หน้าจอที่แสดงเลือกจาก path (shell.js) แล้วสลับหน้าจอในแอปโดยไม่โหลดหน้าใหม่ — แก้ไฟล์นี้แล้วต้องคัดลอกทับอีก 3 ไฟล์ -->
 <div class="wrap" id="app">
-  <div class="topbar">
-    <h1 id="title">ออกเอกสาร</h1>
-    <div class="sub" id="subtitle">กำลังโหลด…</div>
-  </div>
-  <div id="view" aria-live="polite"><div class="loading" role="status"><span class="spinner" aria-hidden="true"></span><div class="msg">กำลังเปิดหน้า…</div></div></div>
+  <div class="screen"><div class="topbar"><h1>กำลังเปิด…</h1></div>
+  <div id="view"><div class="loading" role="status"><span class="spinner" aria-hidden="true"></span><div class="msg">กำลังเปิดหน้า…</div></div></div></div>
 </div>
-
-<div class="totalbar hidden" id="totalbar">
-  <div class="inner">
-    <div class="sums num">
-      <div>ก่อน VAT <span id="t-net">0.00</span> · VAT <span id="t-vat">0.00</span></div>
-      <div>รวมทั้งสิ้น <b id="t-total">0.00</b></div>
-    </div>
-    <button type="button" class="btn primary" id="btn-review">ตรวจสอบ ›</button>
-  </div>
-</div>
-
+<div id="dock"></div>
+<nav class="tabbar hidden" id="tabbar" aria-label="เมนู">
+  <button type="button" data-go="issue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg><span>ออกบิล</span></button>
+  <button type="button" data-go="history"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>ประวัติ</span></button>
+  <button type="button" data-go="manage"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>จัดการข้อมูล</span></button>
+</nav>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="config.js"></script>
 <script src="money.js"></script>
@@ -37,6 +31,12 @@
 <script src="preview.js"></script>
 <script src="search.js"></script>
 <script src="common.js"></script>
+<script src="appdata.js"></script>
+<script src="shell.js"></script>
 <script src="issue.js"></script>
+<script src="history.js"></script>
+<script src="manage.js"></script>
+<script src="view.js"></script>
+<script>Shell.boot();</script>
 </body>
 </html>

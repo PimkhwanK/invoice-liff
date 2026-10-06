@@ -25,7 +25,9 @@
     var cfg = window.APP_CONFIG || {};
     // liff.state = LINE เปิดหน้านี้ก่อนแล้วให้ liff.init พาไปหน้าตาม path เอง (เช่น /issue, /view?no=…)
     var goingElsewhere = new URLSearchParams(location.search).has('liff.state');
-    function toIssue() { location.replace('issue' + location.hash); }
+    // ?debug=1 (แถบเวลา) ติดไปหน้าออกบิลด้วย / ค่าอื่น (เช่น ?code= ของการเข้าสู่ระบบ) ไม่ต้องพาไป
+    var debug = new URLSearchParams(location.search).get('debug') === '1' ? '?debug=1' : '';
+    function toIssue() { location.replace('issue' + debug + location.hash); }
     if (typeof liff === 'undefined' || !cfg.LIFF_ID) return toIssue(); // หน้าออกบิลแสดงข้อผิดพลาดเอง
     liff.init({ liffId: cfg.LIFF_ID }).then(function () {
       if (!goingElsewhere) toIssue();

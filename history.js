@@ -2,105 +2,134 @@
  * history.js — หน้าประวัติเอกสารบน LIFF จริง (ย้ายจาก public/history.html ของระบบจำลอง หน้าตาและขั้นตอนเดิม)
  *   ค้นหาร้านช่องเดียว (ชื่อย่อ ชื่อเต็ม เลขภาษี — search.js ตัวเดียวกับระบบจำลอง) รวมร้านที่ปิด
  *   แตะร้าน → เอกสารทั้งหมด ใหม่ → เก่า, ยอดรวมไม่นับใบที่ยกเลิก, ป้าย "ยกเลิก" + เหตุผล, ออกโดย / ยกเลิกโดย
- *   ปุ่ม "ดู PDF" → หน้า view?no=<เลขที่> (ดูในแอป LINE + ปุ่มดาวน์โหลด / ส่งต่อ) / ใบที่ไม่มี PDF มีปุ่ม "สร้าง PDF ใหม่" (regeneratePdf)
- * ต่างจากระบบจำลอง: เรียก Apps Script ผ่าน LiffApp.api (ส่ง idToken) / โหลดร้าน + เอกสารด้วยคำขอเดียว (historyData)
+ *   ปุ่ม "ดู PDF" → หน้าจอ view?no=<เลขที่> (ดูในแอป LINE + ปุ่มดาวน์โหลด / ส่งต่อ) / ใบที่ไม่มี PDF มีปุ่ม "สร้าง PDF ใหม่" (regeneratePdf)
+ * รอบ 6 ข้อ 3.5: หน้าจอหนึ่งของแอปหน้าเดียว (shell.js) — ร้าน + เอกสารล่าสุดจาก AppData (appData ตอนเปิดแอป)
+ *   จำนวนเอกสารของแต่ละร้านมาจากเซิร์ฟเวอร์ (shopStats) / ร้านที่มีเอกสารมากกว่าที่ส่งมา → โหลดเพิ่มตอนแตะร้าน (listDocuments) แล้วจำไว้
+ *   แตะร้าน = เพิ่มรายการใน history (ปุ่มย้อนกลับกลับไปหน้าค้นหา) / ?shopId= เปิดร้านนั้นตรง ๆ
  */
 (function () {
   var esc = LiffApp.esc;
-  var view = document.getElementById('view');
-  var appEl = document.getElementById('app');
+  var scr = null;
+  var view = null;
   var shops = [];
-  var docs = [];
-
-  var HISTORY_KEEP = 2000; // จำเอกสารล่าสุดไว้บนมือถือไม่เกินนี้ (ข้อมูลครบมาจากเซิร์ฟเวอร์ทุกครั้งที่เปิด)
   var current = null;      // ร้านที่กำลังดู (null = หน้าค้นหา)
-  var backTermNow = '';
+  var term = '';           // คำค้นล่าสุด (กลับมาหน้าค้นหาแล้วยังอยู่)
+  var fromSearch = false;  // มาจากการแตะร้านในหน้าค้นหา → "เปลี่ยนร้าน" = ย้อนกลับ
+  var failed = false;      // โหลดข้อมูลครั้งแรกไม่สำเร็จ → เข้าหน้าจอใหม่ = ลองใหม่
+  function $(id) { return scr.$(id); }
 
-  // แสดงจากที่จำไว้ทันที แล้วดึงใหม่เบื้องหลัง (คำขอเดียว: ร้านทั้งหมด + เอกสารทั้งหมด)
-  async function load() {
-    await LiffApp.fresh('history', 'historyData', {}, function (r, how) {
-      shops = r.shops.slice().sort(function (a, b) { return a.short_name.localeCompare(b.short_name, 'th'); });
-      docs = r.documents;
-      if (how.update) return redraw();
-      var pre = new URLSearchParams(location.search).get('shopId');
-      var shop = pre && shops.find(function (s) { return String(s.shop_id) === pre; });
-      if (shop) showShop(shop); else showSearch('');
-    }, {
-      loadingText: 'กำลังโหลดรายชื่อร้านและเอกสาร…',
-      slim: function (r) { return Object.assign({}, r, { documents: r.documents.slice(0, HISTORY_KEEP) }); }
-    });
+  function sortShops() {
+    shops = AppData.shops().slice().sort(function (a, b) { return a.short_name.localeCompare(b.short_name, 'th'); });
   }
 
-  /** ข้อมูลใหม่มาถึง: วาดหน้าเดิมใหม่ (คงคำค้น / ร้านที่ดูอยู่) */
-  function redraw() {
-    var q = document.getElementById('q');
+  function findShop(id) {
+    return shops.find(function (s) { return String(s.shop_id) === String(id); });
+  }
+
+  /** เข้าหน้าจอตาม URL: ?shopId= → เอกสารของร้าน / ไม่มี → ค้นหาร้าน (ข้อมูลเดิม + หน้าเดิม → ไม่ต้องวาดใหม่) */
+  async function show(s, params) {
+    if (!AppData.has()) LiffApp.loading('กำลังโหลดรายชื่อร้านและเอกสาร…', view);
+    var r = await AppData.ensure();
+    if (!r.ok) { failed = true; return LiffApp.showApiError(r, scr); }
+    failed = false;
+    var fresh = scr.seen !== AppData.version();
+    if (fresh) sortShops();
+    var shop = params.shopId ? findShop(params.shopId) : null;
+    if (shop) {
+      if (!fresh && current && String(current.shop_id) === String(shop.shop_id) && $('docs')) return;
+      showShop(shop);
+    } else {
+      if (!fresh && !current && $('q')) return;
+      fromSearch = false;
+      showSearch();
+    }
+    Shell.drawn(scr);
+  }
+
+  /** ข้อมูลในแอปเปลี่ยน: วาดหน้าเดิมใหม่ (คงคำค้น / ร้านที่ดูอยู่ / ตำแหน่งเลื่อน) */
+  function update() {
+    if (!AppData.has()) return;
+    sortShops();
+    Shell.drawn(scr);
+    var q = $('q');
     if (q) return drawShops(q.value);
     if (current) {
-      var shop = shops.find(function (s) { return String(s.shop_id) === String(current.shop_id); });
-      if (shop) showShop(shop, backTermNow, true);
+      var shop = findShop(current.shop_id);
+      if (shop) showShop(shop, true);
     }
   }
 
-  function setShopParam(id) {
-    var u = new URL(location.href);
-    if (id) u.searchParams.set('shopId', id); else u.searchParams.delete('shopId');
-    history.replaceState(null, '', u);
-  }
-
   // ---------- ค้นหาร้าน
-  function showSearch(term) {
+  function showSearch() {
     current = null;
-    setShopParam(null);
     view.innerHTML =
       '<section class="card"><label class="f" for="q">ค้นหาชื่อร้าน</label>' +
       '<input type="search" id="q" placeholder="พิมพ์ชื่อร้าน ชื่อเต็ม หรือเลขภาษี" autocomplete="off"></section>' +
       '<section class="card"><ul class="list" id="shops"></ul></section>';
-    var q = document.getElementById('q');
+    var q = $('q');
     q.value = term;
-    q.addEventListener('input', function () { drawShops(q.value); });
-    document.getElementById('shops').addEventListener('click', function (e) {
+    q.addEventListener('input', function () { term = q.value; drawShops(q.value); });
+    $('shops').addEventListener('click', function (e) {
       var li = e.target.closest('li[data-id]');
-      if (li) showShop(shops.find(function (s) { return String(s.shop_id) === li.dataset.id; }), q.value);
+      if (!li) return;
+      fromSearch = true;
+      Shell.go('history', { shopId: li.dataset.id });
     });
     drawShops(term);
-    appEl.scrollTop = 0;
+    Shell.scrollTop(scr);
   }
 
-  function drawShops(term) {
-    // รวมร้านที่ปิดใช้งาน: ยังต้องค้นเจอเพื่อดูเอกสารเก่า
-    var list = searchShops(shops, term);
-    document.getElementById('shops').innerHTML = list.length ? list.map(function (s) {
-      var mine = documentsOfShop(docs, s.shop_id);
-      var last = mine[0];
+  function drawShops(t) {
+    // รวมร้านที่ปิดใช้งาน: ยังต้องค้นเจอเพื่อดูเอกสารเก่า / จำนวนใบและวันที่ล่าสุดนับทุกใบที่เซิร์ฟเวอร์
+    var list = searchShops(shops, t);
+    $('shops').innerHTML = list.length ? list.map(function (s) {
+      var st = AppData.shopStat(s.shop_id);
       return '<li class="tap shop-row" data-id="' + esc(s.shop_id) + '"><div class="t"><div class="n">' + esc(s.short_name) +
         (s.active ? '' : ' <span class="badge gray">ปิด</span>') + '</div><div class="s">' + esc(s.legal_name) + '</div></div>' +
-        '<div class="c"><b class="num" style="color:var(--ink)">' + mine.length + '</b> ใบ' +
-        (last ? '<br>ล่าสุด ' + formatThaiDate(last.doc_date) : '') + '</div></li>';
+        '<div class="c"><b class="num" style="color:var(--ink)">' + st.count + '</b> ใบ' +
+        (st.count && st.lastDate ? '<br>ล่าสุด ' + formatThaiDate(st.lastDate) : '') + '</div></li>';
     }).join('') : '<li class="empty">ไม่พบร้านที่ค้นหา</li>';
   }
 
   // ---------- เอกสารของร้าน
-  function showShop(shop, backTerm, keepScroll) {
+  function showShop(shop, keepScroll) {
     current = shop;
-    backTermNow = backTerm || '';
-    setShopParam(shop.shop_id);
-    var mine = documentsOfShop(docs, shop.shop_id);
-    var issued = mine.filter(function (d) { return d.status !== 'cancelled'; });
-    var sum = issued.reduce(function (a, d) { return a + toSatang(d.total); }, 0);
     view.innerHTML =
       '<section class="card chosen"><div class="t"><div class="n" id="shop-name">' + esc(shop.short_name) +
       (shop.active ? '' : ' <span class="badge gray">ปิด</span>') + '</div>' +
       '<div class="small muted">' + esc(shop.legal_name) + '</div></div>' +
       '<button type="button" class="btn sm" id="change">เปลี่ยนร้าน</button></section>' +
-      '<section class="card"><div class="summary"><span>ทั้งหมด <b id="doc-count">' + mine.length + '</b> ใบ</span>' +
-      '<span>ยอดที่ไม่ยกเลิก <b class="num" id="doc-sum">' + formatMoney(fromSatang(sum)) + '</b></span></div>' +
-      '<ul class="list" id="docs">' + (mine.length ? mine.map(docRow).join('') : '<li class="empty">ร้านนี้ยังไม่มีเอกสาร</li>') + '</ul></section>';
-    document.getElementById('change').addEventListener('click', function () { showSearch(backTerm || ''); });
-    document.getElementById('docs').addEventListener('click', function (e) {
+      '<section class="card" id="shop-docs"></section>';
+    $('change').addEventListener('click', function () {
+      if (fromSearch && Shell.canBack()) Shell.back(); // กลับหน้าค้นหาเดิม (เหมือนปุ่มย้อนกลับ)
+      else Shell.go('history', {}, { replace: true });
+    });
+    $('shop-docs').addEventListener('click', function (e) {
       var b = e.target.closest('[data-regen]');
       if (b) regenerate(b);
+      var retry = e.target.closest('#docs-retry');
+      if (retry) showShop(shop);
     });
-    if (!keepScroll) appEl.scrollTop = 0;
+    if (!keepScroll) Shell.scrollTop(scr);
+    if (AppData.shopComplete(shop.shop_id)) return drawDocs(AppData.docsOfShop(shop.shop_id));
+    // ร้านนี้มีเอกสารมากกว่าที่โหลดมาตอนเปิดแอป → โหลดเพิ่มครั้งเดียว (จำไว้ แตะร้านนี้อีกไม่ต้องโหลด)
+    LiffApp.loading('กำลังโหลดเอกสารทั้งหมดของร้านนี้…', $('shop-docs'));
+    AppData.loadShopDocs(shop.shop_id).then(function (r) {
+      if (current !== shop || !$('shop-docs')) return; // เปลี่ยนร้านไปแล้ว
+      if (r.ok) return drawDocs(r.documents);
+      if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
+      $('shop-docs').innerHTML = '<div class="alert err" id="docs-error">' + esc(r.error || 'โหลดเอกสารไม่สำเร็จ') + '</div>' +
+        '<button type="button" class="btn block" id="docs-retry" style="margin-top:10px">ลองใหม่</button>';
+    });
+  }
+
+  function drawDocs(mine) {
+    var issued = mine.filter(function (d) { return d.status !== 'cancelled'; });
+    var sum = issued.reduce(function (a, d) { return a + toSatang(d.total); }, 0);
+    $('shop-docs').innerHTML =
+      '<div class="summary"><span>ทั้งหมด <b id="doc-count">' + mine.length + '</b> ใบ</span>' +
+      '<span>ยอดที่ไม่ยกเลิก <b class="num" id="doc-sum">' + formatMoney(fromSatang(sum)) + '</b></span></div>' +
+      '<ul class="list" id="docs">' + (mine.length ? mine.map(docRow).join('') : '<li class="empty">ร้านนี้ยังไม่มีเอกสาร</li>') + '</ul>';
   }
 
   /** ปุ่ม "สร้าง PDF ใหม่" สำหรับใบที่ไม่มี PDF (เซิร์ฟเวอร์ตรวจ idToken + แท็บผู้ใช้) */
@@ -110,19 +139,17 @@
     btn.textContent = 'กำลังสร้าง PDF…';
     var r = await LiffApp.api('regeneratePdf', { docNo: Number(no) });
     if (!r.ok) {
-      if (LiffApp.isDenied(r.code) || r.code === 'token_expired') return LiffApp.showApiError(r);
+      if (LiffApp.isDenied(r.code) || r.code === 'token_expired') return LiffApp.showApiError(r, scr);
       btn.disabled = false;
       btn.textContent = 'สร้าง PDF ใหม่';
       LiffApp.toast(r.error || 'สร้าง PDF ไม่สำเร็จ', true);
       return;
     }
-    var d = docs.find(function (x) { return String(x.doc_no) === no; });
-    if (d) { d.hasPdf = true; d.pdfUrl = r.pdfUrl; }
-    btn.closest('.acts').outerHTML = pdfActs(no);
+    AppData.patchDoc(Number(no), { hasPdf: true, pdfUrl: r.pdfUrl }); // วาดรายการใหม่ (มีปุ่ม "ดู PDF")
     LiffApp.toast('สร้าง PDF ของเอกสาร #' + no + ' แล้ว');
   }
 
-  /** ปุ่ม "ดู PDF" → หน้า view (ดูในแอป LINE ก่อน มีปุ่มดาวน์โหลด / ส่งต่อในหน้านั้น) */
+  /** ปุ่ม "ดู PDF" → หน้าจอ view (ดูในแอป LINE ก่อน มีปุ่มดาวน์โหลด / ส่งต่อในหน้านั้น) */
   function pdfActs(no) {
     return '<div class="acts"><a class="btn sm" data-pdf href="view?no=' + encodeURIComponent(no) + '">📄 ดู PDF</a></div>';
   }
@@ -142,5 +169,19 @@
       '</li>';
   }
 
-  LiffApp.start().then(function (ready) { if (ready) load(); });
+  Shell.define('history', {
+    title: 'ประวัติเอกสาร',
+    build: function (s) {
+      scr = s;
+      s.root.innerHTML =
+        '<div class="topbar"><h1>ประวัติเอกสาร</h1><div class="sub" id="subtitle">ค้นหาชื่อร้าน แล้วแตะเพื่อดูเอกสารทุกใบของร้านนั้น</div></div>' +
+        '<div id="view" aria-live="polite"></div>';
+      view = $('view');
+    },
+    show: function (s, params) {
+      if (failed) s.seen = -2; // โหลดไม่สำเร็จครั้งก่อน → วาดใหม่
+      return show(s, params);
+    },
+    update: update
+  });
 })();

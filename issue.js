@@ -10,14 +10,18 @@
  *   - ยืนยันแล้วเซิร์ฟเวอร์สร้าง PDF ต่อทันที (แสดง "กำลังสร้าง PDF…") ถ้า PDF ล้มเหลว เอกสารยังถูกบันทึก
  *     → หน้า "บันทึกเอกสารแล้ว" + ปุ่ม "ลองสร้าง PDF ใหม่" (regeneratePdf) สำเร็จแล้วค่อยส่งข้อความเข้าแชท
  *   - ออกบิลสำเร็จในแอป LINE: liff.sendMessages("บิล <เลขที่>") แล้วปิดหน้า / นอกแอป LINE: แสดงหน้าสำเร็จ + ปุ่มเปิด PDF
+ * รอบ 6 ข้อ 3.5: เป็นหน้าจอหนึ่งของแอปหน้าเดียว (shell.js) — ข้อมูลจาก AppData (appData ตอนเปิดแอป) ไม่เรียกเซิร์ฟเวอร์ตอนสลับหน้าจอ
+ *   ฟอร์มที่กรอกค้างไว้อยู่ครบเมื่อกลับมาหน้าจอนี้ / ออกบิลแล้วแก้เลขที่ถัดไป + รายการเอกสารในแอปเอง (AppData.addDoc)
+ *   ทุกการหา element อยู่ในหน้าจอนี้ ($) เพราะหน้าจอที่ไม่ได้แสดงถูกถอดออกจากเอกสาร (งานที่ค้าง เช่น ออกบิล ทำต่อได้)
  */
 (function () {
   var esc = LiffApp.esc;
-  var view = document.getElementById('view');
-  var appEl = document.getElementById('app');
+  var scr = null;   // หน้าจอนี้ { root, dock, $ } (Shell สร้าง)
+  var view = null;  // #view ของหน้าจอนี้
+  var totalbar = null;
+  function $(id) { return scr.$(id); }
   /** เลื่อนเนื้อหากลับบนสุด (เนื้อหาเลื่อนใน #app ไม่ใช่ window) */
-  function scrollTop() { appEl.scrollTop = 0; }
-  var totalbar = document.getElementById('totalbar');
+  function scrollTop() { Shell.scrollTop(scr); }
 
   var S = {
     init: null,       // ผลจาก action init
@@ -34,23 +38,31 @@
   function isCash() { return S.doc.sale_type === cfg().cash_sale_label; }
   function money(n) { return formatMoney(n); }
 
-  // ---------- โหลดข้อมูล
-  /** วันนี้ตามเวลาไทยจากนาฬิกาของมือถือ (ใช้ตอนแสดงจากข้อมูลที่จำไว้ — วันที่ในข้อมูลที่จำไว้อาจเป็นเมื่อวาน) */
-  function phoneToday() { return isoDateTimeBangkok(new Date()).slice(0, 10); }
-
-  // ---------- โหลดข้อมูล: แสดงจากที่จำไว้ทันที แล้วดึงใหม่เบื้องหลัง (LiffApp.fresh)
+  // ---------- โหลดข้อมูล: จาก AppData (มีที่จำไว้ → แสดงทันที แล้วดึงใหม่เบื้องหลัง) → ฟอร์มว่าง
   async function load() {
     totalbar.classList.add('hidden');
     S.screen = 'loading';
-    await LiffApp.fresh('init', 'init', {}, function (r, how) {
-      if (how.update) return refreshInit(r);
-      S.init = how.cached ? Object.assign({}, r, { today: phoneToday() }) : r;
-      S.doc = { doc_type: r.config.doc_types[0], doc_date: S.init.today, ref: '', sale_type: r.config.sale_type_labels[0], due_date: '' };
-      S.shop = null;
-      S.lines = [];
-      S.dueTouched = false;
-      showForm();
-    }, { loadingText: 'กำลังโหลดร้านค้า สินค้า และเลขที่ถัดไป…' });
+    if (!AppData.has()) LiffApp.loading('กำลังโหลดร้านค้า สินค้า และเลขที่ถัดไป…', view);
+    var r = await AppData.ensure();
+    if (!r.ok) { S.screen = 'error'; return LiffApp.showApiError(r, scr); }
+    var init = AppData.issueInit();
+    Shell.drawn(scr);
+    if (init.error) { S.screen = 'error'; return LiffApp.showApiError(init.error, scr); }
+    S.init = init;
+    S.doc = { doc_type: init.config.doc_types[0], doc_date: init.today, ref: '', sale_type: init.config.sale_type_labels[0], due_date: '' };
+    S.shop = null;
+    S.lines = [];
+    S.dueTouched = false;
+    showForm();
+  }
+
+  /** ข้อมูลในแอปเปลี่ยน (ดึงใหม่เสร็จ / ออกบิล / แก้ร้านหรือสินค้าในหน้าจัดการข้อมูล) — ฟอร์มที่กรอกไว้ไม่หาย */
+  function update() {
+    if (!S.init || !AppData.has()) return;
+    var init = AppData.issueInit();
+    Shell.drawn(scr);
+    if (init.error) return;
+    refreshInit(init);
   }
 
   /** ข้อมูลใหม่จากเซิร์ฟเวอร์มาถึงหลังแสดงจากที่จำไว้ — ฟอร์มยังว่างอยู่ = วาดใหม่ / กรอกไปแล้ว = แค่ใช้ข้อมูลใหม่ (ไม่ล้างสิ่งที่กรอก) */
@@ -66,13 +78,13 @@
   }
 
   function setSubtitle() {
-    document.getElementById('subtitle').textContent = 'เลขที่ถัดไปโดยประมาณ #' + S.init.nextDocNo + ' (ออกเลขจริงตอนยืนยัน) · ' + S.init.name;
+    $('subtitle').textContent = 'เลขที่ถัดไปโดยประมาณ #' + S.init.nextDocNo + ' (ออกเลขจริงตอนยืนยัน) · ' + S.init.name;
   }
 
   // ---------- ฟอร์ม
   function showForm() {
     S.screen = 'form';
-    document.getElementById('title').textContent = 'ออกเอกสาร';
+    $('title').textContent = 'ออกเอกสาร';
     setSubtitle();
     totalbar.classList.remove('hidden');
     var c = cfg();
@@ -116,11 +128,11 @@
     view.querySelectorAll('input[name=sale_type]').forEach(function (i) {
       i.addEventListener('change', function () { S.doc.sale_type = i.value; S.dueTouched = false; updateDue(); });
     });
-    document.getElementById('doc-date').addEventListener('change', function (e) { S.doc.doc_date = e.target.value; S.dueTouched = false; updateDocDateHint(); updateDue(); });
-    document.getElementById('doc-ref').addEventListener('input', function (e) { S.doc.ref = e.target.value; });
-    document.getElementById('due-date').addEventListener('change', function (e) { S.doc.due_date = e.target.value; S.dueTouched = true; updateDue(); });
-    document.getElementById('btn-add').addEventListener('click', openProductPicker);
-    document.getElementById('btn-copy').addEventListener('click', openCopyFromOld);
+    $('doc-date').addEventListener('change', function (e) { S.doc.doc_date = e.target.value; S.dueTouched = false; updateDocDateHint(); updateDue(); });
+    $('doc-ref').addEventListener('input', function (e) { S.doc.ref = e.target.value; });
+    $('due-date').addEventListener('change', function (e) { S.doc.due_date = e.target.value; S.dueTouched = true; updateDue(); });
+    $('btn-add').addEventListener('click', openProductPicker);
+    $('btn-copy').addEventListener('click', openCopyFromOld);
 
     renderShop();
     renderLines();
@@ -130,7 +142,7 @@
 
   /** ใต้ช่องวันที่: วันที่แบบไทย เช่น "28 ก.ย. 2569" + ห่างจากวันนี้กี่วัน (กฎวันที่ตรวจจริงตอนกด "ตรวจสอบ") */
   function updateDocDateHint() {
-    var el = document.getElementById('doc-date-th');
+    var el = $('doc-date-th');
     if (!el) return;
     var d = S.doc.doc_date;
     var diff = isoDayDiff(S.init.today, d);
@@ -140,10 +152,10 @@
   }
 
   function updateDue() {
-    var input = document.getElementById('due-date');
-    var hint = document.getElementById('due-hint');
+    var input = $('due-date');
+    var hint = $('due-hint');
     if (!input) return;
-    var th = document.getElementById('due-date-th');
+    var th = $('due-date-th');
     if (isCash()) {
       S.doc.due_date = '';
       input.value = '';
@@ -165,8 +177,8 @@
 
   // ---------- ร้านค้า
   function renderShop() {
-    var box = document.getElementById('shop-box');
-    document.getElementById('btn-copy').disabled = !S.shop;
+    var box = $('shop-box');
+    $('btn-copy').disabled = !S.shop;
     if (!S.shop) {
       box.innerHTML = '<button type="button" class="btn block" id="btn-shop">🔍 เลือกร้านค้า</button>';
       box.querySelector('#btn-shop').addEventListener('click', openShopPicker);
@@ -216,10 +228,10 @@
 
   // ---------- สินค้า
   function renderLines() {
-    var wrap = document.getElementById('lines');
+    var wrap = $('lines');
     var max = cfg().max_items;
-    document.getElementById('line-count').textContent = S.lines.length + '/' + max + ' บรรทัด';
-    document.getElementById('btn-add').disabled = S.lines.length >= max;
+    $('line-count').textContent = S.lines.length + '/' + max + ' บรรทัด';
+    $('btn-add').disabled = S.lines.length >= max;
     if (!S.lines.length) {
       wrap.innerHTML = '<div class="empty small">ยังไม่มีสินค้า กด "เพิ่มสินค้า"</div>';
       updateTotals();
@@ -248,29 +260,32 @@
     return S.lines.find(function (l) { return l.key === key; });
   }
 
-  document.addEventListener('input', function (e) {
-    var f = e.target.dataset && e.target.dataset.f;
-    if (!f || !e.target.closest('.line')) return;
-    var l = lineByEl(e.target);
-    if (f === 'is_free') return;
-    l[f] = e.target.value;
-    updateTotals();
-  });
-  document.addEventListener('change', function (e) {
-    if (e.target.dataset && e.target.dataset.f === 'is_free') {
+  /** ช่องในบรรทัดสินค้า (จำนวน ราคา ส่วนลด หมายเหตุ แถม ลบ) — ฟังที่หน้าจอนี้ */
+  function listenLines(root) {
+    root.addEventListener('input', function (e) {
+      var f = e.target.dataset && e.target.dataset.f;
+      if (!f || !e.target.closest('.line')) return;
       var l = lineByEl(e.target);
-      l.is_free = e.target.checked;
-      if (!l.is_free && Number(l.price) === 0) l.price = l.list_price;
+      if (f === 'is_free') return;
+      l[f] = e.target.value;
+      updateTotals();
+    });
+    root.addEventListener('change', function (e) {
+      if (e.target.dataset && e.target.dataset.f === 'is_free') {
+        var l = lineByEl(e.target);
+        l.is_free = e.target.checked;
+        if (!l.is_free && Number(l.price) === 0) l.price = l.list_price;
+        renderLines();
+      }
+    });
+    root.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-act=del]');
+      if (!b) return;
+      var l = lineByEl(b);
+      S.lines = S.lines.filter(function (x) { return x !== l; });
       renderLines();
-    }
-  });
-  document.addEventListener('click', function (e) {
-    var b = e.target.closest('[data-act=del]');
-    if (!b) return;
-    var l = lineByEl(b);
-    S.lines = S.lines.filter(function (x) { return x !== l; });
-    renderLines();
-  });
+    });
+  }
 
   function addLine(p, over) {
     if (S.lines.length >= cfg().max_items) {
@@ -308,7 +323,7 @@
       if (addLine(p)) {
         s.close();
         renderLines();
-        var last = document.querySelector('.line:last-child input[data-f=qty]');
+        var last = view.querySelector('.line:last-child input[data-f=qty]');
         if (last) { last.focus(); last.select(); }
       }
     });
@@ -321,9 +336,10 @@
     if (!S.shop) return;
     var s = LiffApp.sheet('คัดลอกจากบิลเก่า — ' + S.shop.short_name, '');
     var body = s.el.querySelector('.body');
-    LiffApp.loading('กำลังโหลดบิลเก่าของร้านนี้…', body);
-    var r = await LiffApp.api('listDocuments', { shopId: S.shop.shop_id, limit: 20 });
+    if (!AppData.shopComplete(S.shop.shop_id)) LiffApp.loading('กำลังโหลดบิลเก่าของร้านนี้…', body);
+    var r = await AppData.loadShopDocs(S.shop.shop_id); // มีในแอปครบแล้ว → ไม่เรียกเซิร์ฟเวอร์
     if (!r.ok) { body.innerHTML = '<div class="alert err">' + esc(r.error) + '</div>'; return; }
+    r = { documents: r.documents.slice(0, 20) };
     if (!r.documents.length) { body.innerHTML = '<div class="empty" id="copy-empty">ร้านนี้ยังไม่มีบิลเก่า</div>'; return; }
     body.innerHTML = '<p class="small muted" style="margin-top:0">เลือกบิลเพื่อดึงรายการสินค้า จำนวน ราคา ส่วนลด และของแถม มาใส่ในฟอร์ม</p><ul class="list pick-list" id="copy-list">' +
       r.documents.map(function (d) {
@@ -335,7 +351,7 @@
       var li = e.target.closest('li[data-no]');
       if (!li) return;
       if (S.lines.length && !confirm('แทนที่รายการสินค้า ' + S.lines.length + ' บรรทัดที่มีอยู่ด้วยรายการจากบิล #' + li.dataset.no + '?')) return;
-      var g = await LiffApp.api('getDocument', { docNo: Number(li.dataset.no) });
+      var g = await AppData.docItems(Number(li.dataset.no)); // จำรายการของใบนี้ไว้ (เอกสารที่ออกแล้วไม่เปลี่ยน)
       if (!g.ok) { LiffApp.toast(g.error, true); return; }
       S.lines = [];
       var skipped = [];
@@ -354,10 +370,10 @@
   // ---------- ยอดรวม
   function updateTotals() {
     var t = calcTotals(S.lines, cfg().vat_rate);
-    document.getElementById('t-net').textContent = money(t.net_before_vat);
-    document.getElementById('t-vat').textContent = money(t.vat);
-    document.getElementById('t-total').textContent = money(t.total);
-    document.querySelectorAll('.line').forEach(function (el) {
+    $('t-net').textContent = money(t.net_before_vat);
+    $('t-vat').textContent = money(t.vat);
+    $('t-total').textContent = money(t.total);
+    view.querySelectorAll('.line').forEach(function (el) {
       var l = S.lines.find(function (x) { return x.key === Number(el.dataset.key); });
       var c = calcLine(l);
       var txt = l.is_free ? 'แถม · 0.00' : money(c.amount) + (c.discount ? ' − ' + money(c.discount) : '');
@@ -381,7 +397,6 @@
   }
 
   // ---------- หน้าตรวจสอบ
-  document.getElementById('btn-review').addEventListener('click', showReview);
 
   /**
    * ตรวจบนมือถือทันที (preview.js — invoice.js / money.js ชุดเดียวกับเซิร์ฟเวอร์ + ขีดจำกัดจากแท็บตั้งค่า) ไม่รอเซิร์ฟเวอร์
@@ -396,8 +411,8 @@
     S.screen = 'review';
 
     totalbar.classList.add('hidden');
-    document.getElementById('title').textContent = 'ตรวจสอบก่อนยืนยัน';
-    document.getElementById('subtitle').textContent = 'เลขที่จะได้โดยประมาณ #' + r.nextDocNo;
+    $('title').textContent = 'ตรวจสอบก่อนยืนยัน';
+    $('subtitle').textContent = 'เลขที่จะได้โดยประมาณ #' + r.nextDocNo;
     var t = r.totals;
     var s = S.shop;
     view.innerHTML =
@@ -431,15 +446,15 @@
       '<div class="row"><button type="button" class="btn grow" id="btn-back">‹ แก้ไข</button>' +
       '<button type="button" class="btn primary grow" id="btn-confirm"' + (r.errors.length ? ' disabled' : '') + '>ยืนยันออกเอกสาร</button></div></div>';
 
-    document.getElementById('btn-back').addEventListener('click', function () { showForm(); scrollTop(); });
-    document.getElementById('btn-confirm').addEventListener('click', confirmCreate);
-    var tick = document.getElementById('date-confirm');
+    $('btn-back').addEventListener('click', function () { showForm(); scrollTop(); });
+    $('btn-confirm').addEventListener('click', confirmCreate);
+    var tick = $('date-confirm');
     if (tick) {
       // วันที่ไม่ใช่วันนี้: ปุ่มยืนยันกดได้หลังติ๊กเท่านั้น
-      document.getElementById('btn-confirm').disabled = true;
+      $('btn-confirm').disabled = true;
       tick.addEventListener('change', function () {
         S.dateConfirmed = tick.checked ? r.dateConfirm.date : '';
-        document.getElementById('btn-confirm').disabled = !tick.checked;
+        $('btn-confirm').disabled = !tick.checked;
       });
     }
     scrollTop();
@@ -458,7 +473,7 @@
     if (LiffApp.inClient()) list.push(['send', 'ส่งเข้าแชท…']);
     box.innerHTML = '<ol class="steps" id="steps">' + list.map(function (s) { return '<li data-step="' + s[0] + '">' + s[1] + '</li>'; }).join('') + '</ol>';
     return function (step, state, text) {
-      var li = document.querySelector('#steps li[data-step="' + step + '"]');
+      var li = view.querySelector('#steps li[data-step="' + step + '"]');
       if (!li) return;
       li.className = state;
       if (text) li.textContent = text;
@@ -466,9 +481,9 @@
   }
 
   async function confirmCreate() {
-    var btn = document.getElementById('btn-confirm');
-    var back = document.getElementById('btn-back');
-    var msg = document.getElementById('confirm-msg');
+    var btn = $('btn-confirm');
+    var back = $('btn-back');
+    var msg = $('confirm-msg');
     btn.disabled = true;
     back.disabled = true;
     btn.textContent = 'กำลังออกเอกสาร…';
@@ -478,7 +493,7 @@
     var r = await LiffApp.api('createDocument', { requestId: S.requestId, document: buildDocumentPayload(), expected: S.expected, deferPdf: true });
     if (!r.ok) {
       msg.innerHTML = '';
-      if (LiffApp.isDenied(r.code)) return LiffApp.showApiError(r);
+      if (LiffApp.isDenied(r.code)) return LiffApp.showApiError(r, scr);
       btn.disabled = false;
       back.disabled = false;
       // เน็ตหลุด / มีคนออกบิลพร้อมกัน: กดใหม่ใช้ requestId เดิม ระบบจะไม่ออกเลขซ้ำ
@@ -496,17 +511,18 @@
       return;
     }
     mark('save', 'done', 'บันทึกเอกสารแล้ว เลขที่ #' + r.docNo);
-    rememberIssued(r.docNo);
+    rememberIssued(r);
     // ขั้นที่ 2: สร้าง PDF (คำขอที่สอง — ใบเดิมที่มี PDF แล้วได้ลิงก์เดิม)
     if (!r.pdfUrl) {
       mark('pdf', 'doing');
       var p = await LiffApp.api('regeneratePdf', { docNo: r.docNo });
       if (!p.ok) {
-        if (LiffApp.isDenied(p.code)) return LiffApp.showApiError(p);
+        if (LiffApp.isDenied(p.code)) return LiffApp.showApiError(p, scr);
         mark('pdf', 'fail');
         return showPdfFailed(Object.assign({}, r, { pdfError: 'บันทึกเอกสารเลขที่ ' + r.docNo + ' แล้ว แต่' + (p.error || 'สร้าง PDF ไม่สำเร็จ') }));
       }
       r = Object.assign({}, r, { pdfUrl: p.pdfUrl });
+      AppData.patchDoc(r.docNo, { pdfUrl: p.pdfUrl, hasPdf: true });
     }
     mark('pdf', 'done', 'สร้าง PDF แล้ว');
     // ขั้นที่ 3: ส่งเข้าแชท (finish)
@@ -514,28 +530,31 @@
     await finish(r);
   }
 
-  /** หลังออกบิล: เลขถัดไปที่จำไว้ = เลขนี้ + 1 และวันที่ของใบล่าสุด (ข้อมูลจริงจะมาแทนเมื่อเปิดหน้าครั้งต่อไป) */
-  function rememberIssued(docNo) {
-    var c = LiffApp.remember('init');
-    var data = c ? c.data : S.init;
-    if (!data) return;
-    data.nextDocNo = Math.max(Number(data.nextDocNo) || 0, Number(docNo) + 1);
-    data.lastDoc = { doc_no: Number(docNo), doc_date: S.doc.doc_date, status: 'issued' };
-    LiffApp.keep('init', data);
+  /**
+   * หลังออกบิล: เพิ่มใบนี้ในข้อมูลของแอป (เลขที่ถัดไป = เลขนี้ + 1, ใบล่าสุด, รายการเอกสารของร้าน) ไม่ต้องโหลดใหม่ทั้งหมด
+   * เซิร์ฟเวอร์ส่งสรุปเอกสารมา (r.document) / เซิร์ฟเวอร์รุ่นเก่าไม่ส่ง → ประกอบจากฟอร์ม
+   */
+  function rememberIssued(r) {
+    var p = buildDocumentPayload();
+    var doc = r.document || {
+      doc_no: Number(r.docNo), shop_id: S.shop ? Number(S.shop.shop_id) : 0, doc_type: p.doc_type, doc_date: p.doc_date,
+      due_date: p.due_date, sale_type: p.sale_type, ref: p.ref, shop_short_name: r.shopName || (S.shop && S.shop.short_name) || '',
+      shop_legal_name: r.legalName || (S.shop && S.shop.legal_name) || '', total: Number(r.total) || 0, status: 'issued',
+      cancelled_reason: '', cancelled_at: '', issued_by: S.init.name || '', cancelled_by: '', pdfUrl: r.pdfUrl || '', hasPdf: !!r.pdfUrl
+    };
+    AppData.addDoc(doc);
   }
 
-  async function refreshInBackground() {
-    var r = await LiffApp.api('init');
-    if (r.ok) { LiffApp.keep('init', r); S.init = r; }
-  }
+  /** ข้อมูลที่จำไว้อาจเก่า (ยอดไม่ตรง / ข้อมูลไม่ผ่าน) → ดึงใหม่เบื้องหลัง ให้รอบตรวจถัดไปใช้ข้อมูลใหม่ */
+  function refreshInBackground() { AppData.refresh(); }
 
   // ---------- PDF ล้มเหลว (เอกสารถูกบันทึกแล้ว)
   /** บอกเลขที่ที่บันทึกแล้ว + ปุ่ม "ลองสร้าง PDF ใหม่" (regeneratePdf) สำเร็จแล้วค่อยส่ง "บิล <เลขที่>" เข้าแชท */
   function showPdfFailed(r) {
     S.screen = 'done';
     totalbar.classList.add('hidden');
-    document.getElementById('title').textContent = 'บันทึกเอกสารแล้ว';
-    document.getElementById('subtitle').textContent = 'เลขที่ #' + r.docNo + ' · ยังไม่มี PDF';
+    $('title').textContent = 'บันทึกเอกสารแล้ว';
+    $('subtitle').textContent = 'เลขที่ #' + r.docNo + ' · ยังไม่มี PDF';
     view.innerHTML =
       '<div class="success"><div class="muted">เลขที่เอกสาร</div><div class="no" id="saved-no">#' + esc(r.docNo) + '</div>' +
       '<div>' + esc(r.legalName || (S.shop && S.shop.legal_name) || '') + '</div><div class="num" style="font-size:20px;font-weight:700;margin-top:4px">' + money(r.total) + ' บาท</div></div>' +
@@ -545,24 +564,25 @@
       '<button type="button" class="btn block" id="btn-pdf-skip">ข้ามไปก่อน (ส่งการ์ดโดยยังไม่มี PDF)</button>' +
       '<div class="small muted">เอกสารถูกบันทึกแล้ว เลขที่ไม่เปลี่ยน กดลองใหม่กี่ครั้งก็ไม่ออกเลขซ้ำ</div>' +
       '</div>';
-    document.getElementById('btn-pdf-retry').addEventListener('click', function () { retryPdf(r); });
-    document.getElementById('btn-pdf-skip').addEventListener('click', function () { finish(Object.assign({}, r, { pdfUrl: '' })); });
+    $('btn-pdf-retry').addEventListener('click', function () { retryPdf(r); });
+    $('btn-pdf-skip').addEventListener('click', function () { finish(Object.assign({}, r, { pdfUrl: '' })); });
     scrollTop();
   }
 
   async function retryPdf(r) {
-    var btn = document.getElementById('btn-pdf-retry');
-    var skip = document.getElementById('btn-pdf-skip');
-    var box = document.getElementById('pdf-error');
+    var btn = $('btn-pdf-retry');
+    var skip = $('btn-pdf-skip');
+    var box = $('pdf-error');
     btn.disabled = true;
     skip.disabled = true;
     btn.textContent = 'กำลังสร้าง PDF…';
     var res = await LiffApp.api('regeneratePdf', { docNo: r.docNo });
     if (res.ok) {
+      AppData.patchDoc(r.docNo, { pdfUrl: res.pdfUrl, hasPdf: true });
       await finish(Object.assign({}, r, { pdfUrl: res.pdfUrl, pdfError: '' }));
       return;
     }
-    if (LiffApp.isDenied(res.code) || res.code === 'token_expired') return LiffApp.showApiError(res);
+    if (LiffApp.isDenied(res.code) || res.code === 'token_expired') return LiffApp.showApiError(res, scr);
     btn.disabled = false;
     skip.disabled = false;
     btn.textContent = 'ลองสร้าง PDF ใหม่';
@@ -589,8 +609,8 @@
   function showSuccess(r, note) {
     S.screen = 'done';
     totalbar.classList.add('hidden');
-    document.getElementById('title').textContent = 'ออกเอกสารสำเร็จ';
-    document.getElementById('subtitle').textContent = '';
+    $('title').textContent = 'ออกเอกสารสำเร็จ';
+    $('subtitle').textContent = '';
     view.innerHTML =
       '<div class="success" id="success"><div class="check">✓</div><div class="muted">เลขที่เอกสาร</div><div class="no" id="success-no">#' + esc(r.docNo) + '</div>' +
       '<div>' + esc(r.legalName || (S.shop && S.shop.legal_name) || '') + '</div><div class="num" style="font-size:20px;font-weight:700;margin-top:4px">' + money(r.total) + ' บาท</div></div>' +
@@ -603,9 +623,33 @@
         : '<div class="small muted" id="no-pdf">ยังไม่มี PDF — สร้างภายหลังได้ที่เมนู "ประวัติเอกสาร" (ปุ่ม "สร้าง PDF ใหม่")</div>') +
       '<button type="button" class="btn primary block" id="btn-new">ออกบิลใหม่</button>' +
       '</div>';
-    document.getElementById('btn-new').addEventListener('click', load);
+    $('btn-new').addEventListener('click', load);
     scrollTop();
   }
 
-  LiffApp.start().then(function (ready) { if (ready) load(); });
+  // ---------- หน้าจอของแอป
+  Shell.define('issue', {
+    title: 'ออกบิล',
+    build: function (s) {
+      scr = s;
+      s.root.innerHTML =
+        '<div class="topbar"><h1 id="title">ออกเอกสาร</h1><div class="sub" id="subtitle">กำลังโหลด…</div></div>' +
+        '<div id="view" aria-live="polite"><div class="loading" role="status"><span class="spinner" aria-hidden="true"></span><div class="msg">กำลังเปิดหน้า…</div></div></div>';
+      s.dock.innerHTML =
+        '<div class="totalbar hidden" id="totalbar"><div class="inner"><div class="sums num">' +
+        '<div>ก่อน VAT <span id="t-net">0.00</span> · VAT <span id="t-vat">0.00</span></div>' +
+        '<div>รวมทั้งสิ้น <b id="t-total">0.00</b></div></div>' +
+        '<button type="button" class="btn primary" id="btn-review">ตรวจสอบ ›</button></div></div>';
+      view = $('view');
+      totalbar = $('totalbar');
+      $('btn-review').addEventListener('click', showReview);
+      listenLines(s.root);
+    },
+    /** เข้าหน้าจอ: ครั้งแรก (หรือโหลดไม่สำเร็จ) → โหลด / ข้อมูลเปลี่ยนระหว่างไปหน้าอื่น → ใช้ข้อมูลใหม่ (ฟอร์มที่กรอกไว้ไม่หาย) */
+    show: function () {
+      if (!S.screen || S.screen === 'error') return load();
+      if (scr.seen !== AppData.version()) update();
+    },
+    update: update
+  });
 })();

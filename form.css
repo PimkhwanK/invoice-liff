@@ -276,4 +276,31 @@ dl.kv dd { margin: 0; }
 .chosen .t { flex: 1; min-width: 0; }
 .chosen .n { font-weight: 700; font-size: 17px; }
 .two > .field { margin-top: 0; } /* ช่องคู่ (โทรศัพท์ / แฟกซ์) ให้หัวเรียงระดับเดียวกัน */
+
+/* ---------- รอบ 6 ข้อ 3.5: แอปหน้าเดียว — แถบเมนูล่าง / แถบเวลา (?debug=1) ---------- */
+/* ลำดับในหน้า: #app (เนื้อหาเลื่อนได้) → #dock (แถบยอดรวมของหน้าออกบิล) → แถบเมนูล่าง — ทุกส่วนอยู่ใน flow ไม่มีอะไรทับกัน */
+#dock { flex: 0 0 auto; }
+.tabbar {
+  flex: 0 0 auto; z-index: 70; display: flex; justify-content: center;
+  background: var(--card); border-top: 1px solid var(--line);
+  padding: 0 max(4px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(4px, env(safe-area-inset-left));
+}
+.tabbar button {
+  flex: 1 1 0; max-width: 160px; min-width: 0; min-height: 54px; padding: 6px 2px 5px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  border: 0; background: none; font: inherit; font-size: 12px; line-height: 1.2; color: var(--muted); cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.tabbar button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tabbar button.on { color: var(--green-dark); font-weight: 700; }
+.tabbar button:active { background: #f3f4f6; }
+body.typing .tabbar { display: none; } /* แป้นพิมพ์ขึ้น → ให้เนื้อหามีที่มากขึ้น */
+body.has-tabbar:not(.typing) .totalbar { padding-bottom: 8px; } /* ขอบล่างของจอ (safe area) อยู่ที่แถบเมนูแล้ว */
+body.has-tabbar .toast { bottom: 140px; }
+.topbar .back { padding: 4px 8px 4px 0; margin-right: 4px; font-size: 16px; font-weight: 700; }
+.debug-bar { /* แถบบนสุดของจอ อยู่ใน flow (ดันเนื้อหาลง ไม่บังหัวข้อ) */
+  flex: 0 0 auto; order: -1; pointer-events: none;
+  font: 11px/1.35 ui-monospace, Menlo, Consolas, monospace; color: #fff; background: rgba(17, 24, 39, .9);
+  padding: calc(2px + env(safe-area-inset-top)) 8px 2px;
+}
 .two + .field, .field + .two, .two + .two { margin-top: 10px; }

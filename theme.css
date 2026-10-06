@@ -12,9 +12,9 @@
 }
 
 /* ---------- หน้า "ไม่มีสิทธิ์ใช้งาน" (LiffApp.showDenied ใน common.js) ----------
- * body.denied-mode = ซ่อนส่วนอื่นของหน้า (หัวหน้า แท็บ แถบยอดรวม) เหลือแต่การ์ดนี้บนพื้นครีม */
+ * body.denied-mode = ซ่อนส่วนอื่นของหน้า (หัวหน้า แท็บ แถบยอดรวม แถบเมนูล่าง) เหลือแต่การ์ดนี้บนพื้นครีม */
 body.denied-mode, body.denied-mode .wrap { background: var(--theme-bg); }
-body.denied-mode .topbar, body.denied-mode header.top, body.denied-mode #tabs, body.denied-mode #totalbar { display: none !important; }
+body.denied-mode .topbar, body.denied-mode header.top, body.denied-mode #tabs, body.denied-mode #totalbar, body.denied-mode #tabbar { display: none !important; }
 
 .denied {
   margin: 32px 16px; padding: 24px 20px; border-radius: 16px; background: #fff;

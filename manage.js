@@ -5,27 +5,25 @@
  *   แท็บยกเลิกเอกสาร: ต้องใส่เหตุผลแล้วกดยืนยัน → cancelDocument บันทึกสถานะแล้วตอบทันที
  *     → แสดง "บันทึกการยกเลิกแล้ว กำลังทำ PDF ลายน้ำ…" แล้วเรียก regeneratePdf { replace } เขียนทับ PDF เดิม (ลิงก์เดิม)
  * ต่างจากระบบจำลอง: เรียก Apps Script ผ่าน LiffApp.api (ส่ง idToken) / คำเตือน check digit ของเลขภาษีมาจากเซิร์ฟเวอร์
+ * รอบ 6 ข้อ 3.5: หน้าจอหนึ่งของแอปหน้าเดียว (shell.js) — ร้าน / สินค้า / เอกสารจาก AppData (appData ตอนเปิดแอป)
+ *   สลับแท็บไม่เรียกเซิร์ฟเวอร์ / บันทึกแล้วแก้ข้อมูลในแอปจากคำตอบ (putShop, putProduct, patchDoc) ไม่โหลดรายการใหม่ทั้งหมด
  */
 (function () {
   var esc = LiffApp.esc;
-  var view = document.getElementById('view');
-  var appEl = document.getElementById('app');
-  var tabs = document.getElementById('tabs');
-  var tab = new URLSearchParams(location.search).get('tab') || 'shops';
+  var scr = null;
+  var view = null;
+  var tabs = null;
+  var tab = 'shops';
+  var failed = false;
+  function $(id) { return scr.$(id); }
 
   function setTab(t) {
     if (['shops', 'products', 'cancel'].indexOf(t) < 0) t = 'shops';
     tab = t;
     tabs.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === t); });
-    var u = new URL(location.href);
-    u.searchParams.set('tab', t);
-    history.replaceState(null, '', u);
+    Shell.setParams(scr, t === 'shops' ? {} : { tab: t });
     render();
   }
-  tabs.addEventListener('click', function (e) {
-    var b = e.target.closest('button[data-tab]');
-    if (b) setTab(b.dataset.tab);
-  });
 
   function errText(msg) { return esc(msg).replace(/\n/g, '<br>'); }
 
@@ -33,7 +31,7 @@
   function fatal(r) {
     if (LiffApp.isDenied(r.code) || r.code === 'token_expired' || r.code === 'no_token' || r.code === 'token_invalid') {
       tabs.classList.add('hidden');
-      LiffApp.showApiError(r);
+      LiffApp.showApiError(r, scr);
       return true;
     }
     return false;
@@ -41,25 +39,39 @@
 
   var LOADING = { shops: 'กำลังโหลดรายชื่อร้านค้า…', products: 'กำลังโหลดรายการสินค้า…', cancel: 'กำลังโหลดเอกสารที่ยกเลิกได้…' };
 
-  var SOURCES = { shops: ['m-shops', 'listShops', {}], products: ['m-products', 'listProducts', { all: true }], cancel: ['m-cancel', 'listDocuments', { status: 'issued', limit: 50 }] };
+  var CANCEL_LIMIT = 50; // แท็บยกเลิกเอกสาร: ใบที่ยังไม่ยกเลิก ล่าสุดกี่ใบ
+
+  /** ข้อมูลของแท็บจาก AppData (รูปแบบเดียวกับคำตอบ listShops / listProducts all / listDocuments issued เดิม) */
+  function source(t) {
+    if (t === 'shops') return { shops: AppData.shops() };
+    if (t === 'products') return { products: AppData.products() };
+    return { documents: AppData.recentDocs().filter(function (d) { return d.status !== 'cancelled'; }).slice(0, CANCEL_LIMIT) };
+  }
 
   /**
-   * แสดงรายการของแท็บ: จากที่จำไว้ทันที แล้วดึงใหม่เบื้องหลัง (LiffApp.fresh) — ข้อมูลใหม่ต่างจากเดิม = วาดใหม่ (คงคำค้น)
-   * @param {boolean} saved true = เพิ่งบันทึก/ยกเลิก → ลืมรายการที่จำไว้ของแท็บนี้ก่อน (ไม่แสดงข้อมูลก่อนแก้)
+   * แสดงรายการของแท็บจากข้อมูลในแอป (ไม่เรียกเซิร์ฟเวอร์ ยกเว้นยังไม่มีข้อมูลเลย)
+   * @param {boolean} keepTerm true = ข้อมูลเปลี่ยน (บันทึก / ดึงใหม่) → คงคำค้นและตำแหน่งเลื่อน
    */
-  async function render(saved) {
+  async function render(keepTerm) {
     var t = tab;
-    var src = SOURCES[t];
-    if (saved === true) { LiffApp.drop(src[0]); LiffApp.drop('history'); LiffApp.drop('init'); }
-    await LiffApp.fresh(src[0], src[1], src[2], function (r, how) {
-      if (tab !== t) return; // เปลี่ยนแท็บไปแล้ว
-      if (how.update && document.querySelector('.sheet-back')) return; // กำลังแก้ข้อมูลในแผ่นอยู่ ไม่วาดทับ
-      var q = document.getElementById('q');
-      var term = how.update && q ? q.value : '';
-      ({ shops: renderShops, products: renderProducts, cancel: renderCancel })[t](r);
-      if (term) { var q2 = document.getElementById('q'); q2.value = term; q2.dispatchEvent(new Event('input')); }
-      if (!how.update) appEl.scrollTop = 0;
-    }, { loadingText: LOADING[t] });
+    if (!AppData.has()) LiffApp.loading(LOADING[t], view);
+    var r = await AppData.ensure();
+    if (!r.ok) { failed = true; tabs.classList.add('hidden'); return LiffApp.showApiError(r, scr); }
+    failed = false;
+    if (tab !== t) return; // เปลี่ยนแท็บไปแล้ว
+    tabs.classList.remove('hidden');
+    var q = $('q');
+    var term = keepTerm === true && q ? q.value : '';
+    ({ shops: renderShops, products: renderProducts, cancel: renderCancel })[t](source(t));
+    if (term) { var q2 = $('q'); q2.value = term; q2.dispatchEvent(new Event('input')); }
+    if (keepTerm !== true) Shell.scrollTop(scr);
+    Shell.drawn(scr);
+  }
+
+  /** ข้อมูลในแอปเปลี่ยน — กำลังแก้ข้อมูลในแผ่นอยู่ ไม่วาดทับ (วาดหลังปิดแผ่น) */
+  function update() {
+    if (document.querySelector('.sheet-back')) return;
+    render(true);
   }
 
   // ---------- ร้านค้า
@@ -67,10 +79,10 @@
     var rows = r.shops;
     view.innerHTML = '<section class="card"><div class="toolbar"><input type="search" id="q" placeholder="ค้นหาร้าน" autocomplete="off">' +
       '<button type="button" class="btn primary" id="add">＋ เพิ่มร้าน</button></div><ul class="list" id="list"></ul></section>';
-    var q = document.getElementById('q');
+    var q = $('q');
     function draw() {
       var list = searchShops(rows, q.value);
-      document.getElementById('list').innerHTML = list.map(function (s) {
+      $('list').innerHTML = list.map(function (s) {
         return '<li class="tap item" data-id="' + esc(s.shop_id) + '"><div class="t"><div class="n">' + esc(s.short_name) +
           ' <span class="small muted">#' + esc(s.shop_id) + '</span></div><div class="s">' + esc(s.legal_name) + '</div>' +
           '<div class="s">สาขา ' + esc(s.branch || '-') + ' · ' + esc(s.tax_id || 'ไม่มีเลขภาษี') + ' · เครดิต ' + (s.credit_days === '' ? 'ค่าเริ่มต้น' : esc(s.credit_days) + ' วัน') + '</div></div>' +
@@ -79,11 +91,11 @@
       }).join('') || '<li class="empty">ไม่พบร้าน</li>';
     }
     q.addEventListener('input', draw);
-    document.getElementById('list').addEventListener('click', function (e) {
+    $('list').addEventListener('click', function (e) {
       var li = e.target.closest('li[data-id]');
       if (li) shopForm(rows.find(function (s) { return String(s.shop_id) === li.dataset.id; }));
     });
-    document.getElementById('add').addEventListener('click', function () { shopForm(null); });
+    $('add').addEventListener('click', function () { shopForm(null); });
     draw();
   }
 
@@ -127,7 +139,7 @@
       }
       sh.close();
       LiffApp.toast((r.created ? 'เพิ่มร้าน #' + r.shop.shop_id + ' แล้ว' : 'บันทึกแล้ว') + (r.warnings.length ? '\n' + r.warnings.join('\n') : ''), r.warnings.length > 0);
-      render(true);
+      AppData.putShop(r.shop); // แก้เฉพาะร้านนี้ในแอป → รายการวาดใหม่
     });
   }
 
@@ -136,10 +148,10 @@
     var rows = r.products;
     view.innerHTML = '<section class="card"><div class="toolbar"><input type="search" id="q" placeholder="ค้นหาสินค้า" autocomplete="off">' +
       '<button type="button" class="btn primary" id="add">＋ เพิ่มสินค้า</button></div><ul class="list" id="list"></ul></section>';
-    var q = document.getElementById('q');
+    var q = $('q');
     function draw() {
       var term = q.value.trim().toLowerCase();
-      document.getElementById('list').innerHTML = rows.filter(function (p) {
+      $('list').innerHTML = rows.filter(function (p) {
         return !term || (p.name + ' ' + p.barcode).toLowerCase().indexOf(term) >= 0;
       }).map(function (p) {
         return '<li class="tap item" data-bc="' + esc(p.barcode) + '"><div class="t"><div class="n">' + esc(p.name) + '</div>' +
@@ -148,11 +160,11 @@
       }).join('') || '<li class="empty">ไม่พบสินค้า</li>';
     }
     q.addEventListener('input', draw);
-    document.getElementById('list').addEventListener('click', function (e) {
+    $('list').addEventListener('click', function (e) {
       var li = e.target.closest('li[data-bc]');
       if (li) productForm(rows.find(function (p) { return p.barcode === li.dataset.bc; }));
     });
-    document.getElementById('add').addEventListener('click', function () { productForm(null); });
+    $('add').addEventListener('click', function () { productForm(null); });
     draw();
   }
 
@@ -188,7 +200,7 @@
       }
       sh.close();
       LiffApp.toast((r.created ? 'เพิ่มสินค้าแล้ว' : 'บันทึกแล้ว') + (r.warnings.length ? '\n' + r.warnings.join('\n') : ''), r.warnings.length > 0);
-      render(true);
+      AppData.putProduct(r.product);
     });
   }
 
@@ -198,10 +210,10 @@
       '<section class="card"><p class="small muted" style="margin-top:0">ห้ามลบเอกสาร — การยกเลิกจะเปลี่ยนสถานะเป็น "ยกเลิก" เก็บเหตุผล และทำ PDF ใหม่ที่มีลายน้ำ "ยกเลิก" ทับไฟล์เดิม (ลิงก์ที่ส่งให้ลูกค้าไปแล้วจะเห็นลายน้ำ) เลขที่เอกสารจะไม่ถูกนำกลับมาใช้</p>' +
       '<div class="toolbar"><input type="search" id="q" inputmode="numeric" placeholder="กรองด้วยเลขที่" autocomplete="off"></div>' +
       '<ul class="list" id="list"></ul></section>';
-    var q = document.getElementById('q');
+    var q = $('q');
     function draw() {
       var term = q.value.replace(/\D/g, '');
-      document.getElementById('list').innerHTML = r.documents.filter(function (d) { return !term || String(d.doc_no).indexOf(term) >= 0; }).map(function (d) {
+      $('list').innerHTML = r.documents.filter(function (d) { return !term || String(d.doc_no).indexOf(term) >= 0; }).map(function (d) {
         return '<li class="item" data-no="' + d.doc_no + '"><div class="t"><div class="n">#' + d.doc_no + ' · ' + esc(d.shop_short_name) + '</div>' +
           '<div class="s">' + formatThaiDate(d.doc_date) + ' · ' + formatMoney(d.total) + ' บาท</div></div>' +
           (d.hasPdf ? '<a class="btn sm" href="view?no=' + d.doc_no + '">PDF</a>' : '<span class="badge amber">ไม่มี PDF</span>') +
@@ -209,7 +221,7 @@
       }).join('') || '<li class="empty">ไม่มีเอกสารที่ยกเลิกได้</li>';
     }
     q.addEventListener('input', draw);
-    document.getElementById('list').addEventListener('click', function (e) {
+    $('list').addEventListener('click', function (e) {
       var b = e.target.closest('[data-cancel]');
       if (b) cancelForm(r.documents.find(function (d) { return String(d.doc_no) === b.dataset.cancel; }));
     });
@@ -239,6 +251,7 @@
         return;
       }
       reason.disabled = true;
+      AppData.patchDoc(d.doc_no, r.document); // สถานะยกเลิก + เหตุผล + ยกเลิกโดย (ทุกหน้าจอในแอปเห็นทันที)
       ok.dataset.retry = '1'; // ยกเลิกแล้ว: ปุ่มนี้ต่อจากนี้ = ทำ PDF ใหม่ (ห้ามส่งยกเลิกซ้ำ)
       makePdf();
     });
@@ -257,17 +270,41 @@
       }
       sh.close();
       LiffApp.toast('ยกเลิกเอกสาร #' + d.doc_no + ' แล้ว (PDF มีลายน้ำ "ยกเลิก")');
-      render(true);
+      AppData.patchDoc(d.doc_no, { pdfUrl: r.pdfUrl, hasPdf: !!r.pdfUrl }); // PDF เปลี่ยน (ลายน้ำ) → หน้าจอดู PDF ของใบนี้โหลดใหม่
     }
     // เมื่อปิดแผ่น ให้รายการอัปเดตเสมอ (เผื่อยกเลิกไปแล้วแต่ PDF ล้มเหลว)
     sh.el.addEventListener('click', function (e) {
-      if (ok.dataset.retry && (e.target === sh.el || e.target.closest('[data-close]'))) render(true);
+      if (ok.dataset.retry && (e.target === sh.el || e.target.closest('[data-close]'))) setTimeout(update, 0);
     });
   }
 
-  LiffApp.start().then(function (ready) {
-    if (!ready) return;
-    tabs.classList.remove('hidden');
-    setTab(tab);
+  Shell.define('manage', {
+    title: 'จัดการข้อมูล',
+    build: function (s) {
+      scr = s;
+      s.root.innerHTML =
+        '<div class="topbar"><h1>จัดการข้อมูล</h1><div class="sub" id="subtitle">ร้านค้า · สินค้า · ยกเลิกเอกสาร</div></div>' +
+        '<nav class="tabs hidden" id="tabs">' +
+        '<button type="button" data-tab="shops">ร้านค้า</button>' +
+        '<button type="button" data-tab="products">สินค้า</button>' +
+        '<button type="button" data-tab="cancel">ยกเลิกเอกสาร</button></nav>' +
+        '<div id="view" aria-live="polite"></div>';
+      view = $('view');
+      tabs = $('tabs');
+      tabs.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-tab]');
+        if (b) setTab(b.dataset.tab);
+      });
+    },
+    /** เข้าหน้าจอ: แท็บตาม URL (?tab=) / แท็บเดิม ข้อมูลเดิม → ไม่ต้องวาดใหม่ */
+    show: function (s, params) {
+      var t = ['shops', 'products', 'cancel'].indexOf(params.tab) >= 0 ? params.tab : 'shops';
+      if (!failed && t === tab && s.seen === AppData.version() && $('q')) return;
+      var same = t === tab && s.seen !== -1 && !failed;
+      tab = t;
+      tabs.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === t); });
+      return render(same);
+    },
+    update: update
   });
 })();
