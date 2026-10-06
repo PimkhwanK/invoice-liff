@@ -226,15 +226,32 @@ var Shell = (function () {
       var sw = vals.filter(function (v) { return v[0] === 'สลับหน้า'; });
       var apis = vals.filter(function (v) { return v[0] !== 'liff.init' && v[0] !== 'สลับหน้า'; }).slice(-3);
       vals = init.concat(apis, sw);
+      draw().querySelector('#debug-main').textContent = vals.map(function (v) { return v[0] + ' ' + v[1] + 'ms'; }).join(' · ');
+    }
+    function draw() {
       if (!bar) {
-        bar = LiffApp.el('<div class="debug-bar" id="debug-bar" aria-hidden="true"></div>');
+        bar = LiffApp.el('<div class="debug-bar" id="debug-bar" aria-hidden="true"><div id="debug-main"></div><div id="debug-server"></div></div>');
         document.body.insertBefore(bar, document.body.firstChild);
       }
-      bar.textContent = vals.map(function (v) { return v[0] + ' ' + v[1] + 'ms'; }).join(' · ');
+      return bar;
     }
-    return { set: set, on: function () { return on; } };
+    /**
+     * บรรทัดที่สอง: เวลาฝั่งเซิร์ฟเวอร์ของคำขอล่าสุด แยกขั้น (serverTiming จาก apiHandle เมื่อส่ง debug: true)
+     * เน็ต = เวลาที่หน้าเว็บรอ − เวลาที่เซิร์ฟเวอร์ทำงาน (รวม redirect ของ Apps Script และการเริ่มสคริปต์)
+     */
+    function server(action, t, clientMs) {
+      if (!on) return;
+      var src = function (k) { return t.sources && t.sources[k] ? '(' + t.sources[k] + ')' : ''; };
+      var parts = ['token ' + t.token, 'ผู้ใช้ ' + t.users + src('users'), 'ร้าน/สินค้า/ตั้งค่า ' + t.master + src('master'),
+        'เอกสาร ' + t.docs + (t.docsSource ? '(' + t.docsSource + ')' : src('docs')), 'สร้างคำตอบ ' + t.build];
+      draw().querySelector('#debug-server').textContent = 'เซิร์ฟเวอร์ ' + action + ' ' + t.total + 'ms: ' + parts.join(' · ') +
+        ' | เน็ต+เริ่มสคริปต์ ' + Math.max(0, Math.round(clientMs - t.total)) + 'ms';
+    }
+    return { set: set, server: server, on: function () { return on; } };
   })();
   LiffApp.hooks.timing = Debug.set;
+  LiffApp.hooks.server = Debug.server;
+  LiffApp.hooks.debugOn = Debug.on;
 
   // ---------- เริ่มแอป
 

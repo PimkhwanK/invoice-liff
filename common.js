@@ -19,7 +19,7 @@
  */
 var LiffApp = (function () {
   var CFG = window.APP_CONFIG || {};
-  var hooks = { timing: null, denied: null };
+  var hooks = { timing: null, denied: null, debugOn: null, server: null };
   var scope = null; // function → scr ของหน้าจอที่แสดงอยู่ (shell.js ตั้ง)
 
   function setScope(fn) { scope = fn; }
@@ -209,10 +209,17 @@ var LiffApp = (function () {
     var idToken = '';
     try { idToken = liff.getIDToken() || ''; } catch (e) { idToken = ''; }
     var body = Object.assign({}, payload || {}, { action: action, idToken: idToken });
+    var debug = !!(hooks.debugOn && hooks.debugOn());
+    if (debug) body.debug = true; // แถบเวลา ?debug=1: ขอเวลาแยกขั้นของเซิร์ฟเวอร์ (serverTiming) มาด้วย
     var t0 = Date.now();
     try {
       var r = await apiFetch(body);
       if (r && !r.ok && AUTH_FAIL[r.code]) forget(); // ไม่มีสิทธิ์ → ลืมทุกอย่างที่จำไว้บนเครื่องนี้
+      if (r && r.serverTiming) {
+        var st = r.serverTiming;
+        delete r.serverTiming; // ไม่จำ / ไม่ใช้เทียบข้อมูล
+        if (hooks.server) { try { hooks.server(action, st, Date.now() - t0); } catch (e) { /* ไม่เป็นไร */ } }
+      }
       return r;
     } finally {
       // เวลาที่หน้าเว็บรอ (รวมเน็ต + redirect ของ Apps Script) ดูได้ใน console และแถบเวลา (?debug=1) — เทียบกับ "[เวลา]" ในหน้าการดำเนินการ
