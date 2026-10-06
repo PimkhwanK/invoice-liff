@@ -143,7 +143,7 @@
     msg.innerHTML = '';
     var r = await LiffApp.api('regeneratePdf', { docNo: S.no, withPdf: true });
     if (!r.ok) {
-      if (r.code === 'forbidden' || r.code === 'token_expired' || r.code === 'no_token' || r.code === 'token_invalid') return LiffApp.showApiError(r);
+      if (LiffApp.isDenied(r.code) || r.code === 'token_expired' || r.code === 'no_token' || r.code === 'token_invalid') return LiffApp.showApiError(r);
       btn.disabled = false;
       btn.textContent = 'สร้าง PDF ใหม่';
       msg.innerHTML = '<div class="alert err" id="regen-error" style="margin-top:10px">' + esc(r.error || 'สร้าง PDF ไม่สำเร็จ') + '</div>';

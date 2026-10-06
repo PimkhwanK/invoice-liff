@@ -4,6 +4,8 @@
  *   LiffApp.start()                 liff.init → (ยังไม่ login → liff.login) → ตรวจว่ามี idToken  คืน true ถ้าพร้อมเรียก API
  *   LiffApp.api(action, payload)    POST ไป Apps Script พร้อม idToken (ไม่ส่ง userId — เซิร์ฟเวอร์ไม่เชื่ออยู่แล้ว)
  *   LiffApp.showApiError(r)         แสดงข้อผิดพลาดเต็มหน้า (ไม่มีสิทธิ์ / เชื่อมต่อไม่ได้ / หมดอายุ ...)
+ *   LiffApp.isDenied(code)          ไม่มีสิทธิ์ใช้งาน (not_registered / disabled / forbidden ของเซิร์ฟเวอร์รุ่นเก่า)
+ *   LiffApp.showDenied(code)        หน้าไม่มีสิทธิ์ (รอบ 6 ข้อ 3): ยังไม่ได้ลงทะเบียน → ชื่อ + รหัส + ส่งให้ผู้ดูแล / ถูกปิด → ติดต่อผู้ดูแล
  *   LiffApp.inClient()              เปิดในแอป LINE หรือไม่
  *   LiffApp.toast / sheet / uuid / esc / el   เหมือน Sim.* ของระบบจำลอง
  *   LiffApp.fresh(name, action, payload, render)   แสดงข้อมูลที่จำไว้ทันที แล้วดึงใหม่เบื้องหลัง (รอบ 5A-2)
@@ -91,7 +93,10 @@ var LiffApp = (function () {
   // แยกตามบัญชี LINE (แฮชของ sub ไม่เก็บ userId ตรง ๆ) / เซิร์ฟเวอร์ตอบว่าไม่มีสิทธิ์ → ล้างทั้งหมด
   // การบันทึกทุกอย่างยังตรวจที่เซิร์ฟเวอร์ ข้อมูลที่จำไว้ใช้แสดงผลเท่านั้น
   var STORE_PREFIX = 'invoice-liff:v1:';
-  var AUTH_FAIL = { forbidden: 1, no_token: 1, token_invalid: 1, config: 1 };
+  var AUTH_FAIL = { forbidden: 1, not_registered: 1, disabled: 1, no_token: 1, token_invalid: 1, config: 1 };
+  /** คำตอบที่แปลว่า "บัญชีนี้ไม่มีสิทธิ์ใช้งาน" (forbidden = เซิร์ฟเวอร์รุ่นก่อนรอบ 6 ถือเป็นยังไม่ได้ลงทะเบียน) */
+  var DENIED = { forbidden: 1, not_registered: 1, disabled: 1 };
+  function isDenied(code) { return !!DENIED[code]; }
 
   function storeOk() {
     try { return typeof localStorage !== 'undefined' && !!localStorage; } catch (e) { return false; }
@@ -265,15 +270,98 @@ var LiffApp = (function () {
     if (r.code === 'network') return showError(MSG.network, reload, r.code);
     if (r.code === 'http') return showError(MSG.http, reload, r.code);
     if (r.code === 'bad_response') return showError(MSG.badResponse, reload, r.code);
-    if (r.code === 'forbidden' || r.code === 'no_token' || r.code === 'token_invalid') {
-      return showError({
-        title: 'ไม่มีสิทธิ์ใช้งาน',
-        text: String(r.error || 'บัญชี LINE นี้ไม่มีสิทธิ์ใช้งาน').replace(/^ไม่มีสิทธิ์ใช้งาน:\s*/, ''),
-        hint: 'ถ้าควรใช้งานได้: พิมพ์ myid ในแชทของ OA แล้วส่ง userId ให้ผู้ดูแลเพิ่มในแท็บ "ผู้ใช้"'
-      }, null, r.code);
+    if (isDenied(r.code)) return showDenied(r.code);
+    if (r.code === 'no_token' || r.code === 'token_invalid') {
+      return showError({ title: 'ยืนยันตัวตนไม่ได้', text: 'ยืนยันตัวตนกับ LINE ไม่สำเร็จ กรุณาปิดหน้านี้แล้วเปิดใหม่จากแชท LINE' }, relogin, r.code);
     }
     if (r.code === 'token_expired') return showError({ title: 'การเข้าสู่ระบบหมดอายุ', text: r.error }, relogin, r.code);
     return showError({ title: 'เกิดข้อผิดพลาด', text: r.error || 'กรุณาลองใหม่อีกครั้ง' }, reload, r.code);
+  }
+
+  // ---------- หน้าไม่มีสิทธิ์ใช้งาน (รอบ 6 ข้อ 3 — สีจาก theme.css)
+  /** ข้อความที่ส่งให้ผู้ดูแลผ่าน shareTargetPicker (มีรหัสและวิธีเพิ่มสิทธิ์ — เฉพาะข้อความนี้ที่พูดถึงแท็บผู้ใช้) */
+  function accessRequestText(name, id) {
+    return ['ขอสิทธิ์ใช้งานระบบออกบิล', 'ชื่อ: ' + (name || '-'), 'รหัส: ' + id, '', 'ผู้ดูแล: นำรหัสนี้ไปเพิ่มในแท็บ ผู้ใช้ ของ Google Sheet'].join(String.fromCharCode(10));
+  }
+
+  /** ชื่อ LINE และรหัส (sub) จาก idToken บนเครื่อง — ไม่ต้องถามเซิร์ฟเวอร์ */
+  function lineIdentity() {
+    var d = null;
+    try { d = liff.getDecodedIDToken(); } catch (e) { d = null; }
+    d = d || {};
+    return { name: typeof d.name === 'string' ? d.name : '', id: typeof d.sub === 'string' ? d.sub : '' };
+  }
+
+  /** ใช้ shareTargetPicker ได้ไหม (เปิดในแอป LINE + เปิดใช้ใน LINE Developers แล้ว) */
+  function canShare() {
+    try {
+      return inClient() && typeof liff.shareTargetPicker === 'function' &&
+        typeof liff.isApiAvailable === 'function' && liff.isApiAvailable('shareTargetPicker');
+    } catch (e) { return false; }
+  }
+
+  /**
+   * แสดงหน้าไม่มีสิทธิ์แทนเนื้อหาทั้งหมดของหน้า (ข้อมูลที่จำไว้ถูกล้างใน api() แล้ว)
+   * @param {string} code 'disabled' = ถูกปิดสิทธิ์ / อื่น ๆ (not_registered, forbidden) = ยังไม่ได้ลงทะเบียน
+   */
+  function showDenied(code) {
+    var disabled = code === 'disabled';
+    var card = el('<section class="denied" id="error" role="alert"><div class="icon" aria-hidden="true"></div><h2></h2><p></p></section>');
+    card.setAttribute('data-code', disabled ? 'disabled' : 'not_registered');
+    // ไอคอนเส้น (สีตามธีม currentColor) แทนอีโมจิที่สีไม่เข้ากับธีม: กุญแจล็อก / หยุดชั่วคราว
+    card.querySelector('.icon').innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      (disabled ? '<circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/>' : '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>') + '</svg>';
+    card.querySelector('h2').textContent = disabled ? 'บัญชีนี้ถูกปิดการใช้งาน' : 'ยังไม่ได้รับสิทธิ์ใช้งาน';
+    card.querySelector('p').textContent = disabled ? 'กรุณาติดต่อผู้ดูแลระบบ' : 'ส่งรหัสด้านล่างให้ผู้ดูแลระบบ เพื่อเปิดสิทธิ์ใช้งาน';
+    if (!disabled) addRequest(card, lineIdentity());
+    document.body.classList.add('denied-mode');
+    syncing(false);
+    var sub = document.getElementById('subtitle');
+    if (sub) sub.textContent = '';
+    view().replaceChildren(card);
+  }
+
+  /** ชื่อ + รหัส + ปุ่ม "ส่งรหัสให้ผู้ดูแล" (shareTargetPicker) / "คัดลอกรหัส" */
+  function addRequest(card, me) {
+    var who = el('<div class="who"><div class="label">ชื่อ LINE</div><div class="name" id="denied-name"></div>' +
+      '<div class="label">รหัส</div><code class="uid" id="denied-id"></code></div>');
+    who.querySelector('#denied-name').textContent = me.name || '-';
+    who.querySelector('#denied-id').textContent = me.id || 'ไม่พบรหัส กรุณาปิดแล้วเปิดหน้านี้ใหม่จากแอป LINE';
+    card.appendChild(who);
+    if (!me.id) return;
+    var actions = el('<div class="actions"></div>');
+    var msg = el('<div class="msg" id="denied-msg" role="status"></div>');
+    function say(text, ok) { msg.textContent = text; msg.className = 'msg ' + (ok ? 'ok' : 'err'); }
+    if (canShare()) {
+      var share = el('<button type="button" class="btn-theme primary" id="btn-share-id">ส่งรหัสให้ผู้ดูแล</button>');
+      share.addEventListener('click', async function () {
+        share.disabled = true;
+        try {
+          var res = await liff.shareTargetPicker([{ type: 'text', text: accessRequestText(me.name, me.id) }], { isMultiple: false });
+          if (res && res.status === 'success') say('ส่งรหัสแล้ว รอผู้ดูแลเปิดสิทธิ์ แล้วเปิดหน้านี้ใหม่', true);
+          else say('ยังไม่ได้ส่ง — กดอีกครั้งเพื่อเลือกผู้ดูแล', false);
+        } catch (e) {
+          say('ส่งไม่สำเร็จ — กด "คัดลอกรหัส" แล้วส่งให้ผู้ดูแลเอง', false);
+        }
+        share.disabled = false;
+      });
+      actions.appendChild(share);
+    }
+    var copy = el('<button type="button" class="btn-theme secondary" id="btn-copy-id">คัดลอกรหัส</button>');
+    copy.addEventListener('click', async function () {
+      try {
+        if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('no clipboard');
+        await navigator.clipboard.writeText(me.id);
+        say('คัดลอกรหัสแล้ว', true);
+      } catch (e) {
+        // คัดลอกเองไม่ได้ (บางเบราว์เซอร์) → เลือกข้อความรหัสไว้ให้ กดค้างแล้วเลือก "คัดลอก"
+        try { window.getSelection().selectAllChildren(card.querySelector('#denied-id')); } catch (e2) { /* ไม่เป็นไร */ }
+        say('คัดลอกอัตโนมัติไม่ได้ — เลือกรหัสไว้ให้แล้ว กดค้างที่รหัสแล้วเลือก "คัดลอก"', false);
+      }
+    });
+    actions.appendChild(copy);
+    card.appendChild(actions);
+    card.appendChild(msg);
   }
 
   /** เริ่ม LIFF — คืน true เมื่อพร้อมเรียก API (false = แสดงข้อผิดพลาดแล้ว หรือกำลังไปหน้า login) */
@@ -346,6 +434,7 @@ var LiffApp = (function () {
 
   return {
     start: start, api: api, showError: showError, showApiError: showApiError, isRetryable: isRetryable,
+    isDenied: isDenied, showDenied: showDenied, accessRequestText: accessRequestText,
     inClient: inClient, relogin: relogin, toast: toast, uuid: uuid, sheet: sheet, esc: esc, el: el, loading: loading,
     openExternal: openExternal, fresh: fresh, remember: remember, keep: keep, forget: forget, drop: drop
   };

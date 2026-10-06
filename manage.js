@@ -31,7 +31,7 @@
 
   /** ข้อผิดพลาดจากเซิร์ฟเวอร์: ไม่มีสิทธิ์ / หมดอายุ → เต็มหน้า, อื่น ๆ → คืน true ให้ผู้เรียกแสดงเอง */
   function fatal(r) {
-    if (r.code === 'forbidden' || r.code === 'token_expired' || r.code === 'no_token' || r.code === 'token_invalid') {
+    if (LiffApp.isDenied(r.code) || r.code === 'token_expired' || r.code === 'no_token' || r.code === 'token_invalid') {
       tabs.classList.add('hidden');
       LiffApp.showApiError(r);
       return true;

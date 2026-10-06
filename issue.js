@@ -478,7 +478,7 @@
     var r = await LiffApp.api('createDocument', { requestId: S.requestId, document: buildDocumentPayload(), expected: S.expected, deferPdf: true });
     if (!r.ok) {
       msg.innerHTML = '';
-      if (r.code === 'forbidden') return LiffApp.showApiError(r);
+      if (LiffApp.isDenied(r.code)) return LiffApp.showApiError(r);
       btn.disabled = false;
       back.disabled = false;
       // เน็ตหลุด / มีคนออกบิลพร้อมกัน: กดใหม่ใช้ requestId เดิม ระบบจะไม่ออกเลขซ้ำ
@@ -502,7 +502,7 @@
       mark('pdf', 'doing');
       var p = await LiffApp.api('regeneratePdf', { docNo: r.docNo });
       if (!p.ok) {
-        if (p.code === 'forbidden') return LiffApp.showApiError(p);
+        if (LiffApp.isDenied(p.code)) return LiffApp.showApiError(p);
         mark('pdf', 'fail');
         return showPdfFailed(Object.assign({}, r, { pdfError: 'บันทึกเอกสารเลขที่ ' + r.docNo + ' แล้ว แต่' + (p.error || 'สร้าง PDF ไม่สำเร็จ') }));
       }
@@ -562,7 +562,7 @@
       await finish(Object.assign({}, r, { pdfUrl: res.pdfUrl, pdfError: '' }));
       return;
     }
-    if (res.code === 'forbidden' || res.code === 'token_expired') return LiffApp.showApiError(res);
+    if (LiffApp.isDenied(res.code) || res.code === 'token_expired') return LiffApp.showApiError(res);
     btn.disabled = false;
     skip.disabled = false;
     btn.textContent = 'ลองสร้าง PDF ใหม่';

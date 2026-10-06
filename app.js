@@ -88,12 +88,10 @@
     if (r.code === 'network') return showError(MSG.network, retry, r.code);
     if (r.code === 'http') return showError(MSG.http, retry, r.code);
     if (r.code === 'bad_response') return showError(MSG.badResponse, retry, r.code);
-    if (r.code === 'forbidden' || r.code === 'no_token' || r.code === 'token_invalid') {
-      return showError({
-        title: 'ไม่มีสิทธิ์ใช้งาน',
-        text: String(r.error || 'บัญชี LINE นี้ไม่มีสิทธิ์ใช้งาน').replace(/^ไม่มีสิทธิ์ใช้งาน:\s*/, ''),
-        hint: 'ถ้าควรใช้งานได้: พิมพ์ myid ในแชทของ OA แล้วส่ง userId ให้ผู้ดูแลเพิ่มในแท็บ "ผู้ใช้"'
-      }, null, r.code);
+    // ไม่มีสิทธิ์ → หน้าเดียวกับทุกหน้า (common.js รอบ 6 ข้อ 3: ขอสิทธิ์ / บัญชีถูกปิด)
+    if (LiffApp.isDenied(r.code)) return LiffApp.showDenied(r.code);
+    if (r.code === 'no_token' || r.code === 'token_invalid') {
+      return showError({ title: 'ยืนยันตัวตนไม่ได้', text: 'ยืนยันตัวตนกับ LINE ไม่สำเร็จ กรุณาปิดหน้านี้แล้วเปิดใหม่จากแชท LINE' }, relogin, r.code);
     }
     if (r.code === 'token_expired') return showError({ title: 'การเข้าสู่ระบบหมดอายุ', text: r.error }, relogin, r.code);
     return showError({ title: 'เกิดข้อผิดพลาด', text: r.error || 'กรุณาลองใหม่อีกครั้ง' }, retry, r.code);

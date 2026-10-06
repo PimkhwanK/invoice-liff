@@ -110,7 +110,7 @@
     btn.textContent = 'กำลังสร้าง PDF…';
     var r = await LiffApp.api('regeneratePdf', { docNo: Number(no) });
     if (!r.ok) {
-      if (r.code === 'forbidden' || r.code === 'token_expired') return LiffApp.showApiError(r);
+      if (LiffApp.isDenied(r.code) || r.code === 'token_expired') return LiffApp.showApiError(r);
       btn.disabled = false;
       btn.textContent = 'สร้าง PDF ใหม่';
       LiffApp.toast(r.error || 'สร้าง PDF ไม่สำเร็จ', true);
