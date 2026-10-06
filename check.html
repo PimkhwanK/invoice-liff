@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <title>ตรวจระบบ</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <h1>ตรวจระบบ</h1>
+      <div class="muted small">สำหรับผู้ดูแลระบบ · ตรวจการเชื่อมต่อ LINE → Google Sheets (อ่านอย่างเดียว)</div>
+    </header>
+
+    <main id="view" aria-live="polite">
+      <div class="card empty" id="loading">กำลังเปิดหน้า…</div>
+    </main>
+  </div>
+
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="config.js"></script>
+  <script src="search.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

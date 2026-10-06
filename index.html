@@ -1,27 +1,36 @@
 <!doctype html>
 <html lang="th">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="referrer" content="no-referrer">
-  <title>ทดสอบการเชื่อมต่อ</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>ออกบิล</title>
+<script>
+  // หน้าแรกของ LIFF (https://liff.line.me/<LIFF ID> ไม่มี path) → พาไปหน้าออกบิลทันที
+  // หน้าตรวจระบบเดิมย้ายไปที่ /check (ผู้ดูแลเปิดเอง ไม่มีลิงก์จากหน้าอื่น)
+  // มี ?... (เช่น liff.state ของ https://liff.line.me/<LIFF ID>/issue หรือผลการเข้าสู่ระบบ) → ให้ liff.init ด้านล่างจัดการก่อน
+  if (!location.search) location.replace('issue' + location.hash);
+</script>
+<link rel="stylesheet" href="form.css">
 </head>
 <body>
-  <div class="wrap">
-    <header class="top">
-      <h1>ทดสอบการเชื่อมต่อ</h1>
-      <div class="muted small">LINE → Google Sheets (อ่านอย่างเดียว)</div>
-    </header>
-
-    <main id="view" aria-live="polite">
-      <div class="card empty" id="loading">กำลังเปิดหน้า…</div>
-    </main>
-  </div>
-
-  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <script src="config.js"></script>
-  <script src="search.js"></script>
-  <script src="app.js"></script>
+<div class="wrap">
+  <div id="view"><div class="loading" role="status"><span class="spinner" aria-hidden="true"></span><div class="msg">กำลังเปิดหน้า…</div></div></div>
+</div>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="config.js"></script>
+<script>
+  (function () {
+    if (!location.search) return;
+    var cfg = window.APP_CONFIG || {};
+    // liff.state = LINE เปิดหน้านี้ก่อนแล้วให้ liff.init พาไปหน้าตาม path เอง (เช่น /issue, /view?no=…)
+    var goingElsewhere = new URLSearchParams(location.search).has('liff.state');
+    function toIssue() { location.replace('issue' + location.hash); }
+    if (typeof liff === 'undefined' || !cfg.LIFF_ID) return toIssue(); // หน้าออกบิลแสดงข้อผิดพลาดเอง
+    liff.init({ liffId: cfg.LIFF_ID }).then(function () {
+      if (!goingElsewhere) toIssue();
+    }, toIssue);
+  })();
+</script>
 </body>
 </html>

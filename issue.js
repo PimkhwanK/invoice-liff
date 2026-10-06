@@ -600,7 +600,7 @@
       '<div class="card stack">' +
       (r.pdfUrl
         ? '<a class="btn block" id="btn-pdf" href="' + esc(r.pdfUrl) + '" target="_blank" rel="noopener">📄 เปิด PDF</a>'
-        : '<div class="small muted" id="no-pdf">ยังไม่มี PDF — สร้างภายหลังได้ (ผู้ดูแลรัน debugRegeneratePdf)</div>') +
+        : '<div class="small muted" id="no-pdf">ยังไม่มี PDF — สร้างภายหลังได้ที่เมนู "ประวัติเอกสาร" (ปุ่ม "สร้าง PDF ใหม่")</div>') +
       '<button type="button" class="btn primary block" id="btn-new">ออกบิลใหม่</button>' +
       '</div>';
     document.getElementById('btn-new').addEventListener('click', load);

@@ -1,5 +1,6 @@
 /*
- * app.js — หน้า LIFF ทดสอบการเชื่อมต่อ: LINE Login → idToken → Apps Script API (อ่านอย่างเดียว)
+ * app.js — หน้าตรวจระบบ /check (check.html) สำหรับผู้ดูแล: LINE Login → idToken → Apps Script API (อ่านอย่างเดียว)
+ *   รอบ 6: ย้ายจากหน้าแรก (index.html พาไปหน้าออกบิลแทน) ไม่มีลิงก์จากหน้าอื่น ผู้ดูแลเปิดเองที่ https://liff.line.me/<LIFF ID>/check
  *
  * ขั้นตอน: liff.init → (ยังไม่ login → liff.login) → liff.getIDToken()
  *          → เรียก homeData (คำขอเดียว: ชื่อ + ร้าน + สินค้า) → แสดงชื่อผู้ใช้ จำนวนร้าน/สินค้า และช่องค้นหาร้าน
@@ -164,8 +165,7 @@
     view.replaceChildren(el('div', 'card empty', 'กำลังเชื่อมต่อ LINE…'));
     if (!CFG.LIFF_ID || !CFG.API_URL) return showError(MSG.notConfigured, null, 'not_configured');
     if (typeof liff === 'undefined') return showError(MSG.sdk, { label: 'ลองใหม่', run: function () { location.reload(); } }, 'sdk');
-    // เปิดด้วย https://liff.line.me/{LIFF ID}/issue → LINE เปิดหน้านี้ก่อนพร้อม ?liff.state=/issue
-    // แล้ว liff.init จะพาไปหน้า issue เอง จึงไม่ต้องเรียก API ของหน้าทดสอบ
+    // มี ?liff.state → liff.init พาไปหน้าอื่นเอง จึงไม่ต้องเรียก API (ปกติ index.html จัดการ เผื่อเปิดหน้านี้เป็นหน้าแรก)
     var goingElsewhere = new URLSearchParams(location.search).has('liff.state');
     try {
       await liff.init({ liffId: CFG.LIFF_ID });
