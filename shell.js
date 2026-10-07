@@ -25,6 +25,8 @@ var Shell = (function () {
   var appEl = document.getElementById('app');
   var dockEl = document.getElementById('dock');
   var tabbar = document.getElementById('tabbar');
+  // ไอคอนของแถบเมนูล่างมาจาก icons.js (ชุดเดียวกับรูป Rich Menu)
+  tabbar.querySelectorAll('i[data-icon]').forEach(function (i) { i.outerHTML = iconSvg(i.getAttribute('data-icon')); });
 
   function define(name, def) { defs[name] = def; }
 

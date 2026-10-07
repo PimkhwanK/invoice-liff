@@ -12,15 +12,8 @@
   var view = document.getElementById('view');
   var MAX_RESULTS = 50;
 
-  var MSG = {
-    notConfigured: { title: 'ยังไม่ได้ตั้งค่า', text: 'ยังไม่ได้ใส่ LIFF_ID หรือ API_URL ในไฟล์ config.js' },
-    sdk: { title: 'เชื่อมต่อไม่ได้', text: 'โหลดระบบของ LINE ไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่' },
-    init: { title: 'เปิดหน้าไม่สำเร็จ', text: 'เริ่มต้น LINE ไม่ได้ (LIFF ID อาจไม่ถูกต้อง หรือเชื่อมต่อไม่ได้)' },
-    noToken: { title: 'ยืนยันตัวตนไม่ได้', text: 'ไม่ได้รับข้อมูลยืนยันตัวตนจาก LINE (LIFF app ต้องเปิด scope openid) ลองปิดแล้วเปิดหน้านี้ใหม่' },
-    network: { title: 'เชื่อมต่อไม่ได้', text: 'ติดต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่' },
-    http: { title: 'เชื่อมต่อไม่ได้', text: 'เซิร์ฟเวอร์ตอบกลับผิดปกติ กรุณาลองใหม่อีกครั้ง' },
-    badResponse: { title: 'เชื่อมต่อไม่ได้', text: 'เซิร์ฟเวอร์ตอบกลับไม่ใช่ข้อมูลที่ระบบเข้าใจ (ตรวจ API_URL และการตั้งค่า Web app ให้ผู้ใช้เป็น Anyone)' }
-  };
+  // ข้อความชุดเดียวกับทุกหน้า (common.js รอบ 6 ข้อ 4: ตั้งค่าไม่ครบ → ประโยคหลัก + รายละเอียดตัวเล็ก)
+  var MSG = LiffApp.MSG;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -39,7 +32,12 @@
     card.id = 'error';
     if (code) card.setAttribute('data-code', code);
     card.appendChild(el('h2', '', m.title));
-    card.appendChild(el('p', '', m.text));
+    if (m.text) card.appendChild(el('p', '', m.text));
+    if (m.detail) {
+      var d = el('p', 'detail', m.detail);
+      d.id = 'error-detail';
+      card.appendChild(d);
+    }
     if (m.hint) card.appendChild(el('p', 'small', m.hint));
     if (action) {
       var b = el('button', '', action.label);
@@ -94,6 +92,8 @@
       return showError({ title: 'ยืนยันตัวตนไม่ได้', text: 'ยืนยันตัวตนกับ LINE ไม่สำเร็จ กรุณาปิดหน้านี้แล้วเปิดใหม่จากแชท LINE' }, relogin, r.code);
     }
     if (r.code === 'token_expired') return showError({ title: 'การเข้าสู่ระบบหมดอายุ', text: r.error }, relogin, r.code);
+    var setup = LiffApp.splitSetup(r.error);
+    if (setup || r.code === 'config') return showError({ title: LiffApp.SETUP, text: '', detail: setup ? setup.detail : (r.error || '') }, retry, r.code);
     return showError({ title: 'เกิดข้อผิดพลาด', text: r.error || 'กรุณาลองใหม่อีกครั้ง' }, retry, r.code);
   }
 
@@ -103,7 +103,10 @@
 
     var hello = el('section', 'card');
     hello.id = 'hello';
-    hello.appendChild(el('h2', '', 'เชื่อมต่อสำเร็จ ✅'));
+    var ok = el('h2', 'ok-title');
+    ok.innerHTML = iconSvg('ok');
+    ok.appendChild(el('span', '', 'เชื่อมต่อสำเร็จ'));
+    hello.appendChild(ok);
     var who = el('div', '', 'ผู้ใช้: ');
     var b = el('b', '', name);
     b.id = 'user-name';

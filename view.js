@@ -70,7 +70,7 @@
       (c ? '<span class="badge red">ยกเลิก</span>' : '<span class="badge">ออกแล้ว</span>') + '</div>' +
       '<div>' + esc(d.shop_legal_name || d.shop_short_name) + '</div>' +
       '<div class="small muted">' + formatThaiDate(d.doc_date) + ' · ' + esc(d.doc_type) + ' · <b class="num">' + formatMoney(d.total) + '</b> บาท</div>' +
-      (c ? '<div class="small" style="color:var(--red)">เหตุผลที่ยกเลิก: ' + esc(d.cancelled_reason) + '</div>' : '') + '</section>';
+      (c ? '<div class="small cancel-reason">เหตุผลที่ยกเลิก: ' + esc(d.cancelled_reason) + '</div>' : '') + '</section>';
   }
 
   function show(r, lib) {
@@ -87,9 +87,9 @@
     }
     view.innerHTML =
       '<div class="pdf-bar" id="pdf-bar"><div class="zoom">' +
-      '<button type="button" class="btn sm" id="zoom-out" aria-label="ย่อ">−</button><span id="zoom-label">พอดีจอ</span>' +
-      '<button type="button" class="btn sm" id="zoom-in" aria-label="ขยาย">＋</button></div><span class="grow"></span>' +
-      '<a class="btn sm primary" id="btn-download" href="' + esc(r.pdfUrl) + '" target="_blank" rel="noopener">ดาวน์โหลด / ส่งต่อ</a></div>' +
+      '<button type="button" class="btn sm" id="zoom-out" aria-label="ย่อ">' + iconSvg('minus') + '</button><span id="zoom-label">พอดีจอ</span>' +
+      '<button type="button" class="btn sm" id="zoom-in" aria-label="ขยาย">' + iconSvg('plus') + '</button></div><span class="grow"></span>' +
+      '<a class="btn sm primary" id="btn-download" href="' + esc(r.pdfUrl) + '" target="_blank" rel="noopener">' + iconSvg('download') + '<span>ดาวน์โหลด / ส่งต่อ</span></a></div>' +
       head(S.doc) + '<div class="pdf-pages" id="pages"></div>';
     $('btn-download').addEventListener('click', function (e) {
       if (LiffApp.openExternal(r.pdfUrl)) e.preventDefault(); // ในแอป LINE: เปิดเบราว์เซอร์ภายนอก (ดาวน์โหลด/แชร์ได้)
@@ -190,7 +190,7 @@
       if (LiffApp.isDenied(r.code) || r.code === 'token_expired' || r.code === 'no_token' || r.code === 'token_invalid') return LiffApp.showApiError(r, scr);
       btn.disabled = false;
       btn.textContent = 'สร้าง PDF ใหม่';
-      msg.innerHTML = '<div class="alert err" id="regen-error" style="margin-top:10px">' + esc(r.error || 'สร้าง PDF ไม่สำเร็จ') + '</div>';
+      msg.innerHTML = '<div class="alert err" id="regen-error" style="margin-top:10px">' + LiffApp.errorHtml(r.error || 'สร้าง PDF ไม่สำเร็จ') + '</div>';
       return;
     }
     LiffApp.toast('สร้าง PDF ของเอกสาร #' + no + ' แล้ว');
@@ -214,7 +214,7 @@
     build: function (s) {
       scr = s;
       s.root.innerHTML =
-        '<div class="topbar"><div class="row"><button type="button" class="btn ghost back hidden" id="btn-back-app" aria-label="กลับ">‹ กลับ</button>' +
+        '<div class="topbar"><div class="row"><button type="button" class="btn ghost back hidden" id="btn-back-app" aria-label="กลับ">' + iconSvg('back') + '<span>กลับ</span></button>' +
         '<h1 id="title" class="grow">ดู PDF</h1></div><div class="sub" id="subtitle">ใบกำกับภาษี</div></div>' +
         '<div id="view" aria-live="polite"></div>';
       view = $('view');

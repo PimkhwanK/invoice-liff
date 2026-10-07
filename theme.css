@@ -1,14 +1,47 @@
-/* theme.css — ธีมสีของทั้งระบบ (โทน "ครีมอบอุ่น") เก็บค่าสีไว้ที่นี่ที่เดียว (รอบ 6 ข้อ 3)
- * ตอนนี้ใช้เฉพาะหน้า "ไม่มีสิทธิ์ใช้งาน" (.denied ด้านล่าง) — หน้าอื่นจะเปลี่ยนมาใช้ตัวแปรเหล่านี้ในข้อ 4
- * ทุกหน้า LIFF โหลดไฟล์นี้หลังสไตล์หลักของหน้า */
+/* theme.css — ธีมสีของทั้งระบบ (โทน "ครีมอบอุ่น") เก็บค่าสีไว้ที่นี่ที่เดียว (รอบ 6 ข้อ 3 / ข้อ 4)
+ * ไฟล์อื่นใน liff-site ห้ามเขียนรหัสสีเอง ใช้ var(--theme-…) เท่านั้น (มี test ตรวจ)
+ * การ์ดในแชท (BOT_THEME ใน gas/LineBot.gs) และรูป Rich Menu (scripts/make-richmenu.js อ่านไฟล์นี้) ใช้ค่าชุดเดียวกัน
+ * คู่สีตัวหนังสือ/พื้น ผ่านเกณฑ์ความคมชัด WCAG AA (≥ 4.5:1) — test วัดจากหน้าจอจริงทุกหน้า */
 :root {
-  --theme-primary: #9A6248;      /* สีหลัก */
-  --theme-accent: #7FA393;       /* สีเน้น */
-  --theme-bg: #FAF7F2;           /* พื้นหลัง */
+  --theme-primary: #9A6248;      /* สีหลัก: ปุ่มหลัก ตัวเลือกที่เลือก แท็บที่เลือก ลิงก์ (ตัวหนังสือขาวบนสีนี้ 5.0:1) */
+  --theme-primary-dark: #7D4C37; /* สีหลักตอนกด / ตัวหนังสือสีหลักบนพื้นอ่อน */
+  --theme-primary-soft: #F4EAE3; /* พื้นอ่อนของสีหลัก (ความคืบหน้า ตอนกด) */
+  --theme-on-primary: #FFFFFF;   /* ตัวหนังสือ/ไอคอนบนพื้นสีหลัก (และสีทึบอื่น ๆ) */
+  --theme-accent: #7FA393;       /* สีเน้น (ตกแต่งเท่านั้น ไม่ใช้เป็นสีตัวหนังสือ) */
+  --theme-bg: #FAF7F2;           /* พื้นหลังหน้า (ครีม) */
+  --theme-card: #FFFFFF;         /* การ์ด / แผ่น / แถบ */
   --theme-text: #3A332D;         /* ตัวหนังสือหลัก */
   --theme-text-2: #6B625A;       /* ตัวหนังสือรอง */
+  --theme-line: #E8E0D6;         /* เส้นคั่น */
+  --theme-field-border: #CDBFB1; /* กรอบช่องกรอก / ปุ่มรอง */
+  --theme-field-off: #F1ECE6;    /* ช่องที่กรอกไม่ได้ */
+  --theme-pressed: #F3EEE8;      /* แถว/ปุ่มตอนกด */
   --theme-badge-bg: #E3ECE7;     /* ป้ายสีเน้น: พื้น */
   --theme-badge-text: #3F5A4D;   /* ป้ายสีเน้น: ตัวหนังสือ */
+
+  /* ความหมาย: สำเร็จ / เตือน / ผิดพลาด / ยกเลิก / ทั่วไป (พื้นอ่อน + ตัวหนังสือเข้ม + เส้นกรอบ) */
+  --theme-ok-bg: #EAF1EC;
+  --theme-ok-text: #3F5A4D;
+  --theme-ok-border: #C9DBD0;
+  --theme-warn-bg: #FBF2DF;
+  --theme-warn-text: #7A5212;
+  --theme-warn-border: #EBD6A8;
+  --theme-err-bg: #FBEBE7;
+  --theme-err-text: #A8291F;     /* ผิดพลาด (แดง) — ปุ่มยืนยันยกเลิกใช้สีนี้เป็นพื้น */
+  --theme-err-border: #EFC6BE;
+  --theme-cancel-bg: #F6E5EA;    /* เอกสารที่ยกเลิก (ชมพูหม่น แยกจากข้อผิดพลาด) */
+  --theme-cancel-text: #8A2F4D;
+  --theme-neutral-bg: #EFEAE4;   /* ป้ายทั่วไป เช่น ปิด / เลิกขาย */
+  --theme-neutral-text: #5E564F;
+
+  --theme-toast-bg: #3A332D;
+  --theme-overlay: rgba(58, 51, 45, .45);
+  --theme-shadow: 0 1px 2px rgba(58, 51, 45, .06), 0 2px 10px rgba(58, 51, 45, .05);
+  --theme-shadow-up: 0 -4px 16px rgba(58, 51, 45, .06);
+  --theme-shadow-pop: 0 4px 16px rgba(58, 51, 45, .25);
+  --theme-page-shadow: 0 1px 4px rgba(58, 51, 45, .22);
+  --theme-pdf-bg: #E9E3DA;       /* พื้นหลังหน้าดู PDF */
+  --theme-debug-bg: rgba(58, 51, 45, .92);
 }
 
 /* ---------- หน้า "ไม่มีสิทธิ์ใช้งาน" (LiffApp.showDenied ใน common.js) ----------
@@ -17,15 +50,16 @@ body.denied-mode, body.denied-mode .wrap { background: var(--theme-bg); }
 body.denied-mode .topbar, body.denied-mode header.top, body.denied-mode #tabs, body.denied-mode #totalbar, body.denied-mode #tabbar { display: none !important; }
 
 .denied {
-  margin: 32px 16px; padding: 24px 20px; border-radius: 16px; background: #fff;
-  box-shadow: 0 1px 2px rgba(58, 51, 45, .06), 0 4px 16px rgba(58, 51, 45, .06);
+  margin: 32px 16px; padding: 24px 20px; border-radius: 16px; background: var(--theme-card);
+  box-shadow: var(--theme-shadow);
   color: var(--theme-text); text-align: center; font-family: 'Sarabun', system-ui, sans-serif;
 }
-.denied .icon {
+.denied > .icon {
   width: 56px; height: 56px; margin: 0 auto 12px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center; font-size: 28px;
   background: var(--theme-badge-bg); color: var(--theme-badge-text); border: 2px solid var(--theme-accent);
 }
+.denied > .icon svg { width: 28px; height: 28px; stroke-width: 2; }
 .denied h2 { margin: 0 0 6px; font-size: 20px; color: var(--theme-text); }
 .denied p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--theme-text-2); }
 .denied .who { margin: 18px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--theme-bg); text-align: left; }
@@ -37,16 +71,16 @@ body.denied-mode .topbar, body.denied-mode header.top, body.denied-mode #tabs, b
 }
 .denied .actions { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
 .denied .btn-theme {
-  display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px;
-  font: inherit; font-size: 16px; font-weight: 700; border-radius: 12px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 48px;
+  font: inherit; font-size: 16px; font-weight: 700; border-radius: 12px; cursor: pointer; margin: 0;
   border: 1px solid var(--theme-primary);
 }
-.denied .btn-theme.primary { background: var(--theme-primary); color: #fff; }
-.denied .btn-theme.secondary { background: #fff; color: var(--theme-primary); }
+.denied .btn-theme.primary { background: var(--theme-primary); color: var(--theme-on-primary); }
+.denied .btn-theme.secondary { background: var(--theme-card); color: var(--theme-primary); }
 .denied .btn-theme:disabled { opacity: .6; cursor: default; }
 .denied .msg { margin-top: 12px; font-size: 14px; min-height: 1.5em; }
-.denied .msg.ok { color: var(--theme-badge-text); }
-.denied .msg.err { color: var(--theme-primary); }
+.denied .msg.ok { color: var(--theme-ok-text); }
+.denied .msg.err { color: var(--theme-err-text); }
 .denied .badge-theme {
   display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
   background: var(--theme-badge-bg); color: var(--theme-badge-text);

@@ -117,8 +117,8 @@
       '  <h2>รายการสินค้า <span class="count" id="line-count"></span></h2>' +
       '  <div id="lines"></div>' +
       '  <div class="row" style="margin-top:10px">' +
-      '    <button type="button" class="btn block grow" id="btn-add">＋ เพิ่มสินค้า</button>' +
-      '    <button type="button" class="btn" id="btn-copy" title="คัดลอกรายการจากบิลเก่าของร้านนี้">⧉ คัดลอกจากบิลเก่า</button>' +
+      '    <button type="button" class="btn block grow" id="btn-add">' + iconSvg('plus') + '<span>เพิ่มสินค้า</span></button>' +
+      '    <button type="button" class="btn" id="btn-copy" title="คัดลอกรายการจากบิลเก่าของร้านนี้">' + iconSvg('copy') + '<span>คัดลอกจากบิลเก่า</span></button>' +
       '  </div>' +
       '</section>';
 
@@ -180,7 +180,7 @@
     var box = $('shop-box');
     $('btn-copy').disabled = !S.shop;
     if (!S.shop) {
-      box.innerHTML = '<button type="button" class="btn block" id="btn-shop">🔍 เลือกร้านค้า</button>';
+      box.innerHTML = '<button type="button" class="btn block" id="btn-shop">' + iconSvg('search') + '<span>เลือกร้านค้า</span></button>';
       box.querySelector('#btn-shop').addEventListener('click', openShopPicker);
       return;
     }
@@ -241,7 +241,7 @@
       return '<div class="line' + (l.is_free ? ' free' : '') + '" data-key="' + l.key + '">' +
         '<div class="head"><div class="t"><div class="n">' + (i + 1) + '. ' + esc(l.name) + '</div>' +
         '<div class="b">' + esc(l.barcode) + ' · ราคาตั้งต้น ' + money(l.list_price) + '/' + esc(l.unit) + '</div></div>' +
-        '<button type="button" class="x" data-act="del" aria-label="ลบบรรทัด">✕</button></div>' +
+        '<button type="button" class="x" data-act="del" aria-label="ลบบรรทัด">' + iconSvg('x') + '</button></div>' +
         '<div class="grid">' +
         '<div><label>จำนวน (' + esc(l.unit) + ')</label><input type="number" inputmode="decimal" class="num" data-f="qty" min="0" step="any" value="' + esc(l.qty) + '"></div>' +
         '<div><label>ราคา/หน่วย</label><input type="number" inputmode="decimal" class="num" data-f="price" min="0" step="any" value="' + esc(l.is_free ? 0 : l.price) + '"' + (l.is_free ? ' disabled' : '') + '></div>' +
@@ -338,7 +338,7 @@
     var body = s.el.querySelector('.body');
     if (!AppData.shopComplete(S.shop.shop_id)) LiffApp.loading('กำลังโหลดบิลเก่าของร้านนี้…', body);
     var r = await AppData.loadShopDocs(S.shop.shop_id); // มีในแอปครบแล้ว → ไม่เรียกเซิร์ฟเวอร์
-    if (!r.ok) { body.innerHTML = '<div class="alert err">' + esc(r.error) + '</div>'; return; }
+    if (!r.ok) { body.innerHTML = '<div class="alert err">' + LiffApp.errorHtml(r.error) + '</div>'; return; }
     r = { documents: r.documents.slice(0, 20) };
     if (!r.documents.length) { body.innerHTML = '<div class="empty" id="copy-empty">ร้านนี้ยังไม่มีบิลเก่า</div>'; return; }
     body.innerHTML = '<p class="small muted" style="margin-top:0">เลือกบิลเพื่อดึงรายการสินค้า จำนวน ราคา ส่วนลด และของแถม มาใส่ในฟอร์ม</p><ul class="list pick-list" id="copy-list">' +
@@ -443,7 +443,7 @@
       '<div class="small muted right">(' + esc(bahtText(t.total)) + ')</div></div></section>' +
       '<div class="card" style="background:transparent;box-shadow:none;padding:0 0 24px">' +
       '<div id="confirm-msg"></div>' +
-      '<div class="row"><button type="button" class="btn grow" id="btn-back">‹ แก้ไข</button>' +
+      '<div class="row"><button type="button" class="btn grow" id="btn-back">' + iconSvg('back') + '<span>แก้ไข</span></button>' +
       '<button type="button" class="btn primary grow" id="btn-confirm"' + (r.errors.length ? ' disabled' : '') + '>ยืนยันออกเอกสาร</button></div></div>';
 
     $('btn-back').addEventListener('click', function () { showForm(); scrollTop(); });
@@ -502,7 +502,7 @@
         btn.disabled = true; // ต้องกลับไปแก้/ตรวจใหม่ก่อน
         refreshInBackground(); // ข้อมูลที่จำไว้อาจเก่า → ดึงใหม่ให้รอบตรวจถัดไป
       }
-      msg.innerHTML = '<div class="alert err" id="confirm-error" style="margin-bottom:10px">' + esc(r.error || 'ออกเอกสารไม่สำเร็จ').replace(/\n/g, '<br>') + '</div>';
+      msg.innerHTML = '<div class="alert err" id="confirm-error" style="margin-bottom:10px">' + LiffApp.errorHtml(r.error || 'ออกเอกสารไม่สำเร็จ') + '</div>';
       if (r.code === 'token_expired') {
         var re = LiffApp.el('<button type="button" class="btn block" style="margin-bottom:10px">เข้าสู่ระบบใหม่</button>');
         re.addEventListener('click', LiffApp.relogin.run);
@@ -596,14 +596,14 @@
       try {
         await liff.sendMessages([{ type: 'text', text: 'บิล ' + r.docNo }]);
       } catch (e) {
-        showSuccess(r, 'ส่งข้อความเข้าแชทไม่สำเร็จ — พิมพ์ "บิล ' + r.docNo + '" ในแชท OA เพื่อดูการ์ดเอกสาร');
+        showSuccess(r, 'ส่งข้อความเข้าแชทไม่สำเร็จ — พิมพ์ "บิล ' + r.docNo + '" ในแชท LINE เพื่อดูการ์ดเอกสาร');
         return;
       }
       showSuccess(r, 'ส่ง "บิล ' + r.docNo + '" เข้าแชทแล้ว กำลังปิดหน้า…');
       liff.closeWindow();
       return;
     }
-    showSuccess(r, 'เปิดนอกแอป LINE จึงไม่ได้ส่งข้อความเข้าแชท — พิมพ์ "บิล ' + r.docNo + '" ในแชท OA เพื่อดูการ์ดเอกสาร');
+    showSuccess(r, 'เปิดนอกแอป LINE จึงไม่ได้ส่งข้อความเข้าแชท — พิมพ์ "บิล ' + r.docNo + '" ในแชท LINE เพื่อดูการ์ดเอกสาร');
   }
 
   function showSuccess(r, note) {
@@ -612,14 +612,14 @@
     $('title').textContent = 'ออกเอกสารสำเร็จ';
     $('subtitle').textContent = '';
     view.innerHTML =
-      '<div class="success" id="success"><div class="check">✓</div><div class="muted">เลขที่เอกสาร</div><div class="no" id="success-no">#' + esc(r.docNo) + '</div>' +
+      '<div class="success" id="success"><div class="check">' + iconSvg('check') + '</div><div class="muted">เลขที่เอกสาร</div><div class="no" id="success-no">#' + esc(r.docNo) + '</div>' +
       '<div>' + esc(r.legalName || (S.shop && S.shop.legal_name) || '') + '</div><div class="num" style="font-size:20px;font-weight:700;margin-top:4px">' + money(r.total) + ' บาท</div></div>' +
       (r.duplicate ? '<div class="card alert warn">คำขอนี้เคยออกเอกสารไปแล้ว จึงแสดงเลขที่เดิม (ไม่ได้ออกเลขใหม่)</div>' : '') +
       (r.warnings && r.warnings.length ? '<div class="card alert warn"><ul style="margin:0">' + r.warnings.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></div>' : '') +
       '<div class="card alert ok" id="success-note">' + esc(note) + '</div>' +
       '<div class="card stack">' +
       (r.pdfUrl
-        ? '<a class="btn block" id="btn-pdf" href="' + esc(r.pdfUrl) + '" target="_blank" rel="noopener">📄 เปิด PDF</a>'
+        ? '<a class="btn block" id="btn-pdf" href="' + esc(r.pdfUrl) + '" target="_blank" rel="noopener">' + iconSvg('file') + '<span>เปิด PDF</span></a>'
         : '<div class="small muted" id="no-pdf">ยังไม่มี PDF — สร้างภายหลังได้ที่เมนู "ประวัติเอกสาร" (ปุ่ม "สร้าง PDF ใหม่")</div>') +
       '<button type="button" class="btn primary block" id="btn-new">ออกบิลใหม่</button>' +
       '</div>';
@@ -639,7 +639,7 @@
         '<div class="totalbar hidden" id="totalbar"><div class="inner"><div class="sums num">' +
         '<div>ก่อน VAT <span id="t-net">0.00</span> · VAT <span id="t-vat">0.00</span></div>' +
         '<div>รวมทั้งสิ้น <b id="t-total">0.00</b></div></div>' +
-        '<button type="button" class="btn primary" id="btn-review">ตรวจสอบ ›</button></div></div>';
+        '<button type="button" class="btn primary" id="btn-review"><span>ตรวจสอบ</span>' + iconSvg('next') + '</button></div></div>';
       view = $('view');
       totalbar = $('totalbar');
       $('btn-review').addEventListener('click', showReview);

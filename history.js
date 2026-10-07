@@ -86,7 +86,7 @@
       var st = AppData.shopStat(s.shop_id);
       return '<li class="tap shop-row" data-id="' + esc(s.shop_id) + '"><div class="t"><div class="n">' + esc(s.short_name) +
         (s.active ? '' : ' <span class="badge gray">ปิด</span>') + '</div><div class="s">' + esc(s.legal_name) + '</div></div>' +
-        '<div class="c"><b class="num" style="color:var(--ink)">' + st.count + '</b> ใบ' +
+        '<div class="c"><b class="num">' + st.count + '</b> ใบ' +
         (st.count && st.lastDate ? '<br>ล่าสุด ' + formatThaiDate(st.lastDate) : '') + '</div></li>';
     }).join('') : '<li class="empty">ไม่พบร้านที่ค้นหา</li>';
   }
@@ -118,7 +118,7 @@
       if (current !== shop || !$('shop-docs')) return; // เปลี่ยนร้านไปแล้ว
       if (r.ok) return drawDocs(r.documents);
       if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
-      $('shop-docs').innerHTML = '<div class="alert err" id="docs-error">' + esc(r.error || 'โหลดเอกสารไม่สำเร็จ') + '</div>' +
+      $('shop-docs').innerHTML = '<div class="alert err" id="docs-error">' + LiffApp.errorHtml(r.error || 'โหลดเอกสารไม่สำเร็จ') + '</div>' +
         '<button type="button" class="btn block" id="docs-retry" style="margin-top:10px">ลองใหม่</button>';
     });
   }
@@ -151,7 +151,7 @@
 
   /** ปุ่ม "ดู PDF" → หน้าจอ view (ดูในแอป LINE ก่อน มีปุ่มดาวน์โหลด / ส่งต่อในหน้านั้น) */
   function pdfActs(no) {
-    return '<div class="acts"><a class="btn sm" data-pdf href="view?no=' + encodeURIComponent(no) + '">📄 ดู PDF</a></div>';
+    return '<div class="acts"><a class="btn sm" data-pdf href="view?no=' + encodeURIComponent(no) + '">' + iconSvg('file') + '<span>ดู PDF</span></a></div>';
   }
 
   function docRow(d) {

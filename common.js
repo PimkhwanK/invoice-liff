@@ -35,15 +35,48 @@ var LiffApp = (function () {
     if (hooks.timing) { try { hooks.timing(name, ms); } catch (e) { /* ไม่เป็นไร */ } }
   }
 
+  /**
+   * รอบ 6 ข้อ 4: ระบบตั้งค่าไม่ครบ/ผิด → ขึ้นต้นด้วยประโยคนี้เสมอ แล้วรายละเอียดทางเทคนิคเป็นตัวเล็กด้านล่าง (detail)
+   * เซิร์ฟเวอร์ (Api.gs API_SETUP) ส่งรูปแบบเดียวกัน: "<ประโยคนี้>\n<รายละเอียด>" → splitSetup แยกให้
+   */
+  var SETUP = 'ระบบยังตั้งค่าไม่ครบ กรุณาแจ้งผู้ดูแลระบบ';
+  var FOR_ADMIN = 'รายละเอียดสำหรับผู้ดูแลระบบ: ';
+  var NL = String.fromCharCode(10);
+
   var MSG = {
-    notConfigured: { title: 'ยังไม่ได้ตั้งค่า', text: 'ยังไม่ได้ใส่ LIFF_ID หรือ API_URL ในไฟล์ config.js' },
-    sdk: { title: 'เชื่อมต่อไม่ได้', text: 'โหลดระบบของ LINE ไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่' },
-    init: { title: 'เปิดหน้าไม่สำเร็จ', text: 'เริ่มต้น LINE ไม่ได้ (LIFF ID อาจไม่ถูกต้อง หรือเชื่อมต่อไม่ได้)' },
-    noToken: { title: 'ยืนยันตัวตนไม่ได้', text: 'ไม่ได้รับข้อมูลยืนยันตัวตนจาก LINE (LIFF app ต้องเปิด scope openid) ลองปิดแล้วเปิดหน้านี้ใหม่' },
-    network: { title: 'เชื่อมต่อไม่ได้', text: 'ติดต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่' },
-    http: { title: 'เชื่อมต่อไม่ได้', text: 'เซิร์ฟเวอร์ตอบกลับผิดปกติ กรุณาลองใหม่อีกครั้ง' },
-    badResponse: { title: 'เชื่อมต่อไม่ได้', text: 'เซิร์ฟเวอร์ตอบกลับไม่ใช่ข้อมูลที่ระบบเข้าใจ (ตรวจ API_URL และการตั้งค่า Web app ให้ผู้ใช้เป็น Anyone)' }
+    notConfigured: { title: SETUP, text: '', detail: FOR_ADMIN + 'ยังไม่ได้ใส่ LIFF_ID หรือ API_URL ในไฟล์ config.js' },
+    sdk: { title: 'เชื่อมต่อไม่ได้', text: 'โหลดระบบของ LINE ไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วกด "ลองใหม่"' },
+    init: {
+      title: 'เปิดหน้าไม่สำเร็จ', text: 'ตรวจสอบอินเทอร์เน็ตแล้วกด "ลองใหม่" ถ้ายังเปิดไม่ได้ กรุณาแจ้งผู้ดูแลระบบ',
+      detail: FOR_ADMIN + 'liff.init ไม่สำเร็จ (LIFF_ID ใน config.js อาจไม่ถูกต้อง)'
+    },
+    noToken: { title: SETUP, text: '', detail: FOR_ADMIN + 'ไม่ได้รับ ID token จาก LINE — LIFF app ต้องเปิด scope openid' },
+    network: { title: 'เชื่อมต่อไม่ได้', text: 'ติดต่อระบบไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วกด "ลองใหม่"' },
+    http: { title: 'เชื่อมต่อไม่ได้', text: 'ระบบตอบกลับผิดปกติ กรุณากด "ลองใหม่" อีกครั้ง' },
+    badResponse: {
+      title: SETUP, text: '',
+      detail: FOR_ADMIN + 'คำตอบไม่ใช่ข้อมูลของระบบ — ตรวจ API_URL ใน config.js และ Web app ต้องตั้ง Who has access เป็น Anyone'
+    }
   };
+  /** ข้อความของคำตอบ (r.error) จาก MSG — แบบตั้งค่าไม่ครบ = ประโยคหลัก + ขึ้นบรรทัด + รายละเอียด */
+  function msgText(m) { return m.title === SETUP ? SETUP + NL + m.detail : m.text; }
+
+  /** "ระบบยังตั้งค่าไม่ครบ…\nรายละเอียด" → { detail } / ข้อความอื่น → null */
+  function splitSetup(text) {
+    text = String(text == null ? '' : text);
+    if (text.indexOf(SETUP) !== 0) return null;
+    return { detail: text.slice(SETUP.length).replace(/^\s+/, '') };
+  }
+
+  /**
+   * ข้อความผิดพลาดในกล่องเล็ก (.alert) เป็น HTML: ตั้งค่าไม่ครบ → ประโยคหลักตัวหนา + รายละเอียดตัวเล็ก / อื่น ๆ → ขึ้นบรรทัดตาม \n
+   * (รหัส E-xxxx ในข้อความขัดข้องอยู่ในข้อความเดิม)
+   */
+  function errorHtml(text) {
+    var s = splitSetup(text);
+    if (s) return '<b>' + esc(SETUP) + '</b>' + (s.detail ? '<div class="detail">' + esc(s.detail) + '</div>' : '');
+    return esc(text).split(NL).join('<br>');
+  }
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -85,7 +118,13 @@ var LiffApp = (function () {
     var card = el('<section class="card alert err" id="error"><h2></h2><p></p></section>');
     if (code) card.setAttribute('data-code', code);
     card.querySelector('h2').textContent = m.title;
-    card.querySelector('p').textContent = m.text;
+    if (m.text) card.querySelector('p').textContent = m.text;
+    else card.querySelector('p').remove();
+    if (m.detail) { // รายละเอียดทางเทคนิค ตัวเล็ก (ผู้ใช้ทั่วไปไม่ต้องอ่าน ส่งต่อให้ผู้ดูแลได้)
+      var d = el('<div class="detail" id="error-detail"></div>');
+      d.textContent = m.detail;
+      card.appendChild(d);
+    }
     if (m.hint) {
       var h = el('<p class="small"></p>');
       h.textContent = m.hint;
@@ -240,14 +279,14 @@ var LiffApp = (function () {
         cache: 'no-store'
       });
     } catch (e) {
-      return { ok: false, code: 'network', error: MSG.network.text };
+      return { ok: false, code: 'network', error: msgText(MSG.network) };
     }
-    if (!res.ok) return { ok: false, code: 'http', error: MSG.http.text };
+    if (!res.ok) return { ok: false, code: 'http', error: msgText(MSG.http) };
     try {
       var data = await res.json();
-      return data && typeof data === 'object' ? data : { ok: false, code: 'bad_response', error: MSG.badResponse.text };
+      return data && typeof data === 'object' ? data : { ok: false, code: 'bad_response', error: msgText(MSG.badResponse) };
     } catch (e) {
-      return { ok: false, code: 'bad_response', error: MSG.badResponse.text };
+      return { ok: false, code: 'bad_response', error: msgText(MSG.badResponse) };
     }
   }
 
@@ -266,6 +305,9 @@ var LiffApp = (function () {
       return showError({ title: 'ยืนยันตัวตนไม่ได้', text: 'ยืนยันตัวตนกับ LINE ไม่สำเร็จ กรุณาปิดหน้านี้แล้วเปิดใหม่จากแชท LINE' }, relogin, r.code, scr);
     }
     if (r.code === 'token_expired') return showError({ title: 'การเข้าสู่ระบบหมดอายุ', text: r.error }, relogin, r.code, scr);
+    // ตั้งค่าไม่ครบ (code config หรือข้อความแบบ API_SETUP) — เซิร์ฟเวอร์รุ่นเก่าส่งข้อความเดิม → ทั้งข้อความเป็นรายละเอียด
+    var s = splitSetup(r.error);
+    if (s || r.code === 'config') return showError({ title: SETUP, text: '', detail: s ? s.detail : (r.error || '') }, reload, r.code, scr);
     return showError({ title: 'เกิดข้อผิดพลาด', text: r.error || 'กรุณาลองใหม่อีกครั้ง' }, reload, r.code, scr);
   }
 
@@ -299,9 +341,8 @@ var LiffApp = (function () {
     var disabled = code === 'disabled';
     var card = el('<section class="denied" id="error" role="alert"><div class="icon" aria-hidden="true"></div><h2></h2><p></p></section>');
     card.setAttribute('data-code', disabled ? 'disabled' : 'not_registered');
-    // ไอคอนเส้น (สีตามธีม currentColor) แทนอีโมจิที่สีไม่เข้ากับธีม: กุญแจล็อก / หยุดชั่วคราว
-    card.querySelector('.icon').innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-      (disabled ? '<circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/>' : '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>') + '</svg>';
+    // ไอคอนเส้นจาก icons.js (สีตามธีม currentColor): กุญแจล็อก / หยุดชั่วคราว
+    card.querySelector('.icon').innerHTML = iconSvg(disabled ? 'pause' : 'lock');
     card.querySelector('h2').textContent = disabled ? 'บัญชีนี้ถูกปิดการใช้งาน' : 'ยังไม่ได้รับสิทธิ์ใช้งาน';
     card.querySelector('p').textContent = disabled ? 'กรุณาติดต่อผู้ดูแลระบบ' : 'ส่งรหัสด้านล่างให้ผู้ดูแลระบบ เพื่อเปิดสิทธิ์ใช้งาน';
     if (!disabled) addRequest(card, lineIdentity());
@@ -325,7 +366,7 @@ var LiffApp = (function () {
     var msg = el('<div class="msg" id="denied-msg" role="status"></div>');
     function say(text, ok) { msg.textContent = text; msg.className = 'msg ' + (ok ? 'ok' : 'err'); }
     if (canShare()) {
-      var share = el('<button type="button" class="btn-theme primary" id="btn-share-id">ส่งรหัสให้ผู้ดูแล</button>');
+      var share = el('<button type="button" class="btn-theme primary" id="btn-share-id">' + iconSvg('send') + '<span>ส่งรหัสให้ผู้ดูแล</span></button>');
       share.addEventListener('click', async function () {
         share.disabled = true;
         try {
@@ -339,7 +380,7 @@ var LiffApp = (function () {
       });
       actions.appendChild(share);
     }
-    var copy = el('<button type="button" class="btn-theme secondary" id="btn-copy-id">คัดลอกรหัส</button>');
+    var copy = el('<button type="button" class="btn-theme secondary" id="btn-copy-id">' + iconSvg('copy') + '<span>คัดลอกรหัส</span></button>');
     copy.addEventListener('click', async function () {
       try {
         if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('no clipboard');
@@ -413,7 +454,7 @@ var LiffApp = (function () {
   /** แผ่นเลื่อนขึ้น คืน {el, close} */
   function sheet(title, bodyHtml, footerHtml) {
     var back = el('<div class="sheet-back"><div class="sheet" role="dialog" aria-modal="true">' +
-      '<header><h2></h2><button type="button" class="btn ghost" data-close aria-label="ปิด">✕</button></header>' +
+      '<header><h2></h2><button type="button" class="btn ghost" data-close aria-label="ปิด">' + iconSvg('x') + '</button></header>' +
       '<div class="body"></div>' + (footerHtml ? '<footer></footer>' : '') + '</div></div>');
     back.querySelector('h2').textContent = title;
     back.querySelector('.body').innerHTML = bodyHtml;
@@ -443,6 +484,7 @@ var LiffApp = (function () {
     isDenied: isDenied, isAuthFail: isAuthFail, showDenied: showDenied, accessRequestText: accessRequestText,
     inClient: inClient, relogin: relogin, toast: toast, uuid: uuid, sheet: sheet, closeSheets: closeSheets, esc: esc, el: el, loading: loading,
     syncing: syncing, setScope: setScope, find: find, hooks: hooks,
-    openExternal: openExternal, remember: remember, keep: keep, forget: forget, drop: drop
+    openExternal: openExternal, remember: remember, keep: keep, forget: forget, drop: drop,
+    MSG: MSG, SETUP: SETUP, splitSetup: splitSetup, errorHtml: errorHtml
   };
 })();

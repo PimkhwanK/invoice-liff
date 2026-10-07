@@ -25,7 +25,7 @@
     render();
   }
 
-  function errText(msg) { return esc(msg).replace(/\n/g, '<br>'); }
+  function errText(msg) { return LiffApp.errorHtml(msg); }
 
   /** ข้อผิดพลาดจากเซิร์ฟเวอร์: ไม่มีสิทธิ์ / หมดอายุ → เต็มหน้า, อื่น ๆ → คืน true ให้ผู้เรียกแสดงเอง */
   function fatal(r) {
@@ -78,7 +78,7 @@
   function renderShops(r) {
     var rows = r.shops;
     view.innerHTML = '<section class="card"><div class="toolbar"><input type="search" id="q" placeholder="ค้นหาร้าน" autocomplete="off">' +
-      '<button type="button" class="btn primary" id="add">＋ เพิ่มร้าน</button></div><ul class="list" id="list"></ul></section>';
+      '<button type="button" class="btn primary" id="add">' + iconSvg('plus') + '<span>เพิ่มร้าน</span></button></div><ul class="list" id="list"></ul></section>';
     var q = $('q');
     function draw() {
       var list = searchShops(rows, q.value);
@@ -105,7 +105,7 @@
       return '<div class="field"><label class="f" for="f-' + key + '">' + label + '</label><input type="' + (type || 'text') + '" id="f-' + key + '" value="' + esc(s[key]) + '"' + (extra || '') + '></div>';
     };
     var sh = LiffApp.sheet(shop ? 'แก้ไขร้าน #' + shop.shop_id : 'เพิ่มร้านใหม่',
-      (shop ? '<div class="alert warn small" style="margin-bottom:10px">แก้แล้วมีผลกับเอกสารใหม่เท่านั้น เอกสารเก่ายังใช้ข้อมูล ณ วันที่ออก (snapshot)</div>' : '') +
+      (shop ? '<div class="alert warn small" style="margin-bottom:10px">แก้แล้วมีผลกับเอกสารใหม่เท่านั้น เอกสารเก่ายังใช้ข้อมูล ณ วันที่ออกเหมือนเดิม</div>' : '') +
       f('short_name', 'ชื่อร้านค้า (ชื่อย่อ ใช้ค้นหา)') +
       f('legal_name', 'ชื่อเต็มตามใบกำกับ') +
       '<div class="field"><label class="f" for="f-address">ที่อยู่ (บรรทัดเดียว)</label><textarea id="f-address" rows="3">' + esc(s.address) + '</textarea><div class="hint" id="addr-preview"></div></div>' +
@@ -147,7 +147,7 @@
   function renderProducts(r) {
     var rows = r.products;
     view.innerHTML = '<section class="card"><div class="toolbar"><input type="search" id="q" placeholder="ค้นหาสินค้า" autocomplete="off">' +
-      '<button type="button" class="btn primary" id="add">＋ เพิ่มสินค้า</button></div><ul class="list" id="list"></ul></section>';
+      '<button type="button" class="btn primary" id="add">' + iconSvg('plus') + '<span>เพิ่มสินค้า</span></button></div><ul class="list" id="list"></ul></section>';
     var q = $('q');
     function draw() {
       var term = q.value.trim().toLowerCase();
@@ -172,7 +172,7 @@
     var v = p || { barcode: '', name: '', unit: 'ลัง', price: '', active: true };
     var sh = LiffApp.sheet(p ? 'แก้ไขสินค้า' : 'เพิ่มสินค้าใหม่',
       '<div class="field"><label class="f" for="p-barcode">บาร์โค้ดลัง</label><input type="text" id="p-barcode" inputmode="numeric" value="' + esc(v.barcode) + '"' + (p ? ' disabled' : '') + '>' +
-      (p ? '<div class="hint">บาร์โค้ดเป็นคีย์หลัก แก้ไม่ได้</div>' : '') + '</div>' +
+      (p ? '<div class="hint">แก้บาร์โค้ดไม่ได้ (ใช้ระบุสินค้า) ถ้าบาร์โค้ดผิด ให้เพิ่มสินค้าใหม่แล้วปิด "ยังขายอยู่" ของอันเดิม</div>' : '') + '</div>' +
       '<div class="field"><label class="f" for="p-name">รายการสินค้า</label><input type="text" id="p-name" value="' + esc(v.name) + '"></div>' +
       '<div class="two"><div><label class="f" for="p-unit">หน่วย</label><input type="text" id="p-unit" value="' + esc(v.unit) + '" list="units"></div>' +
       '<div><label class="f" for="p-price">ราคา (รวม VAT)</label><input type="number" id="p-price" class="num" min="0" step="any" inputmode="decimal" value="' + esc(v.price) + '"></div></div>' +
@@ -216,7 +216,7 @@
       $('list').innerHTML = r.documents.filter(function (d) { return !term || String(d.doc_no).indexOf(term) >= 0; }).map(function (d) {
         return '<li class="item" data-no="' + d.doc_no + '"><div class="t"><div class="n">#' + d.doc_no + ' · ' + esc(d.shop_short_name) + '</div>' +
           '<div class="s">' + formatThaiDate(d.doc_date) + ' · ' + formatMoney(d.total) + ' บาท</div></div>' +
-          (d.hasPdf ? '<a class="btn sm" href="view?no=' + d.doc_no + '">PDF</a>' : '<span class="badge amber">ไม่มี PDF</span>') +
+          (d.hasPdf ? '<a class="btn sm" href="view?no=' + d.doc_no + '">' + iconSvg('file') + '<span>PDF</span></a>' : '<span class="badge amber">ไม่มี PDF</span>') +
           '<button type="button" class="btn sm danger" data-cancel="' + d.doc_no + '">ยกเลิก</button></li>';
       }).join('') || '<li class="empty">ไม่มีเอกสารที่ยกเลิกได้</li>';
     }
