@@ -187,5 +187,6 @@
     render(r.name, r.shops || [], r.products || []);
   }
 
-  start();
+  // เริ่มจากตัวตรวจท้าย check.html (ตรวจว่าไฟล์โหลดครบก่อน)
+  window.CheckApp = { start: start };
 })();

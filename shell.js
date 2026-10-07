@@ -29,6 +29,8 @@ var Shell = (function () {
   tabbar.querySelectorAll('i[data-icon]').forEach(function (i) { i.outerHTML = iconSvg(i.getAttribute('data-icon')); });
 
   function define(name, def) { defs[name] = def; }
+  /** หน้าจอนี้ลงทะเบียนแล้ว (ไฟล์ของหน้าจอโหลดสำเร็จ — ตัวตรวจท้ายหน้าใช้) */
+  function has(name) { return !!defs[name]; }
 
   // ---------- เส้นทาง
 
@@ -273,7 +275,7 @@ var Shell = (function () {
   }
 
   return {
-    define: define, go: go, back: back, canBack: canBack, setParams: setParams, drawn: drawn, isCurrent: isCurrent,
+    define: define, has: has, go: go, back: back, canBack: canBack, setParams: setParams, drawn: drawn, isCurrent: isCurrent,
     scrollTop: scrollTop, boot: boot, debug: Debug
   };
 })();

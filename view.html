@@ -38,6 +38,54 @@
 <script src="history.js"></script>
 <script src="manage.js"></script>
 <script src="view.js"></script>
-<script>Shell.boot();</script>
+<script>
+  // ตรวจว่าไฟล์ทุกไฟล์โหลดครบก่อนเริ่มแอป (รอบ 6 ข้อ 4 ต่อ) — เน็ตช้า/หลุดจนไฟล์หนึ่งโหลดไม่สำเร็จ เบราว์เซอร์จะข้ามไฟล์นั้นแล้วรันไฟล์ถัดไป
+  // (เดิม: หน้าวาดไม่ครบเงียบ ๆ เช่น "fromSatang is not defined" หรือค้างที่ "กำลังเปิด…")
+  // ไม่ครบ → โหลดใหม่อัตโนมัติ 1 ครั้ง (ภายใน 1 นาที) / ยังไม่ครบ → บอกผู้ใช้ + ปุ่มลองใหม่ — โค้ดนี้อยู่ในหน้าเอง ไม่พึ่งไฟล์อื่น
+  (function (need, start) {
+    var KEY = 'invoice-liff:reload';
+    var missing = [];
+    for (var i = 0; i < need.length; i++) {
+      var ok = false;
+      try { ok = need[i][1](); } catch (e) { ok = false; }
+      if (!ok) missing.push(need[i][0]);
+    }
+    if (!missing.length) {
+      try { sessionStorage.removeItem(KEY); } catch (e) { /* ไม่เป็นไร */ }
+      return start();
+    }
+    try {
+      if (Date.now() - (Number(sessionStorage.getItem(KEY)) || 0) > 60000) {
+        sessionStorage.setItem(KEY, String(Date.now()));
+        return location.reload();
+      }
+    } catch (e) { /* sessionStorage ใช้ไม่ได้ → แสดงข้อความเลย (กันโหลดใหม่วนไม่จบ) */ }
+    var box = document.getElementById('app') || document.getElementById('view') || document.body;
+    box.innerHTML = '<section class="card alert err" id="error" data-code="load_failed" role="alert"><h2>โหลดหน้าไม่ครบ</h2>' +
+      '<p>อินเทอร์เน็ตอาจช้าหรือหลุดระหว่างเปิดหน้า กรุณากด "ลองใหม่"</p><div class="detail" id="error-detail"></div>' +
+      '<button type="button" class="btn primary block" id="error-action">ลองใหม่</button></section>';
+    document.getElementById('error-detail').textContent = 'รายละเอียดสำหรับผู้ดูแลระบบ: โหลดไม่สำเร็จ ' + missing.join(', ');
+    document.getElementById('error-action').addEventListener('click', function () { location.reload(); });
+  })([
+    ['form.css', function () { return getComputedStyle(document.documentElement).getPropertyValue('--radius') !== ''; }],
+    ['theme.css', function () { return getComputedStyle(document.documentElement).getPropertyValue('--theme-primary') !== ''; }],
+    ['config.js', function () { return !!window.APP_CONFIG; }],
+    ['money.js', function () { return typeof toSatang === 'function' && typeof fromSatang === 'function' && typeof formatMoney === 'function'; }],
+    ['bahtText.js', function () { return typeof bahtText === 'function'; }],
+    ['thaiDate.js', function () { return typeof formatThaiDate === 'function'; }],
+    ['address.js', function () { return typeof splitAddress === 'function'; }],
+    ['invoice.js', function () { return typeof validateDocumentInput === 'function'; }],
+    ['preview.js', function () { return typeof previewLocal === 'function'; }],
+    ['search.js', function () { return typeof searchShops === 'function'; }],
+    ['icons.js', function () { return typeof iconSvg === 'function'; }],
+    ['common.js', function () { return typeof LiffApp === 'object'; }],
+    ['appdata.js', function () { return typeof AppData === 'object'; }],
+    ['shell.js', function () { return typeof Shell === 'object'; }],
+    ['issue.js', function () { return Shell.has('issue'); }],
+    ['history.js', function () { return Shell.has('history'); }],
+    ['manage.js', function () { return Shell.has('manage'); }],
+    ['view.js', function () { return Shell.has('view'); }]
+  ], function () { Shell.boot(); });
+</script>
 </body>
 </html>
