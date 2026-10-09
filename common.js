@@ -442,6 +442,11 @@ var LiffApp = (function () {
   }
 
   /** UUID v4 (ใช้เป็น requestId กันส่งซ้ำ) */
+  /** รอบ 8: เลขที่สำหรับแสดง — 0 = บิลทดสอบ "0000" (ตรงกับ botDocNoText ใน LineBot.gs) */
+  function docNoText(n) {
+    return Number(n) === 0 && String(n).trim() !== '' ? '0000' : String(n);
+  }
+
   function uuid() {
     if (window.crypto && crypto.randomUUID && window.isSecureContext) return crypto.randomUUID();
     var b = crypto.getRandomValues(new Uint8Array(16));
@@ -482,7 +487,7 @@ var LiffApp = (function () {
   return {
     start: start, api: api, showError: showError, showApiError: showApiError, isRetryable: isRetryable,
     isDenied: isDenied, isAuthFail: isAuthFail, showDenied: showDenied, accessRequestText: accessRequestText,
-    inClient: inClient, relogin: relogin, toast: toast, uuid: uuid, sheet: sheet, closeSheets: closeSheets, esc: esc, el: el, loading: loading,
+    inClient: inClient, relogin: relogin, toast: toast, uuid: uuid, docNoText: docNoText, sheet: sheet, closeSheets: closeSheets, esc: esc, el: el, loading: loading,
     syncing: syncing, setScope: setScope, find: find, hooks: hooks,
     openExternal: openExternal, remember: remember, keep: keep, forget: forget, drop: drop,
     MSG: MSG, SETUP: SETUP, splitSetup: splitSetup, errorHtml: errorHtml

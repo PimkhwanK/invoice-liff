@@ -18,7 +18,7 @@
   var PDFJS_TAG = '<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" integrity="sha512-q+4liFwdPC/bNdhUpZx6aXDx/h77yEQtn4I1slHydcbZK34nLaR3cAeYSJshoxIOq3mjEf7xJE8YWIUHMn+oCQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>';
   var ZOOMS = [1, 1.5, 2, 3];
   var MAX_CANVAS_PIXELS = 16000000; // iPhone วาด canvas ใหญ่กว่านี้ไม่ได้ (จอขาว)
-  var S = { no: 0, doc: null, pdf: null, zoom: 0, renderId: 0, state: '', stale: false, width: 0, loadId: 0 };
+  var S = { no: -1, doc: null, pdf: null, zoom: 0, renderId: 0, state: '', stale: false, width: 0, loadId: 0 };
   var pdfjsLoading = null;
   function $(id) { return scr.$(id); }
 
@@ -39,9 +39,10 @@
     return pdfjsLoading;
   }
 
+  /** เลขที่จาก ?no= (0 = บิลทดสอบ 0000) / ไม่มีหรือไม่ถูกต้อง → -1 */
   function docNoParam(v) {
     v = v || '';
-    return /^\d{1,12}$/.test(v) && Number(v) > 0 ? Number(v) : 0;
+    return /^[0-9]{1,12}$/.test(v) ? Number(v) : -1;
   }
 
   async function load(no) {
@@ -50,13 +51,13 @@
     S.pdf = null;
     S.state = 'loading';
     S.stale = false;
-    if (!S.no) {
+    if (S.no < 0) {
       S.state = 'error';
       return LiffApp.showError({ title: 'ไม่ได้ระบุเลขที่เอกสาร', text: 'กรุณาเปิดจากปุ่ม "ดู PDF" ในแชท หรือจากหน้าประวัติเอกสาร' }, null, 'no_doc', scr);
     }
-    $('title').textContent = 'เอกสาร #' + S.no;
+    $('title').textContent = 'เอกสาร #' + LiffApp.docNoText(S.no);
     $('subtitle').textContent = 'ใบกำกับภาษี';
-    LiffApp.loading('กำลังโหลด PDF เลขที่ ' + S.no + '…', view);
+    LiffApp.loading('กำลังโหลด PDF เลขที่ ' + LiffApp.docNoText(S.no) + '…', view);
     var lib = loadPdfJs(); // โหลดพร้อมกับรอเซิร์ฟเวอร์
     var r = await LiffApp.api('getPdf', { docNo: S.no });
     if (id !== S.loadId) return; // เปิดใบอื่นไปแล้ว
@@ -66,7 +67,7 @@
 
   function head(d) {
     var c = d.status === 'cancelled';
-    return '<section class="card" id="doc-head"><div class="doc-head"><span class="no' + (c ? ' cancel' : '') + '">#' + d.doc_no + '</span>' +
+    return '<section class="card" id="doc-head"><div class="doc-head"><span class="no' + (c ? ' cancel' : '') + '">#' + LiffApp.docNoText(d.doc_no) + '</span>' +
       (c ? '<span class="badge red">ยกเลิก</span>' : '<span class="badge">ออกแล้ว</span>') + '</div>' +
       '<div>' + esc(d.shop_legal_name || d.shop_short_name) + '</div>' +
       '<div class="small muted">' + formatThaiDate(d.doc_date) + ' · ' + esc(d.doc_type) + ' · <b class="num">' + formatMoney(d.total) + '</b> บาท</div>' +
@@ -161,7 +162,7 @@
       canvas.height = Math.floor(vp.height);
       canvas.style.width = Math.floor(base.width * css) + 'px';
       canvas.style.height = Math.floor(base.height * css) + 'px';
-      canvas.setAttribute('aria-label', 'หน้า ' + n + ' ของเอกสาร #' + S.no);
+      canvas.setAttribute('aria-label', 'หน้า ' + n + ' ของเอกสาร #' + LiffApp.docNoText(S.no));
       await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
       if (id !== S.renderId) return; // มีการซูมใหม่ระหว่างวาด
       canvases.push(canvas);
@@ -193,7 +194,7 @@
       msg.innerHTML = '<div class="alert err" id="regen-error" style="margin-top:10px">' + LiffApp.errorHtml(r.error || 'สร้าง PDF ไม่สำเร็จ') + '</div>';
       return;
     }
-    LiffApp.toast('สร้าง PDF ของเอกสาร #' + no + ' แล้ว');
+    LiffApp.toast('สร้าง PDF ของเอกสาร #' + LiffApp.docNoText(no) + ' แล้ว');
     if (AppData.has()) AppData.patchDoc(no, { hasPdf: true, pdfUrl: r.pdfUrl });
     S.stale = false; // ไฟล์ที่ได้มาคือไฟล์ล่าสุดแล้ว
     if (r.pdfBase64) return show({ document: S.doc, hasPdf: true, pdfUrl: r.pdfUrl, pdfBase64: r.pdfBase64 });
@@ -223,7 +224,7 @@
     show: function (s, params) {
       drawBack();
       var no = docNoParam(params.no);
-      if (no && no === S.no && S.state === 'shown' && !S.stale) {
+      if (no >= 0 && no === S.no && S.state === 'shown' && !S.stale) {
         // ใบเดิมที่แสดงอยู่แล้ว: ไม่ถามเซิร์ฟเวอร์ใหม่ — ขนาดจอเปลี่ยนระหว่างไปหน้าอื่น → วาดใหม่
         var pages = $('pages');
         if (S.pdf && pages && pages.clientWidth !== S.width) render();

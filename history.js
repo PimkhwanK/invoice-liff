@@ -157,7 +157,7 @@
   function docRow(d) {
     var c = d.status === 'cancelled';
     return '<li class="doc" data-no="' + d.doc_no + '">' +
-      '<div class="no' + (c ? ' cancel' : '') + '">#' + d.doc_no + ' ' + (c ? '<span class="badge red">ยกเลิก</span>' : '<span class="badge">ออกแล้ว</span>') + '</div>' +
+      '<div class="no' + (c ? ' cancel' : '') + '">#' + LiffApp.docNoText(d.doc_no) + ' ' + (c ? '<span class="badge red">ยกเลิก</span>' : '<span class="badge">ออกแล้ว</span>') + '</div>' +
       '<div class="amt num">' + formatMoney(d.total) + '</div>' +
       '<div class="meta">' + formatThaiDate(d.doc_date) + ' · ' + esc(d.doc_type) + ' · ' + esc(d.sale_type) +
       (d.issued_by ? '<br>ออกโดย ' + esc(d.issued_by) : '') +

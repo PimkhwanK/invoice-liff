@@ -214,7 +214,7 @@
     function draw() {
       var term = q.value.replace(/\D/g, '');
       $('list').innerHTML = r.documents.filter(function (d) { return !term || String(d.doc_no).indexOf(term) >= 0; }).map(function (d) {
-        return '<li class="item" data-no="' + d.doc_no + '"><div class="t"><div class="n">#' + d.doc_no + ' · ' + esc(d.shop_short_name) + '</div>' +
+        return '<li class="item" data-no="' + d.doc_no + '"><div class="t"><div class="n">#' + LiffApp.docNoText(d.doc_no) + ' · ' + esc(d.shop_short_name) + '</div>' +
           '<div class="s">' + formatThaiDate(d.doc_date) + ' · ' + formatMoney(d.total) + ' บาท</div></div>' +
           (d.hasPdf ? '<a class="btn sm" href="view?no=' + d.doc_no + '">' + iconSvg('file') + '<span>PDF</span></a>' : '<span class="badge amber">ไม่มี PDF</span>') +
           '<button type="button" class="btn sm danger" data-cancel="' + d.doc_no + '">ยกเลิก</button></li>';
@@ -229,7 +229,7 @@
   }
 
   function cancelForm(d) {
-    var sh = LiffApp.sheet('ยกเลิกเอกสาร #' + d.doc_no,
+    var sh = LiffApp.sheet('ยกเลิกเอกสาร #' + LiffApp.docNoText(d.doc_no),
       '<p style="margin-top:0">' + esc(d.shop_legal_name) + '<br><span class="muted">' + formatThaiDate(d.doc_date) + ' · ' + formatMoney(d.total) + ' บาท</span></p>' +
       '<label class="f" for="reason">เหตุผลที่ยกเลิก (ต้องระบุ)</label><textarea id="reason" rows="3" maxlength="200" placeholder="เช่น ออกผิดร้าน, ลูกค้าคืนสินค้า"></textarea><div id="c-msg" style="margin-top:8px"></div>',
       '<button type="button" class="btn grow" data-close>ไม่ยกเลิก</button><button type="button" class="btn danger grow" id="c-ok">ยืนยันยกเลิก</button>');
@@ -265,11 +265,11 @@
         if (fatal(r)) { sh.close(); return; }
         // ยกเลิกแล้ว แต่ทำ PDF ลายน้ำไม่สำเร็จ → ปุ่มเดิมกลายเป็น "ลองทำ PDF ใหม่"
         ok.textContent = 'ลองทำ PDF ใหม่';
-        msg.innerHTML = '<div class="alert err" id="c-error">' + errText('ยกเลิกเอกสารเลขที่ ' + d.doc_no + ' แล้ว แต่' + (r.error || 'ทำ PDF ใหม่ไม่สำเร็จ')) + '</div>';
+        msg.innerHTML = '<div class="alert err" id="c-error">' + errText('ยกเลิกเอกสารเลขที่ ' + LiffApp.docNoText(d.doc_no) + ' แล้ว แต่' + (r.error || 'ทำ PDF ใหม่ไม่สำเร็จ')) + '</div>';
         return;
       }
       sh.close();
-      LiffApp.toast('ยกเลิกเอกสาร #' + d.doc_no + ' แล้ว (PDF มีลายน้ำ "ยกเลิก")');
+      LiffApp.toast('ยกเลิกเอกสาร #' + LiffApp.docNoText(d.doc_no) + ' แล้ว (PDF มีลายน้ำ "ยกเลิก")');
       AppData.patchDoc(d.doc_no, { pdfUrl: r.pdfUrl, hasPdf: !!r.pdfUrl }); // PDF เปลี่ยน (ลายน้ำ) → หน้าจอดู PDF ของใบนี้โหลดใหม่
     }
     // เมื่อปิดแผ่น ให้รายการอัปเดตเสมอ (เผื่อยกเลิกไปแล้วแต่ PDF ล้มเหลว)

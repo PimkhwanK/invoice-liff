@@ -173,7 +173,7 @@ var AppData = (function () {
       name: d.name,
       today: S.cached ? phoneToday() : d.today,
       nextDocNo: d.nextDocNo,
-      needFirstDocNo: !!d.needFirstDocNo, // รอบ 7: ยังไม่มีบิลจริง (ไม่นับ 9000+) → ฟอร์มถามเลขที่
+      needFirstDocNo: !!d.needFirstDocNo, // ยังไม่มีบิลจริง (ไม่นับบิลทดสอบ 0000) → ฟอร์มถามเลขที่
       shops: d.shops.filter(function (s) { return s.active; }),
       products: d.products.filter(function (p) { return p.active; }).map(function (p) {
         return { barcode: p.barcode, name: p.name, unit: p.unit, price: p.price };
@@ -229,7 +229,14 @@ var AppData = (function () {
   function addDoc(doc) {
     if (!S.data) return;
     var d = S.data;
+    var real = Number(doc.doc_no) >= 1;
+    // รอบ 8: บิลจริงใบแรก → บิลทดสอบ 0000 ถูกลบที่เซิร์ฟเวอร์แล้ว เอาออกจากรายการในแอปด้วย
+    if (d.needFirstDocNo && real) dropDoc(0);
+    // บิลทดสอบ 0000 ออกซ้ำ = เขียนทับใบเดิม → แทนที่ในรายการ (ไม่เพิ่มแถว)
     var exists = d.documents.some(function (x) { return x.doc_no === doc.doc_no; });
+    if (exists && Number(doc.doc_no) === 0) {
+      eachDocList(function (list) { list.forEach(function (x, i) { if (x.doc_no === 0) list[i] = doc; }); });
+    }
     if (!exists) {
       d.documents.unshift(doc);
       if (d.documents.length > KEEP_DOCS) d.documents.length = KEEP_DOCS;
@@ -240,15 +247,30 @@ var AppData = (function () {
       st.lastDate = doc.doc_date;
       d.totalDocuments = (Number(d.totalDocuments) || 0) + 1;
     }
-    // รอบ 7: ออกบิลจริงใบแรกแล้ว → ใบต่อไปไม่ถามเลขอีก (เลขถัดไป = ใบนี้ + 1) / บิลทดสอบ (9000+) → ยังถามเลข
+    // ออกบิลจริงใบแรกแล้ว → ใบต่อไปไม่ถามเลขอีก (เลขถัดไป = ใบนี้ + 1) / บิลทดสอบ 0000 → ยังถามเลข
     if (d.needFirstDocNo) {
-      if (Number(doc.doc_no) < 9000) { d.needFirstDocNo = false; d.nextDocNo = Number(doc.doc_no) + 1; }
+      if (real) { d.needFirstDocNo = false; d.nextDocNo = Number(doc.doc_no) + 1; }
     }
     else d.nextDocNo = Math.max(Number(d.nextDocNo) || 0, Number(doc.doc_no) + 1);
     if (doc.status !== 'cancelled' && (!d.lastDoc || Number(doc.doc_no) >= Number(d.lastDoc.doc_no))) {
       d.lastDoc = { doc_no: Number(doc.doc_no), doc_date: doc.doc_date, status: 'issued' };
     }
     changed('doc', doc.doc_no);
+  }
+
+  /** รอบ 8: เอาเอกสารออกจากรายการในแอป (บิลทดสอบ 0000 ที่เซิร์ฟเวอร์ลบหลังออกบิลจริงใบแรก) */
+  function dropDoc(no) {
+    var d = S.data;
+    var gone = d.documents.filter(function (x) { return x.doc_no === no; });
+    d.documents = d.documents.filter(function (x) { return x.doc_no !== no; });
+    for (var k in S.shopFull) S.shopFull[k] = S.shopFull[k].filter(function (x) { return x.doc_no !== no; });
+    gone.forEach(function (x) {
+      var st = d.shopStats[String(x.shop_id)];
+      if (st && st.count > 0) st.count--;
+      d.totalDocuments = Math.max(0, (Number(d.totalDocuments) || 0) - 1);
+    });
+    if (d.lastDoc && d.lastDoc.doc_no === no) d.lastDoc = null;
+    delete S.items[no];
   }
 
   /** แก้เอกสาร (ยกเลิก / มี PDF แล้ว) ทุกที่ที่มีใบนี้ */
