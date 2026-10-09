@@ -53,7 +53,26 @@
     S.shop = null;
     S.lines = [];
     S.dueTouched = false;
+    S.firstDocNo = '';
     showForm();
+  }
+
+  /**
+   * รอบ 7: เลขที่บิลใบแรก (ยังไม่มีบิลจริงในระบบ) — ตัวเลข 1–9999 (9000 ขึ้นไป = บิลทดสอบ ใบต่อไปยังถามเลข)
+   * ตรงกับ apiFirstDocNo ใน Api.gs (เซิร์ฟเวอร์ตรวจซ้ำใน lock) / ไม่ถูกต้อง → 0
+   */
+  var FIRST_DOC_NO_MAX = 9999;
+  var TEST_DOC_NO_FROM = 9000; // ตรงกับ API_TEST_DOC_FROM ใน Api.gs
+  function firstDocNoOf(s) {
+    s = String(s == null ? '' : s).trim();
+    if (!/^[0-9]{1,6}$/.test(s)) return 0;
+    var n = Number(s);
+    return n >= 1 && n <= FIRST_DOC_NO_MAX ? n : 0;
+  }
+  var FIRST_DOC_NO_ERROR = 'กรุณาใส่เลขที่บิลใบนี้เป็นตัวเลข 1–' + FIRST_DOC_NO_MAX + ' (ต่อจากใบล่าสุดใน Excel / ทดสอบใส่ 9000 ขึ้นไป)';
+  /** เลขที่ซ้ำกับเอกสารที่แอปรู้จัก (เซิร์ฟเวอร์ตรวจจริงอีกครั้งใน lock) */
+  function docNoTaken(n) {
+    return AppData.has() && AppData.recentDocs().some(function (d) { return Number(d.doc_no) === n; });
   }
 
   /** ข้อมูลในแอปเปลี่ยน (ดึงใหม่เสร็จ / ออกบิล / แก้ร้านหรือสินค้าในหน้าจัดการข้อมูล) — ฟอร์มที่กรอกไว้ไม่หาย */
@@ -69,16 +88,29 @@
   function refreshInit(r) {
     var untouched = S.screen === 'form' && !S.shop && !S.lines.length;
     var sameDay = S.doc && S.doc.doc_date === S.init.today;
+    var needChanged = !!S.init.needFirstDocNo !== !!r.needFirstDocNo; // เช่น อีกคนออกบิลใบแรกไปแล้ว → ช่องเลขที่หายไป
     S.init = r;
     if (sameDay && S.doc) S.doc.doc_date = r.today;
     if (S.doc && r.config.doc_types.indexOf(S.doc.doc_type) < 0) S.doc.doc_type = r.config.doc_types[0];
     if (S.doc && r.config.sale_type_labels.indexOf(S.doc.sale_type) < 0) S.doc.sale_type = r.config.sale_type_labels[0];
-    if (untouched) { showForm(); return; }
+    if (untouched || (needChanged && S.screen === 'form')) { showForm(); return; } // วาดใหม่จาก S (สิ่งที่กรอกไว้ไม่หาย)
     if (S.screen === 'form') { setSubtitle(); updateDocDateHint(); }
   }
 
   function setSubtitle() {
-    $('subtitle').textContent = 'เลขที่ถัดไปโดยประมาณ #' + S.init.nextDocNo + ' (ออกเลขจริงตอนยืนยัน) · ' + S.init.name;
+    $('subtitle').textContent = (S.init.needFirstDocNo
+      ? 'บิลใบแรกของระบบ — ใส่เลขที่ด้านบน'
+      : 'เลขที่ถัดไปโดยประมาณ #' + S.init.nextDocNo + ' (ออกเลขจริงตอนยืนยัน)') + ' · ' + S.init.name;
+  }
+
+  /** รอบ 7: ช่องบังคับบนสุดของฟอร์ม เฉพาะบิลใบแรกของระบบ */
+  function firstDocNoField() {
+    if (!S.init.needFirstDocNo) return '';
+    return '<section class="card first-no" id="first-no-card">' +
+      '  <div class="field"><label class="f" for="first-doc-no">เลขที่บิลใบนี้ (ต่อจากใบล่าสุดใน Excel)</label>' +
+      '  <input type="text" id="first-doc-no" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" required placeholder="เช่น 1701" value="' + esc(S.firstDocNo) + '">' +
+      '  <div class="hint" id="first-doc-hint">ทดสอบ: ใส่ 9000 ขึ้นไป</div></div>' +
+      '</section>';
   }
 
   // ---------- ฟอร์ม
@@ -89,6 +121,7 @@
     totalbar.classList.remove('hidden');
     var c = cfg();
     view.innerHTML =
+      firstDocNoField() +
       '<section class="card">' +
       '  <h2>เอกสาร</h2>' +
       '  <div class="field"><div class="seg-choice" id="doc-type">' +
@@ -133,6 +166,14 @@
     $('due-date').addEventListener('change', function (e) { S.doc.due_date = e.target.value; S.dueTouched = true; updateDue(); });
     $('btn-add').addEventListener('click', openProductPicker);
     $('btn-copy').addEventListener('click', openCopyFromOld);
+    var firstNo = $('first-doc-no');
+    if (firstNo) {
+      firstNo.addEventListener('input', function () {
+        var digits = firstNo.value.replace(/[^0-9]/g, ''); // ตัวเลขเท่านั้น
+        if (digits !== firstNo.value) firstNo.value = digits;
+        S.firstDocNo = digits;
+      });
+    }
 
     renderShop();
     renderLines();
@@ -404,19 +445,27 @@
    */
   function showReview() {
     S.dateConfirmed = ''; // ทุกรอบตรวจต้องติ๊กยืนยันวันที่ใหม่
+    S.firstConfirmed = 0; // รอบ 7: ทุกรอบตรวจต้องติ๊กยืนยันเลขที่บิลใบแรกใหม่
     var payload = buildDocumentPayload();
     var r = previewLocal(payload, S.init);
+    // รอบ 7: บิลใบแรก — เลขที่ที่แสดงในหน้านี้คือเลขที่ส่งไป (ถ้าอีกคนออกใบแรกไปก่อน เซิร์ฟเวอร์ใช้ สูงสุด + 1 แล้วแจ้ง)
+    S.reviewFirst = S.init.needFirstDocNo ? firstDocNoOf(S.firstDocNo) : 0;
+    if (S.init.needFirstDocNo && !S.reviewFirst) r.errors.unshift(FIRST_DOC_NO_ERROR);
+    else if (S.reviewFirst && docNoTaken(S.reviewFirst)) r.errors.unshift('เลขที่ ' + S.reviewFirst + ' มีอยู่แล้วในระบบ กรุณาใช้เลขอื่น');
     S.requestId = LiffApp.uuid(); // รหัสคำขอของรอบยืนยันนี้
     S.expected = r.totals;
     S.screen = 'review';
 
     totalbar.classList.add('hidden');
     $('title').textContent = 'ตรวจสอบก่อนยืนยัน';
-    $('subtitle').textContent = 'เลขที่จะได้โดยประมาณ #' + r.nextDocNo;
+    $('subtitle').textContent = S.init.needFirstDocNo
+      ? (S.reviewFirst ? 'เลขที่บิลใบนี้ #' + S.reviewFirst : 'ยังไม่ได้ใส่เลขที่บิลใบนี้')
+      : 'เลขที่จะได้โดยประมาณ #' + r.nextDocNo;
     var t = r.totals;
     var s = S.shop;
     view.innerHTML =
       (r.errors.length ? '<div class="card alert err" id="review-errors"><b>ต้องแก้ไขก่อนออกเอกสาร</b><ul>' + r.errors.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>' : '') +
+      (S.reviewFirst && !r.errors.length ? firstNoBox(S.reviewFirst) : '') +
       (r.dateConfirm && !r.errors.length ? dateConfirmBox(r.dateConfirm) : '') +
       (r.warnings.length ? '<div class="card alert warn" id="review-warnings"><b>คำเตือน (ออกเอกสารได้)</b><ul>' + r.warnings.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>' : '') +
       '<section class="card"><h2>' + esc(payload.doc_type) + '</h2><dl class="kv">' +
@@ -448,16 +497,35 @@
 
     $('btn-back').addEventListener('click', function () { showForm(); scrollTop(); });
     $('btn-confirm').addEventListener('click', confirmCreate);
+    // ปุ่มยืนยันกดได้เมื่อไม่มีข้อผิดพลาด และติ๊กครบทุกช่องที่มี (วันที่ไม่ใช่วันนี้ / เลขที่บิลใบแรก)
     var tick = $('date-confirm');
+    var firstTick = $('first-no-confirm');
+    var syncConfirm = function () {
+      $('btn-confirm').disabled = r.errors.length > 0 || (tick && !tick.checked) || (firstTick && !firstTick.checked);
+    };
     if (tick) {
-      // วันที่ไม่ใช่วันนี้: ปุ่มยืนยันกดได้หลังติ๊กเท่านั้น
-      $('btn-confirm').disabled = true;
       tick.addEventListener('change', function () {
         S.dateConfirmed = tick.checked ? r.dateConfirm.date : '';
-        $('btn-confirm').disabled = !tick.checked;
+        syncConfirm();
       });
     }
+    if (firstTick) {
+      firstTick.addEventListener('change', function () {
+        S.firstConfirmed = firstTick.checked ? S.reviewFirst : 0;
+        syncConfirm();
+      });
+    }
+    syncConfirm();
     scrollTop();
+  }
+
+  /** รอบ 7: เลขที่บิลใบแรกตัวใหญ่ (+ ป้าย "บิลทดสอบ" ถ้า 9000 ขึ้นไป) + ช่องติ๊กยืนยัน */
+  function firstNoBox(no) {
+    var test = no >= TEST_DOC_NO_FROM;
+    return '<div class="card first-no-review" id="first-no-box"><div class="muted">เลขที่บิลใบนี้ (' + (test ? 'ไม่นับเป็นบิลจริง' : 'บิลใบแรกของระบบ') + ')</div>' +
+      '<div class="big-no num" id="first-no-big">#' + esc(no) + '</div>' +
+      (test ? '<div><span class="badge amber test-badge" id="test-badge">บิลทดสอบ</span></div>' : '') +
+      '<label class="chk"><input type="checkbox" id="first-no-confirm"> ยืนยันว่าเลขนี้ต่อจาก Excel</label></div>';
   }
 
   /** กล่องเตือนสีเหลือง: วันที่เอกสารไม่ใช่วันนี้ (ไม่เกินขีดจำกัด) + ช่องติ๊กยืนยัน */
@@ -490,7 +558,9 @@
     var mark = steps(msg);
     // ขั้นที่ 1: บันทึก (ออกเลข) แล้วตอบทันที — เซิร์ฟเวอร์ตรวจและคำนวณซ้ำ เทียบยอดกับที่มือถือแสดง (expected)
     mark('save', 'doing');
-    var r = await LiffApp.api('createDocument', { requestId: S.requestId, document: buildDocumentPayload(), expected: S.expected, deferPdf: true });
+    var body = { requestId: S.requestId, document: buildDocumentPayload(), expected: S.expected, deferPdf: true };
+    if (S.reviewFirst) { body.firstDocNo = S.reviewFirst; body.firstDocNoConfirmed = S.firstConfirmed; } // รอบ 7: บิลใบแรก
+    var r = await LiffApp.api('createDocument', body);
     if (!r.ok) {
       msg.innerHTML = '';
       if (LiffApp.isDenied(r.code)) return LiffApp.showApiError(r, scr);
@@ -599,6 +669,8 @@
         showSuccess(r, 'ส่งข้อความเข้าแชทไม่สำเร็จ — พิมพ์ "บิล ' + r.docNo + '" ในแชท LINE เพื่อดูการ์ดเอกสาร');
         return;
       }
+      // รอบ 7: ไม่ได้ใช้เลขที่ที่ใส่ (อีกคนออกบิลใบแรกไปก่อน) → ไม่ปิดหน้า ให้เห็นเลขที่จริงและคำอธิบาย
+      if (r.firstDocNoIgnored) { showSuccess(r, 'ส่ง "บิล ' + r.docNo + '" เข้าแชทแล้ว'); return; }
       showSuccess(r, 'ส่ง "บิล ' + r.docNo + '" เข้าแชทแล้ว กำลังปิดหน้า…');
       liff.closeWindow();
       return;

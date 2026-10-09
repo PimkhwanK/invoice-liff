@@ -45,7 +45,8 @@ function previewLocal(input, init) {
     totals: totals,
     amount_text: bahtText(totals.total),
     due_date: isCashSale(input.sale_type, config) ? '' : (input.due_date || computeDueDate(input.doc_date, shop, config, input.sale_type)),
-    nextDocNo: init.nextDocNo
+    nextDocNo: init.nextDocNo,
+    needFirstDocNo: !!init.needFirstDocNo // รอบ 7: บิลใบแรก (ฟอร์มถามเลขที่) — ตรงกับ previewDocument
   };
 }
 

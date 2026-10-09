@@ -268,6 +268,15 @@ dl.kv dd { margin: 0; }
 .success .check svg.icon { width: 36px; height: 36px; stroke-width: 2.4; }
 .success .no { font-size: 30px; font-weight: 700; color: var(--theme-primary-dark); }
 
+/* รอบ 7: บิลใบแรกของระบบ — ช่องเลขที่บนสุดของฟอร์ม + เลขที่ตัวใหญ่ในหน้าตรวจสอบ */
+.first-no { border: 2px solid var(--theme-primary); }
+.first-no input { font-size: 20px; font-weight: 700; }
+.first-no input::placeholder { font-size: 16px; font-weight: 400; color: var(--theme-text-2); } /* ไม่ให้ดูเหมือนกรอกไว้แล้ว */
+.first-no-review { text-align: center; border: 2px solid var(--theme-primary); }
+.first-no-review .big-no { font-size: 40px; font-weight: 700; line-height: 1.2; color: var(--theme-primary-dark); margin: 4px 0 10px; }
+.first-no-review .chk { font-weight: 700; color: var(--theme-text); }
+.first-no-review .test-badge { font-size: 14px; padding: 2px 12px; margin: -4px 0 10px; }
+
 /* ---------- เพิ่มสำหรับหน้า LIFF จริง ---------- */
 .alert h2 { color: inherit; margin: 0 0 4px; }
 .alert p { margin: 4px 0; color: var(--theme-text); }

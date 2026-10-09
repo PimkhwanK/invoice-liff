@@ -127,6 +127,7 @@ var AppData = (function () {
     if (init.ok) {
       out.today = init.today;
       out.nextDocNo = init.nextDocNo;
+      out.needFirstDocNo = !!init.needFirstDocNo;
       out.config = init.config;
       out.lastDoc = init.lastDoc || null;
     } else {
@@ -172,6 +173,7 @@ var AppData = (function () {
       name: d.name,
       today: S.cached ? phoneToday() : d.today,
       nextDocNo: d.nextDocNo,
+      needFirstDocNo: !!d.needFirstDocNo, // รอบ 7: ยังไม่มีบิลจริง (ไม่นับ 9000+) → ฟอร์มถามเลขที่
       shops: d.shops.filter(function (s) { return s.active; }),
       products: d.products.filter(function (p) { return p.active; }).map(function (p) {
         return { barcode: p.barcode, name: p.name, unit: p.unit, price: p.price };
@@ -238,7 +240,11 @@ var AppData = (function () {
       st.lastDate = doc.doc_date;
       d.totalDocuments = (Number(d.totalDocuments) || 0) + 1;
     }
-    d.nextDocNo = Math.max(Number(d.nextDocNo) || 0, Number(doc.doc_no) + 1);
+    // รอบ 7: ออกบิลจริงใบแรกแล้ว → ใบต่อไปไม่ถามเลขอีก (เลขถัดไป = ใบนี้ + 1) / บิลทดสอบ (9000+) → ยังถามเลข
+    if (d.needFirstDocNo) {
+      if (Number(doc.doc_no) < 9000) { d.needFirstDocNo = false; d.nextDocNo = Number(doc.doc_no) + 1; }
+    }
+    else d.nextDocNo = Math.max(Number(d.nextDocNo) || 0, Number(doc.doc_no) + 1);
     if (doc.status !== 'cancelled' && (!d.lastDoc || Number(doc.doc_no) >= Number(d.lastDoc.doc_no))) {
       d.lastDoc = { doc_no: Number(doc.doc_no), doc_date: doc.doc_date, status: 'issued' };
     }
