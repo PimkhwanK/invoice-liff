@@ -42,7 +42,7 @@
   async function load() {
     totalbar.classList.add('hidden');
     S.screen = 'loading';
-    if (!AppData.has()) LiffApp.loading('กำลังโหลดร้านค้า สินค้า และเลขที่ถัดไป…', view);
+    if (!AppData.has()) LiffApp.loading('กำลังโหลดข้อมูล…', view);
     var r = await AppData.ensure();
     if (!r.ok) { S.screen = 'error'; return LiffApp.showApiError(r, scr); }
     var init = AppData.issueInit();
@@ -69,7 +69,7 @@
     var n = Number(s);
     return n <= FIRST_DOC_NO_MAX ? n : -1;
   }
-  var FIRST_DOC_NO_ERROR = 'กรุณาใส่เลขที่บิลใบนี้เป็นตัวเลข 1–' + FIRST_DOC_NO_MAX + ' (ต่อจากใบล่าสุดใน Excel / ทดสอบใส่ 0000)';
+  var FIRST_DOC_NO_ERROR = 'กรุณาใส่เลขที่บิล ต่อจากใบล่าสุดใน Excel';
   /** เลขที่ซ้ำกับเอกสารที่แอปรู้จัก (เซิร์ฟเวอร์ตรวจจริงอีกครั้งใน lock) */
   function docNoTaken(n) {
     return AppData.has() && AppData.recentDocs().some(function (d) { return Number(d.doc_no) === n; });
@@ -98,9 +98,7 @@
   }
 
   function setSubtitle() {
-    $('subtitle').textContent = (S.init.needFirstDocNo
-      ? 'บิลใบแรกของระบบ — ใส่เลขที่ด้านบน'
-      : 'เลขที่ถัดไปโดยประมาณ #' + S.init.nextDocNo + ' (ออกเลขจริงตอนยืนยัน)') + ' · ' + S.init.name;
+    $('subtitle').textContent = (S.init.needFirstDocNo ? 'บิลใบแรก' : 'เลขที่ถัดไป #' + S.init.nextDocNo) + ' · ' + S.init.name;
   }
 
   /** รอบ 7: ช่องบังคับบนสุดของฟอร์ม เฉพาะบิลใบแรกของระบบ */
@@ -116,29 +114,27 @@
   // ---------- ฟอร์ม
   function showForm() {
     S.screen = 'form';
-    $('title').textContent = 'ออกเอกสาร';
+    $('title').textContent = 'ออกบิล';
     setSubtitle();
     totalbar.classList.remove('hidden');
     var c = cfg();
     view.innerHTML =
       firstDocNoField() +
       '<section class="card">' +
-      '  <h2>เอกสาร</h2>' +
+      '  <h2>ข้อมูลบิล</h2>' +
       '  <div class="field"><div class="seg-choice" id="doc-type">' +
       c.doc_types.map(function (t) {
         return '<label><input type="radio" name="doc_type" value="' + esc(t) + '"' + (t === S.doc.doc_type ? ' checked' : '') + '>' + esc(t) + '</label>';
       }).join('') + '</div></div>' +
       '  <div class="field two">' +
-      '    <div><label class="f" for="doc-date">วันที่</label><input type="date" id="doc-date" value="' + esc(S.doc.doc_date) + '">' +
-      '      <div class="hint th-date" id="doc-date-th"></div></div>' +
+      '    <div><label class="f" for="doc-date">วันที่</label>' + dateBox('doc-date', S.doc.doc_date) + '</div>' +
       '    <div><label class="f" for="doc-ref">อ้างถึง</label><input type="text" id="doc-ref" placeholder="เช่น เลข PO" maxlength="100" value="' + esc(S.doc.ref) + '"></div>' +
       '  </div>' +
       '  <div class="field"><label class="f">ชนิดการขาย</label><div class="seg-choice" id="sale-type">' +
       labels().map(function (t) {
         return '<label><input type="radio" name="sale_type" value="' + esc(t) + '"' + (t === S.doc.sale_type ? ' checked' : '') + '>' + esc(t) + '</label>';
       }).join('') + '</div></div>' +
-      '  <div class="field"><label class="f" for="due-date">วันครบกำหนดชำระ</label><input type="date" id="due-date">' +
-      '    <div class="hint th-date" id="due-date-th"></div><div class="hint" id="due-hint"></div></div>' +
+      '  <div class="field"><label class="f" for="due-date">วันครบกำหนดชำระ</label>' + dateBox('due-date', '') + '</div>' +
       '</section>' +
 
       '<section class="card">' +
@@ -164,6 +160,8 @@
     $('doc-date').addEventListener('change', function (e) { S.doc.doc_date = e.target.value; S.dueTouched = false; updateDocDateHint(); updateDue(); });
     $('doc-ref').addEventListener('input', function (e) { S.doc.ref = e.target.value; });
     $('due-date').addEventListener('change', function (e) { S.doc.due_date = e.target.value; S.dueTouched = true; updateDue(); });
+    listenDateBox('doc-date');
+    listenDateBox('due-date');
     $('btn-add').addEventListener('click', openProductPicker);
     $('btn-copy').addEventListener('click', openCopyFromOld);
     var firstNo = $('first-doc-no');
@@ -181,39 +179,50 @@
     updateDue();
   }
 
-  /** ใต้ช่องวันที่: วันที่แบบไทย เช่น "28 ก.ย. 2569" + ห่างจากวันนี้กี่วัน (กฎวันที่ตรวจจริงตอนกด "ตรวจสอบ") */
+  /**
+   * รอบ 9: ช่องวันที่แสดงวันที่ไทยบรรทัดเดียว เช่น "9 ต.ค. 2569" (ปฏิทินของมือถือแสดงเป็นภาษาอังกฤษ เช่น "9 Oct BE 2569")
+   * ช่องวันที่จริง (input type=date) ซ้อนอยู่ด้านบนแบบโปร่งใส แตะแล้วยังเปิดปฏิทินของมือถือเหมือนเดิม
+   */
+  function dateBox(id, value) {
+    return '<div class="date-box" id="' + id + '-box"><span class="date-text" id="' + id + '-th"></span>' + iconSvg('calendar') +
+      '<input type="date" id="' + id + '" value="' + esc(value) + '"></div>';
+  }
+
+  /** คอมพิวเตอร์: คลิกตรงไหนของช่องก็เปิดปฏิทิน (มือถือเปิดเองอยู่แล้ว) */
+  function listenDateBox(id) {
+    var input = $(id);
+    input.addEventListener('click', function () {
+      try { if (typeof input.showPicker === 'function') input.showPicker(); } catch (e) { /* บางเบราว์เซอร์ไม่ให้เรียก ไม่เป็นไร */ }
+    });
+  }
+
+  /** ข้อความในช่องวันที่เอกสาร (วันที่ไทย) — ย้อนหลัง/ล่วงหน้า แจ้งตอนกด "ตรวจสอบ" */
   function updateDocDateHint() {
     var el = $('doc-date-th');
     if (!el) return;
     var d = S.doc.doc_date;
-    var diff = isoDayDiff(S.init.today, d);
-    el.textContent = !isIsoDate(d) ? 'ยังไม่ได้เลือกวันที่'
-      : formatThaiDateShort(d) + (diff === 0 ? ' (วันนี้)' : diff < 0 ? ' (ย้อนหลัง ' + (-diff) + ' วัน)' : ' (ล่วงหน้า ' + diff + ' วัน)');
-    el.classList.toggle('off', isIsoDate(d) && diff !== 0);
+    el.textContent = isIsoDate(d) ? formatThaiDateShort(d) : 'เลือกวันที่';
   }
 
   function updateDue() {
     var input = $('due-date');
-    var hint = $('due-hint');
     if (!input) return;
     var th = $('due-date-th');
+    var box = $('due-date-box');
     if (isCash()) {
       S.doc.due_date = '';
       input.value = '';
       input.disabled = true;
-      th.textContent = '';
-      hint.textContent = 'ขายเงินสด ไม่มีวันครบกำหนดชำระ';
+      box.classList.add('off');
+      th.textContent = 'ไม่มี (เงินสด)';
       return;
     }
     input.disabled = false;
+    box.classList.remove('off');
     var days = creditDaysOf(S.shop, { default_credit_days: cfg().default_credit_days });
-    var fromShop = S.shop && S.shop.credit_days !== '' && S.shop.credit_days != null;
     if (!S.dueTouched) S.doc.due_date = S.doc.doc_date ? addDaysIso(S.doc.doc_date, days) : '';
     input.value = S.doc.due_date;
-    th.textContent = formatThaiDateShort(S.doc.due_date);
-    hint.textContent = S.dueTouched
-      ? 'แก้เองแล้ว (ค่าที่ระบบคำนวณ: ' + formatThaiDate(addDaysIso(S.doc.doc_date, days)) + ')'
-      : 'วันที่ + เครดิต ' + days + ' วัน' + (fromShop ? 'ของร้าน' : (S.shop ? ' (ค่าเริ่มต้น ร้านนี้ไม่ได้ตั้งเครดิต)' : ' (ค่าเริ่มต้น)')) + ' — แก้ได้';
+    th.textContent = isIsoDate(S.doc.due_date) ? formatThaiDateShort(S.doc.due_date) : 'เลือกวันที่';
   }
 
   // ---------- ร้านค้า
@@ -235,7 +244,7 @@
       '    <button type="button" class="btn sm" id="btn-shop">เปลี่ยน</button></div>' +
       '  <div class="small" style="margin-top:6px">' + esc(addr[0]) + (addr[1] ? '<br>' + esc(addr[1]) : '') + '</div>' +
       '  <div class="small" style="margin-top:4px">สาขา: <b>' + esc(s.branch || '-') + '</b> · เลขผู้เสียภาษี: <b>' + esc(s.tax_id || '-') + '</b></div>' +
-      (taxOk ? '' : '<div class="alert warn small" style="margin-top:8px">เลขประจำตัวผู้เสียภาษีไม่ใช่ตัวเลข 13 หลัก — ออกเอกสารได้ แต่กรุณาตรวจสอบ</div>') +
+      (taxOk ? '' : '<div class="alert warn small" style="margin-top:8px">เลขผู้เสียภาษีไม่ครบ 13 หลัก กรุณาตรวจสอบ</div>') +
       '</div>';
     box.querySelector('#btn-shop').addEventListener('click', openShopPicker);
   }
@@ -288,7 +297,7 @@
         '<div><label>ราคา/หน่วย</label><input type="number" inputmode="decimal" class="num" data-f="price" min="0" step="any" value="' + esc(l.is_free ? 0 : l.price) + '"' + (l.is_free ? ' disabled' : '') + '></div>' +
         '<div><label>ส่วนลด (บาท)</label><input type="number" inputmode="decimal" class="num" data-f="discount" min="0" step="any" value="' + esc(l.is_free ? 0 : l.discount) + '"' + (l.is_free ? ' disabled' : '') + '></div>' +
         '</div>' +
-        '<div class="note"><input type="text" data-f="note" maxlength="200" placeholder="หมายเหตุ (ถ้ามี ไม่เกิน ' + esc(cfg().text_max_note || 20) + ' ตัวอักษร)" value="' + esc(l.note) + '"></div>' +
+        '<div class="note"><input type="text" data-f="note" maxlength="200" placeholder="หมายเหตุ (ถ้ามี)" value="' + esc(l.note) + '"></div>' +
         '<div class="foot"><label class="chk"><input type="checkbox" data-f="is_free"' + (l.is_free ? ' checked' : '') + '> แถม</label>' +
         '<span class="amt num" data-amt></span></div>' +
         '</div>';
@@ -375,14 +384,14 @@
   // ---------- คัดลอกจากบิลเก่า (ย้ายจาก public/liff/liff.js)
   async function openCopyFromOld() {
     if (!S.shop) return;
-    var s = LiffApp.sheet('คัดลอกจากบิลเก่า — ' + S.shop.short_name, '');
+    var s = LiffApp.sheet('คัดลอกจากบิลเก่า · ' + S.shop.short_name, '');
     var body = s.el.querySelector('.body');
     if (!AppData.shopComplete(S.shop.shop_id)) LiffApp.loading('กำลังโหลดบิลเก่าของร้านนี้…', body);
     var r = await AppData.loadShopDocs(S.shop.shop_id); // มีในแอปครบแล้ว → ไม่เรียกเซิร์ฟเวอร์
     if (!r.ok) { body.innerHTML = '<div class="alert err">' + LiffApp.errorHtml(r.error) + '</div>'; return; }
     r = { documents: r.documents.slice(0, 20) };
     if (!r.documents.length) { body.innerHTML = '<div class="empty" id="copy-empty">ร้านนี้ยังไม่มีบิลเก่า</div>'; return; }
-    body.innerHTML = '<p class="small muted" style="margin-top:0">เลือกบิลเพื่อดึงรายการสินค้า จำนวน ราคา ส่วนลด และของแถม มาใส่ในฟอร์ม</p><ul class="list pick-list" id="copy-list">' +
+    body.innerHTML = '<p class="small muted" style="margin-top:0">เลือกบิลที่จะคัดลอกรายการสินค้า</p><ul class="list pick-list" id="copy-list">' +
       r.documents.map(function (d) {
         return '<li class="tap" data-no="' + d.doc_no + '"><div class="t"><div class="n">#' + d.doc_no + ' · ' + formatThaiDate(d.doc_date) + '</div>' +
           '<div class="s">' + esc(d.doc_type) + '</div></div><div class="right"><b class="num">' + money(d.total) + '</b><br>' +
@@ -465,10 +474,10 @@
     var t = r.totals;
     var s = S.shop;
     view.innerHTML =
-      (r.errors.length ? '<div class="card alert err" id="review-errors"><b>ต้องแก้ไขก่อนออกเอกสาร</b><ul>' + r.errors.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>' : '') +
+      (r.errors.length ? '<div class="card alert err" id="review-errors"><b>ต้องแก้ไขก่อนออกบิล</b><ul>' + r.errors.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>' : '') +
       (S.reviewFirst >= 0 && !r.errors.length ? firstNoBox(S.reviewFirst) : '') +
       (r.dateConfirm && !r.errors.length ? dateConfirmBox(r.dateConfirm) : '') +
-      (r.warnings.length ? '<div class="card alert warn" id="review-warnings"><b>คำเตือน (ออกเอกสารได้)</b><ul>' + r.warnings.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>' : '') +
+      (r.warnings.length ? '<div class="card alert warn" id="review-warnings"><b>โปรดตรวจสอบ</b><ul>' + r.warnings.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>' : '') +
       '<section class="card"><h2>' + esc(payload.doc_type) + '</h2><dl class="kv">' +
       '<dt>วันที่</dt><dd>' + esc(formatThaiDate(payload.doc_date) || '-') + '</dd>' +
       '<dt>อ้างถึง</dt><dd>' + esc(payload.ref || '-') + '</dd>' +
@@ -494,7 +503,7 @@
       '<div class="card" style="background:transparent;box-shadow:none;padding:0 0 24px">' +
       '<div id="confirm-msg"></div>' +
       '<div class="row"><button type="button" class="btn grow" id="btn-back">' + iconSvg('back') + '<span>แก้ไข</span></button>' +
-      '<button type="button" class="btn primary grow" id="btn-confirm"' + (r.errors.length ? ' disabled' : '') + '>ยืนยันออกเอกสาร</button></div></div>';
+      '<button type="button" class="btn primary grow" id="btn-confirm"' + (r.errors.length ? ' disabled' : '') + '>ยืนยันออกบิล</button></div></div>';
 
     $('btn-back').addEventListener('click', function () { showForm(); scrollTop(); });
     $('btn-confirm').addEventListener('click', confirmCreate);
@@ -527,24 +536,24 @@
    */
   function firstNoBox(no) {
     var test = no === TEST_DOC_NO;
-    return '<div class="card first-no-review" id="first-no-box"><div class="muted">เลขที่บิลใบนี้ (' + (test ? 'ไม่นับเป็นบิลจริง ออกซ้ำจะเขียนทับใบเดิม' : 'บิลใบแรกของระบบ') + ')</div>' +
+    return '<div class="card first-no-review" id="first-no-box"><div class="muted">เลขที่บิลใบนี้</div>' +
       '<div class="big-no num" id="first-no-big">#' + esc(LiffApp.docNoText(no)) + '</div>' +
       (test
-        ? '<div><span class="badge amber test-badge" id="test-badge">บิลทดสอบ</span></div>'
+        ? '<div><span class="badge amber test-badge" id="test-badge">บิลทดสอบ</span></div><div class="small muted" id="test-note">ออกซ้ำจะแทนที่ใบเดิม</div>'
         : '<label class="chk"><input type="checkbox" id="first-no-confirm"> ยืนยันว่าเลขนี้ต่อจาก Excel</label>') +
       '</div>';
   }
 
   /** กล่องเตือนสีเหลือง: วันที่เอกสารไม่ใช่วันนี้ (ไม่เกินขีดจำกัด) + ช่องติ๊กยืนยัน */
   function dateConfirmBox(c) {
-    return '<div class="card alert warn" id="date-confirm-box"><b>วันที่เอกสารไม่ใช่วันนี้</b><ul>' +
+    return '<div class="card alert warn" id="date-confirm-box"><b>วันที่บิลไม่ใช่วันนี้</b><ul>' +
       c.messages.map(function (m) { return '<li>' + esc(m) + '</li>'; }).join('') + '</ul>' +
       '<label class="chk date-ok"><input type="checkbox" id="date-confirm"> ยืนยันว่าตั้งใจลงวันที่นี้</label></div>';
   }
 
   /** ความคืบหน้าทีละขั้น: บันทึกเอกสาร → สร้าง PDF → ส่งเข้าแชท (นอกแอป LINE ไม่มีขั้นส่ง) */
   function steps(box) {
-    var list = [['save', 'บันทึกเอกสาร…'], ['pdf', 'สร้าง PDF… (อาจใช้เวลา 10–20 วินาที)']];
+    var list = [['save', 'บันทึกบิล…'], ['pdf', 'สร้าง PDF… อาจใช้เวลาสักครู่']];
     if (LiffApp.inClient()) list.push(['send', 'ส่งเข้าแชท…']);
     box.innerHTML = '<ol class="steps" id="steps">' + list.map(function (s) { return '<li data-step="' + s[0] + '">' + s[1] + '</li>'; }).join('') + '</ol>';
     return function (step, state, text) {
@@ -561,7 +570,7 @@
     var msg = $('confirm-msg');
     btn.disabled = true;
     back.disabled = true;
-    btn.textContent = 'กำลังออกเอกสาร…';
+    btn.textContent = 'กำลังออกบิล…';
     var mark = steps(msg);
     // ขั้นที่ 1: บันทึก (ออกเลข) แล้วตอบทันที — เซิร์ฟเวอร์ตรวจและคำนวณซ้ำ เทียบยอดกับที่มือถือแสดง (expected)
     mark('save', 'doing');
@@ -577,12 +586,12 @@
       btn.disabled = false;
       back.disabled = false;
       // เน็ตหลุด / มีคนออกบิลพร้อมกัน: กดใหม่ใช้ requestId เดิม ระบบจะไม่ออกเลขซ้ำ
-      btn.textContent = LiffApp.isRetryable(r) ? 'ลองอีกครั้ง' : 'ยืนยันออกเอกสาร';
+      btn.textContent = LiffApp.isRetryable(r) ? 'ลองอีกครั้ง' : 'ยืนยันออกบิล';
       if (r.code === 'mismatch' || r.code === 'invalid') {
         btn.disabled = true; // ต้องกลับไปแก้/ตรวจใหม่ก่อน
         refreshInBackground(); // ข้อมูลที่จำไว้อาจเก่า → ดึงใหม่ให้รอบตรวจถัดไป
       }
-      msg.innerHTML = '<div class="alert err" id="confirm-error" style="margin-bottom:10px">' + LiffApp.errorHtml(r.error || 'ออกเอกสารไม่สำเร็จ') + '</div>';
+      msg.innerHTML = '<div class="alert err" id="confirm-error" style="margin-bottom:10px">' + LiffApp.errorHtml(r.error || 'ออกบิลไม่สำเร็จ') + '</div>';
       if (r.code === 'token_expired') {
         var re = LiffApp.el('<button type="button" class="btn block" style="margin-bottom:10px">เข้าสู่ระบบใหม่</button>');
         re.addEventListener('click', LiffApp.relogin.run);
@@ -590,7 +599,7 @@
       }
       return;
     }
-    mark('save', 'done', 'บันทึกเอกสารแล้ว เลขที่ #' + LiffApp.docNoText(r.docNo));
+    mark('save', 'done', 'บันทึกบิลแล้ว เลขที่ #' + LiffApp.docNoText(r.docNo));
     rememberIssued(r);
     // ขั้นที่ 2: สร้าง PDF (คำขอที่สอง — ใบเดิมที่มี PDF แล้วได้ลิงก์เดิม / บิลทดสอบ 0000 เขียนทับไฟล์เดิมเสมอ)
     if (!r.pdfUrl) {
@@ -599,7 +608,7 @@
       if (!p.ok) {
         if (LiffApp.isDenied(p.code)) return LiffApp.showApiError(p, scr);
         mark('pdf', 'fail');
-        return showPdfFailed(Object.assign({}, r, { pdfError: 'บันทึกเอกสารเลขที่ ' + LiffApp.docNoText(r.docNo) + ' แล้ว แต่' + (p.error || 'สร้าง PDF ไม่สำเร็จ') }));
+        return showPdfFailed(Object.assign({}, r, { pdfError: 'บันทึกบิล #' + LiffApp.docNoText(r.docNo) + ' แล้ว แต่สร้าง PDF ไม่สำเร็จ กด "ลองอีกครั้ง"' }));
       }
       r = Object.assign({}, r, { pdfUrl: p.pdfUrl });
       AppData.patchDoc(r.docNo, { pdfUrl: p.pdfUrl, hasPdf: true });
@@ -633,16 +642,16 @@
   function showPdfFailed(r) {
     S.screen = 'done';
     totalbar.classList.add('hidden');
-    $('title').textContent = 'บันทึกเอกสารแล้ว';
+    $('title').textContent = 'บันทึกบิลแล้ว';
     $('subtitle').textContent = 'เลขที่ #' + LiffApp.docNoText(r.docNo) + ' · ยังไม่มี PDF';
     view.innerHTML =
-      '<div class="success"><div class="muted">เลขที่เอกสาร</div><div class="no" id="saved-no">#' + esc(LiffApp.docNoText(r.docNo)) + '</div>' +
+      '<div class="success"><div class="muted">เลขที่บิล</div><div class="no" id="saved-no">#' + esc(LiffApp.docNoText(r.docNo)) + '</div>' +
       '<div>' + esc(r.legalName || (S.shop && S.shop.legal_name) || '') + '</div><div class="num" style="font-size:20px;font-weight:700;margin-top:4px">' + money(r.total) + ' บาท</div></div>' +
       '<div class="card alert err" id="pdf-error">' + esc(r.pdfError) + '</div>' +
       '<div class="card stack">' +
-      '<button type="button" class="btn primary block" id="btn-pdf-retry">ลองสร้าง PDF ใหม่</button>' +
-      '<button type="button" class="btn block" id="btn-pdf-skip">ข้ามไปก่อน (ส่งการ์ดโดยยังไม่มี PDF)</button>' +
-      '<div class="small muted">เอกสารถูกบันทึกแล้ว เลขที่ไม่เปลี่ยน กดลองใหม่กี่ครั้งก็ไม่ออกเลขซ้ำ</div>' +
+      '<button type="button" class="btn primary block" id="btn-pdf-retry">ลองอีกครั้ง</button>' +
+      '<button type="button" class="btn block" id="btn-pdf-skip">ข้ามไปก่อน</button>' +
+      '<div class="small muted">บันทึกบิลแล้ว กดลองอีกครั้งได้ เลขที่ไม่เปลี่ยน</div>' +
       '</div>';
     $('btn-pdf-retry').addEventListener('click', function () { retryPdf(r); });
     $('btn-pdf-skip').addEventListener('click', function () { finish(Object.assign({}, r, { pdfUrl: '' })); });
@@ -665,8 +674,8 @@
     if (LiffApp.isDenied(res.code) || res.code === 'token_expired') return LiffApp.showApiError(res, scr);
     btn.disabled = false;
     skip.disabled = false;
-    btn.textContent = 'ลองสร้าง PDF ใหม่';
-    box.textContent = res.error || 'สร้าง PDF ไม่สำเร็จ กรุณาลองใหม่';
+    btn.textContent = 'ลองอีกครั้ง';
+    box.textContent = 'บันทึกบิล #' + LiffApp.docNoText(r.docNo) + ' แล้ว แต่สร้าง PDF ไม่สำเร็จ กด "ลองอีกครั้ง"';
   }
 
   // ---------- สำเร็จ
@@ -676,7 +685,7 @@
       try {
         await liff.sendMessages([{ type: 'text', text: 'บิล ' + LiffApp.docNoText(r.docNo) }]);
       } catch (e) {
-        showSuccess(r, 'ส่งข้อความเข้าแชทไม่สำเร็จ — พิมพ์ "บิล ' + LiffApp.docNoText(r.docNo) + '" ในแชท LINE เพื่อดูการ์ดเอกสาร');
+        showSuccess(r, 'ส่งเข้าแชทไม่สำเร็จ พิมพ์ "บิล ' + LiffApp.docNoText(r.docNo) + '" ในแชทเพื่อดูบิล');
         return;
       }
       // รอบ 7: ไม่ได้ใช้เลขที่ที่ใส่ (อีกคนออกบิลใบแรกไปก่อน) → ไม่ปิดหน้า ให้เห็นเลขที่จริงและคำอธิบาย
@@ -685,24 +694,24 @@
       liff.closeWindow();
       return;
     }
-    showSuccess(r, 'เปิดนอกแอป LINE จึงไม่ได้ส่งข้อความเข้าแชท — พิมพ์ "บิล ' + LiffApp.docNoText(r.docNo) + '" ในแชท LINE เพื่อดูการ์ดเอกสาร');
+    showSuccess(r, 'พิมพ์ "บิล ' + LiffApp.docNoText(r.docNo) + '" ในแชท LINE เพื่อดูบิล');
   }
 
   function showSuccess(r, note) {
     S.screen = 'done';
     totalbar.classList.add('hidden');
-    $('title').textContent = 'ออกเอกสารสำเร็จ';
+    $('title').textContent = 'ออกบิลสำเร็จ';
     $('subtitle').textContent = '';
     view.innerHTML =
-      '<div class="success" id="success"><div class="check">' + iconSvg('check') + '</div><div class="muted">เลขที่เอกสาร</div><div class="no" id="success-no">#' + esc(LiffApp.docNoText(r.docNo)) + '</div>' +
+      '<div class="success" id="success"><div class="check">' + iconSvg('check') + '</div><div class="muted">เลขที่บิล</div><div class="no" id="success-no">#' + esc(LiffApp.docNoText(r.docNo)) + '</div>' +
       '<div>' + esc(r.legalName || (S.shop && S.shop.legal_name) || '') + '</div><div class="num" style="font-size:20px;font-weight:700;margin-top:4px">' + money(r.total) + ' บาท</div></div>' +
-      (r.duplicate ? '<div class="card alert warn">คำขอนี้เคยออกเอกสารไปแล้ว จึงแสดงเลขที่เดิม (ไม่ได้ออกเลขใหม่)</div>' : '') +
+      (r.duplicate ? '<div class="card alert warn">บิลนี้ออกไปแล้ว แสดงเลขที่เดิม</div>' : '') +
       (r.warnings && r.warnings.length ? '<div class="card alert warn"><ul style="margin:0">' + r.warnings.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></div>' : '') +
       '<div class="card alert ok" id="success-note">' + esc(note) + '</div>' +
       '<div class="card stack">' +
       (r.pdfUrl
         ? '<a class="btn block" id="btn-pdf" href="' + esc(r.pdfUrl) + '" target="_blank" rel="noopener">' + iconSvg('file') + '<span>เปิด PDF</span></a>'
-        : '<div class="small muted" id="no-pdf">ยังไม่มี PDF — สร้างภายหลังได้ที่เมนู "ประวัติเอกสาร" (ปุ่ม "สร้าง PDF ใหม่")</div>') +
+        : '<div class="small muted" id="no-pdf">ยังไม่มี PDF สร้างได้ที่เมนู "ประวัติเอกสาร"</div>') +
       '<button type="button" class="btn primary block" id="btn-new">ออกบิลใหม่</button>' +
       '</div>';
     $('btn-new').addEventListener('click', load);
@@ -715,7 +724,7 @@
     build: function (s) {
       scr = s;
       s.root.innerHTML =
-        '<div class="topbar"><h1 id="title">ออกเอกสาร</h1><div class="sub" id="subtitle">กำลังโหลด…</div></div>' +
+        '<div class="topbar"><h1 id="title">ออกบิล</h1><div class="sub" id="subtitle">กำลังโหลด…</div></div>' +
         '<div id="view" aria-live="polite"><div class="loading" role="status"><span class="spinner" aria-hidden="true"></span><div class="msg">กำลังเปิดหน้า…</div></div></div>';
       s.dock.innerHTML =
         '<div class="totalbar hidden" id="totalbar"><div class="inner"><div class="sums num">' +

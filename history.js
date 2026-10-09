@@ -28,7 +28,7 @@
 
   /** เข้าหน้าจอตาม URL: ?shopId= → เอกสารของร้าน / ไม่มี → ค้นหาร้าน (ข้อมูลเดิม + หน้าเดิม → ไม่ต้องวาดใหม่) */
   async function show(s, params) {
-    if (!AppData.has()) LiffApp.loading('กำลังโหลดรายชื่อร้านและเอกสาร…', view);
+    if (!AppData.has()) LiffApp.loading('กำลังโหลดข้อมูล…', view);
     var r = await AppData.ensure();
     if (!r.ok) { failed = true; return LiffApp.showApiError(r, scr); }
     failed = false;
@@ -113,13 +113,13 @@
     if (!keepScroll) Shell.scrollTop(scr);
     if (AppData.shopComplete(shop.shop_id)) return drawDocs(AppData.docsOfShop(shop.shop_id));
     // ร้านนี้มีเอกสารมากกว่าที่โหลดมาตอนเปิดแอป → โหลดเพิ่มครั้งเดียว (จำไว้ แตะร้านนี้อีกไม่ต้องโหลด)
-    LiffApp.loading('กำลังโหลดเอกสารทั้งหมดของร้านนี้…', $('shop-docs'));
+    LiffApp.loading('กำลังโหลดบิลของร้านนี้…', $('shop-docs'));
     AppData.loadShopDocs(shop.shop_id).then(function (r) {
       if (current !== shop || !$('shop-docs')) return; // เปลี่ยนร้านไปแล้ว
       if (r.ok) return drawDocs(r.documents);
       if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
-      $('shop-docs').innerHTML = '<div class="alert err" id="docs-error">' + LiffApp.errorHtml(r.error || 'โหลดเอกสารไม่สำเร็จ') + '</div>' +
-        '<button type="button" class="btn block" id="docs-retry" style="margin-top:10px">ลองใหม่</button>';
+      $('shop-docs').innerHTML = '<div class="alert err" id="docs-error">' + LiffApp.errorHtml(r.error || 'โหลดบิลไม่สำเร็จ') + '</div>' +
+        '<button type="button" class="btn block" id="docs-retry" style="margin-top:10px">ลองอีกครั้ง</button>';
     });
   }
 
@@ -128,8 +128,8 @@
     var sum = issued.reduce(function (a, d) { return a + toSatang(d.total); }, 0);
     $('shop-docs').innerHTML =
       '<div class="summary"><span>ทั้งหมด <b id="doc-count">' + mine.length + '</b> ใบ</span>' +
-      '<span>ยอดที่ไม่ยกเลิก <b class="num" id="doc-sum">' + formatMoney(fromSatang(sum)) + '</b></span></div>' +
-      '<ul class="list" id="docs">' + (mine.length ? mine.map(docRow).join('') : '<li class="empty">ร้านนี้ยังไม่มีเอกสาร</li>') + '</ul>';
+      '<span>ยอดรวมไม่นับใบยกเลิก <b class="num" id="doc-sum">' + formatMoney(fromSatang(sum)) + '</b></span></div>' +
+      '<ul class="list" id="docs">' + (mine.length ? mine.map(docRow).join('') : '<li class="empty">ร้านนี้ยังไม่มีบิล</li>') + '</ul>';
   }
 
   /** ปุ่ม "สร้าง PDF ใหม่" สำหรับใบที่ไม่มี PDF (เซิร์ฟเวอร์ตรวจ idToken + แท็บผู้ใช้) */
@@ -146,7 +146,7 @@
       return;
     }
     AppData.patchDoc(Number(no), { hasPdf: true, pdfUrl: r.pdfUrl }); // วาดรายการใหม่ (มีปุ่ม "ดู PDF")
-    LiffApp.toast('สร้าง PDF ของเอกสาร #' + no + ' แล้ว');
+    LiffApp.toast('สร้าง PDF ของบิล #' + no + ' แล้ว');
   }
 
   /** ปุ่ม "ดู PDF" → หน้าจอ view (ดูในแอป LINE ก่อน มีปุ่มดาวน์โหลด / ส่งต่อในหน้านั้น) */
@@ -174,7 +174,7 @@
     build: function (s) {
       scr = s;
       s.root.innerHTML =
-        '<div class="topbar"><h1>ประวัติเอกสาร</h1><div class="sub" id="subtitle">ค้นหาชื่อร้าน แล้วแตะเพื่อดูเอกสารทุกใบของร้านนั้น</div></div>' +
+        '<div class="topbar"><h1>ประวัติเอกสาร</h1><div class="sub" id="subtitle">ค้นหาร้าน แล้วแตะเพื่อดูบิล</div></div>' +
         '<div id="view" aria-live="polite"></div>';
       view = $('view');
     },

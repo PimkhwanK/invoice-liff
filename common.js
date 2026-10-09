@@ -36,46 +36,55 @@ var LiffApp = (function () {
   }
 
   /**
-   * รอบ 6 ข้อ 4: ระบบตั้งค่าไม่ครบ/ผิด → ขึ้นต้นด้วยประโยคนี้เสมอ แล้วรายละเอียดทางเทคนิคเป็นตัวเล็กด้านล่าง (detail)
-   * เซิร์ฟเวอร์ (Api.gs API_SETUP) ส่งรูปแบบเดียวกัน: "<ประโยคนี้>\n<รายละเอียด>" → splitSetup แยกให้
+   * ระบบตั้งค่าไม่ครบ/ผิด → "ระบบยังไม่พร้อมใช้งาน" + "กรุณาแจ้งผู้ดูแลระบบ" (รอบ 9: ไม่แสดงรายละเอียดทางเทคนิคบนจอ — อยู่ใน console)
+   * เซิร์ฟเวอร์ (Api.gs API_SETUP) ส่ง "<ประโยคนี้>\n<รายละเอียด>" → splitSetup แยกให้ / รับข้อความแบบเดิมของเซิร์ฟเวอร์รุ่นเก่าด้วย
    */
-  var SETUP = 'ระบบยังตั้งค่าไม่ครบ กรุณาแจ้งผู้ดูแลระบบ';
+  var SETUP = 'ระบบยังไม่พร้อมใช้งาน';
+  var SETUP_TEXT = 'กรุณาแจ้งผู้ดูแลระบบ';
+  var SETUP_PREFIXES = ['ระบบยังไม่พร้อมใช้งาน กรุณาแจ้งผู้ดูแลระบบ', 'ระบบยังตั้งค่าไม่ครบ กรุณาแจ้งผู้ดูแลระบบ'];
   var FOR_ADMIN = 'รายละเอียดสำหรับผู้ดูแลระบบ: ';
   var NL = String.fromCharCode(10);
+  var RETRY = 'ลองอีกครั้ง';
 
   var MSG = {
-    notConfigured: { title: SETUP, text: '', detail: FOR_ADMIN + 'ยังไม่ได้ใส่ LIFF_ID หรือ API_URL ในไฟล์ config.js' },
-    sdk: { title: 'เชื่อมต่อไม่ได้', text: 'โหลดระบบของ LINE ไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วกด "ลองใหม่"' },
-    init: {
-      title: 'เปิดหน้าไม่สำเร็จ', text: 'ตรวจสอบอินเทอร์เน็ตแล้วกด "ลองใหม่" ถ้ายังเปิดไม่ได้ กรุณาแจ้งผู้ดูแลระบบ',
-      detail: FOR_ADMIN + 'liff.init ไม่สำเร็จ (LIFF_ID ใน config.js อาจไม่ถูกต้อง)'
-    },
-    noToken: { title: SETUP, text: '', detail: FOR_ADMIN + 'ไม่ได้รับ ID token จาก LINE — LIFF app ต้องเปิด scope openid' },
-    network: { title: 'เชื่อมต่อไม่ได้', text: 'ติดต่อระบบไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วกด "ลองใหม่"' },
-    http: { title: 'เชื่อมต่อไม่ได้', text: 'ระบบตอบกลับผิดปกติ กรุณากด "ลองใหม่" อีกครั้ง' },
-    badResponse: {
-      title: SETUP, text: '',
-      detail: FOR_ADMIN + 'คำตอบไม่ใช่ข้อมูลของระบบ — ตรวจ API_URL ใน config.js และ Web app ต้องตั้ง Who has access เป็น Anyone'
-    }
+    notConfigured: { title: SETUP, text: SETUP_TEXT, detail: FOR_ADMIN + 'ยังไม่ได้ใส่ LIFF_ID หรือ API_URL ในไฟล์ config.js' },
+    sdk: { title: 'เชื่อมต่อไม่สำเร็จ', text: 'ตรวจสอบอินเทอร์เน็ต แล้วลองอีกครั้ง' },
+    init: { title: 'เปิดหน้าไม่สำเร็จ', text: 'ตรวจสอบอินเทอร์เน็ต แล้วลองอีกครั้ง', detail: FOR_ADMIN + 'liff.init ไม่สำเร็จ (LIFF_ID ใน config.js อาจไม่ถูกต้อง)' },
+    noToken: { title: SETUP, text: SETUP_TEXT, detail: FOR_ADMIN + 'ไม่ได้รับ ID token จาก LINE (LIFF app ต้องเปิด scope openid)' },
+    network: { title: 'เชื่อมต่อไม่สำเร็จ', text: RETRY },
+    http: { title: 'เชื่อมต่อไม่สำเร็จ', text: RETRY },
+    badResponse: { title: SETUP, text: SETUP_TEXT, detail: FOR_ADMIN + 'คำตอบไม่ใช่ข้อมูลของระบบ (ตรวจ API_URL ใน config.js และ Web app ต้องตั้ง Who has access เป็น Anyone)' }
   };
-  /** ข้อความของคำตอบ (r.error) จาก MSG — แบบตั้งค่าไม่ครบ = ประโยคหลัก + ขึ้นบรรทัด + รายละเอียด */
-  function msgText(m) { return m.title === SETUP ? SETUP + NL + m.detail : m.text; }
+  /** ข้อความของคำตอบ (r.error) จาก MSG — แบบตั้งค่าไม่ครบ = ประโยคหลัก + ขึ้นบรรทัด + รายละเอียด (รายละเอียดไม่แสดงบนจอ) */
+  function msgText(m) { return m.title === SETUP ? SETUP_PREFIXES[0] + NL + m.detail : m.title + ' ' + m.text; }
 
-  /** "ระบบยังตั้งค่าไม่ครบ…\nรายละเอียด" → { detail } / ข้อความอื่น → null */
+  /** "ระบบยังไม่พร้อมใช้งาน…\nรายละเอียด" → { detail } / ข้อความอื่น → null */
   function splitSetup(text) {
     text = String(text == null ? '' : text);
-    if (text.indexOf(SETUP) !== 0) return null;
-    return { detail: text.slice(SETUP.length).replace(/^\s+/, '') };
+    for (var i = 0; i < SETUP_PREFIXES.length; i++) {
+      if (text.indexOf(SETUP_PREFIXES[i]) === 0) return { detail: text.slice(SETUP_PREFIXES[i].length).replace(/^\s+/, '') };
+    }
+    return null;
+  }
+
+  /** รายละเอียดทางเทคนิค → console เท่านั้น (ผู้ดูแลเปิดดูได้) */
+  function logDetail(detail) {
+    if (!detail) return;
+    try { console.error('[ผู้ดูแลระบบ] ' + detail); } catch (e) { /* ไม่เป็นไร */ }
+  }
+
+  /** รอบ 9: ตัดรหัสอ้างอิง (รหัส E-1234) ออกจากข้อความที่แสดง (ยังอยู่ในบันทึกของ Apps Script) */
+  function cleanError(text) {
+    return String(text == null ? '' : text).replace(/\s*\(?รหัส E-[0-9]+\)?/g, '');
   }
 
   /**
-   * ข้อความผิดพลาดในกล่องเล็ก (.alert) เป็น HTML: ตั้งค่าไม่ครบ → ประโยคหลักตัวหนา + รายละเอียดตัวเล็ก / อื่น ๆ → ขึ้นบรรทัดตาม \n
-   * (รหัส E-xxxx ในข้อความขัดข้องอยู่ในข้อความเดิม)
+   * ข้อความผิดพลาดในกล่องเล็ก (.alert) เป็น HTML: ตั้งค่าไม่ครบ → ประโยคหลักตัวหนา + "กรุณาแจ้งผู้ดูแลระบบ" / อื่น ๆ → ขึ้นบรรทัดตาม \n
    */
   function errorHtml(text) {
     var s = splitSetup(text);
-    if (s) return '<b>' + esc(SETUP) + '</b>' + (s.detail ? '<div class="detail">' + esc(s.detail) + '</div>' : '');
-    return esc(text).split(NL).join('<br>');
+    if (s) { logDetail(s.detail); return '<b>' + esc(SETUP) + '</b> ' + esc(SETUP_TEXT); }
+    return esc(cleanError(text)).split(NL).join('<br>');
   }
 
   function esc(s) {
@@ -100,7 +109,7 @@ var LiffApp = (function () {
   function loading(text, target) {
     var box = el('<div class="loading" id="loading" role="status"><span class="spinner" aria-hidden="true"></span>' +
       '<div class="msg" id="loading-msg"></div><div class="small muted slow hidden" id="loading-slow">' +
-      'ใช้เวลานานกว่าปกติ — ถ้าไม่ได้ใช้งานมาสักพัก ระบบต้องตื่นก่อน ครั้งแรกอาจใช้ 5–15 วินาที</div></div>');
+      'ใช้เวลานานกว่าปกติ กรุณารอสักครู่</div></div>');
     box.querySelector('.msg').textContent = text;
     (target || view()).replaceChildren(box);
     setTimeout(function () {
@@ -118,13 +127,9 @@ var LiffApp = (function () {
     var card = el('<section class="card alert err" id="error"><h2></h2><p></p></section>');
     if (code) card.setAttribute('data-code', code);
     card.querySelector('h2').textContent = m.title;
-    if (m.text) card.querySelector('p').textContent = m.text;
+    if (m.text) card.querySelector('p').textContent = cleanError(m.text);
     else card.querySelector('p').remove();
-    if (m.detail) { // รายละเอียดทางเทคนิค ตัวเล็ก (ผู้ใช้ทั่วไปไม่ต้องอ่าน ส่งต่อให้ผู้ดูแลได้)
-      var d = el('<div class="detail" id="error-detail"></div>');
-      d.textContent = m.detail;
-      card.appendChild(d);
-    }
+    logDetail(m.detail); // รอบ 9: รายละเอียดทางเทคนิคไม่แสดงบนจอ อยู่ใน console
     if (m.hint) {
       var h = el('<p class="small"></p>');
       h.textContent = m.hint;
@@ -230,11 +235,11 @@ var LiffApp = (function () {
     var s = find('sync', scr);
     if (!on) { if (s) s.remove(); return; }
     if (s || !bar) return;
-    s = el('<div class="sync" id="sync" role="status"><span class="spinner sm" aria-hidden="true"></span> กำลังอัปเดตข้อมูลล่าสุด…</div>');
+    s = el('<div class="sync" id="sync" role="status"><span class="spinner sm" aria-hidden="true"></span> กำลังอัปเดตข้อมูล…</div>');
     bar.appendChild(s);
   }
 
-  var reload = { label: 'ลองใหม่', run: function () { location.reload(); } };
+  var reload = { label: RETRY, run: function () { location.reload(); } };
   var relogin = {
     label: 'เข้าสู่ระบบใหม่',
     run: function () {
@@ -253,6 +258,15 @@ var LiffApp = (function () {
     var t0 = Date.now();
     try {
       var r = await apiFetch(body);
+      // รอบ 9: คำตอบผิดรูป (เช่น ครั้งแรกหลังผู้ดูแลกด New version) — เครื่องนี้เคยเชื่อมต่อสำเร็จแล้ว → ส่งคำขอเดิมใหม่ 1 ครั้ง
+      // (requestId เดิมอยู่ใน body → createDocument ไม่ออกบิลซ้ำ)
+      if (r && r.code === 'bad_response' && wasConnected()) {
+        try { console.warn('[เชื่อมต่อ] ' + action + ' ได้คำตอบผิดรูป ส่งใหม่อีกครั้ง'); } catch (e) { /* ไม่เป็นไร */ }
+        r = await apiFetch(body);
+        if (r && r.code === 'bad_response') r = { ok: false, code: 'bad_response', error: msgText(MSG.network), connected: true };
+      }
+      if (r && r.code !== 'bad_response' && r.code !== 'network' && r.code !== 'http') markConnected();
+      if (r && !r.ok && typeof r.error === 'string') r.error = cleanError(r.error);
       if (r && !r.ok && AUTH_FAIL[r.code]) forget(); // ไม่มีสิทธิ์ → ลืมทุกอย่างที่จำไว้บนเครื่องนี้
       if (r && r.serverTiming) {
         var st = r.serverTiming;
@@ -290,6 +304,19 @@ var LiffApp = (function () {
     }
   }
 
+  /** รอบ 9: เครื่องนี้เคยได้คำตอบปกติจากเซิร์ฟเวอร์แล้ว (ไม่แยกบัญชี ไม่ใช่ข้อมูลส่วนตัว) */
+  var CONNECTED_KEY = STORE_PREFIX + 'connected'; // ล้างพร้อมข้อมูลอื่นเมื่อไม่มีสิทธิ์ (forget)
+  var connectedNow = false;
+  function wasConnected() {
+    if (connectedNow) return true;
+    try { return !!(storeOk() && localStorage.getItem(CONNECTED_KEY)); } catch (e) { return false; }
+  }
+  function markConnected() {
+    if (connectedNow) return;
+    connectedNow = true;
+    try { if (storeOk()) localStorage.setItem(CONNECTED_KEY, '1'); } catch (e) { /* ไม่เป็นไร */ }
+  }
+
   /** ติดต่อเซิร์ฟเวอร์ไม่ได้ชั่วคราว (ลองอีกครั้งได้ด้วยข้อมูลเดิม) */
   function isRetryable(r) {
     return r.code === 'network' || r.code === 'http' || r.code === 'bad_response' || r.code === 'busy' || r.code === 'verify_unavailable' || r.code === 'server';
@@ -299,22 +326,22 @@ var LiffApp = (function () {
   function showApiError(r, scr) {
     if (r.code === 'network') return showError(MSG.network, reload, r.code, scr);
     if (r.code === 'http') return showError(MSG.http, reload, r.code, scr);
-    if (r.code === 'bad_response') return showError(MSG.badResponse, reload, r.code, scr);
+    if (r.code === 'bad_response') return showError(r.connected || wasConnected() ? MSG.network : MSG.badResponse, reload, r.code, scr);
     if (isDenied(r.code)) return showDenied(r.code, scr);
     if (r.code === 'no_token' || r.code === 'token_invalid') {
-      return showError({ title: 'ยืนยันตัวตนไม่ได้', text: 'ยืนยันตัวตนกับ LINE ไม่สำเร็จ กรุณาปิดหน้านี้แล้วเปิดใหม่จากแชท LINE' }, relogin, r.code, scr);
+      return showError({ title: 'เข้าสู่ระบบไม่สำเร็จ', text: 'ปิดหน้านี้ แล้วเปิดใหม่จากแชท LINE' }, relogin, r.code, scr);
     }
-    if (r.code === 'token_expired') return showError({ title: 'การเข้าสู่ระบบหมดอายุ', text: r.error }, relogin, r.code, scr);
-    // ตั้งค่าไม่ครบ (code config หรือข้อความแบบ API_SETUP) — เซิร์ฟเวอร์รุ่นเก่าส่งข้อความเดิม → ทั้งข้อความเป็นรายละเอียด
+    if (r.code === 'token_expired') return showError({ title: 'การเข้าสู่ระบบหมดอายุ', text: 'ปิดหน้านี้ แล้วเปิดใหม่จากแชท LINE' }, relogin, r.code, scr);
+    // ตั้งค่าไม่ครบ (code config หรือข้อความแบบ API_SETUP) — เซิร์ฟเวอร์รุ่นเก่าส่งข้อความเดิม → ทั้งข้อความเป็นรายละเอียด (console)
     var s = splitSetup(r.error);
-    if (s || r.code === 'config') return showError({ title: SETUP, text: '', detail: s ? s.detail : (r.error || '') }, reload, r.code, scr);
-    return showError({ title: 'เกิดข้อผิดพลาด', text: r.error || 'กรุณาลองใหม่อีกครั้ง' }, reload, r.code, scr);
+    if (s || r.code === 'config') return showError({ title: SETUP, text: SETUP_TEXT, detail: s ? s.detail : (r.error || '') }, reload, r.code, scr);
+    return showError({ title: 'เกิดข้อผิดพลาด', text: cleanError(r.error) || RETRY }, reload, r.code, scr);
   }
 
   // ---------- หน้าไม่มีสิทธิ์ใช้งาน (รอบ 6 ข้อ 3 — สีจาก theme.css)
   /** ข้อความที่ส่งให้ผู้ดูแลผ่าน shareTargetPicker (มีรหัสและวิธีเพิ่มสิทธิ์ — เฉพาะข้อความนี้ที่พูดถึงแท็บผู้ใช้) */
   function accessRequestText(name, id) {
-    return ['ขอสิทธิ์ใช้งานระบบออกบิล', 'ชื่อ: ' + (name || '-'), 'รหัส: ' + id, '', 'ผู้ดูแล: นำรหัสนี้ไปเพิ่มในแท็บ ผู้ใช้ ของ Google Sheet'].join(String.fromCharCode(10));
+    return ['ขอสิทธิ์ใช้งานระบบออกบิล', 'ชื่อ: ' + (name || '-'), 'รหัส: ' + id, '', 'ผู้ดูแล: เพิ่มรหัสนี้ในแท็บ "ผู้ใช้"'].join(String.fromCharCode(10));
   }
 
   /** ชื่อ LINE และรหัส (sub) จาก idToken บนเครื่อง — ไม่ต้องถามเซิร์ฟเวอร์ */
@@ -343,8 +370,8 @@ var LiffApp = (function () {
     card.setAttribute('data-code', disabled ? 'disabled' : 'not_registered');
     // ไอคอนเส้นจาก icons.js (สีตามธีม currentColor): กุญแจล็อก / หยุดชั่วคราว
     card.querySelector('.icon').innerHTML = iconSvg(disabled ? 'pause' : 'lock');
-    card.querySelector('h2').textContent = disabled ? 'บัญชีนี้ถูกปิดการใช้งาน' : 'ยังไม่ได้รับสิทธิ์ใช้งาน';
-    card.querySelector('p').textContent = disabled ? 'กรุณาติดต่อผู้ดูแลระบบ' : 'ส่งรหัสด้านล่างให้ผู้ดูแลระบบ เพื่อเปิดสิทธิ์ใช้งาน';
+    card.querySelector('h2').textContent = disabled ? 'บัญชีนี้ถูกปิดการใช้งาน' : 'ยังไม่มีสิทธิ์ใช้งาน';
+    card.querySelector('p').textContent = disabled ? 'กรุณาติดต่อผู้ดูแลระบบ' : 'ส่งรหัสด้านล่างให้ผู้ดูแลระบบ';
     if (!disabled) addRequest(card, lineIdentity());
     document.body.classList.add('denied-mode');
     syncing(false, scr);
@@ -359,7 +386,7 @@ var LiffApp = (function () {
     var who = el('<div class="who"><div class="label">ชื่อ LINE</div><div class="name" id="denied-name"></div>' +
       '<div class="label">รหัส</div><code class="uid" id="denied-id"></code></div>');
     who.querySelector('#denied-name').textContent = me.name || '-';
-    who.querySelector('#denied-id').textContent = me.id || 'ไม่พบรหัส กรุณาปิดแล้วเปิดหน้านี้ใหม่จากแอป LINE';
+    who.querySelector('#denied-id').textContent = me.id || 'ไม่พบรหัส ปิดหน้านี้ แล้วเปิดใหม่จากแอป LINE';
     card.appendChild(who);
     if (!me.id) return;
     var actions = el('<div class="actions"></div>');
@@ -372,9 +399,9 @@ var LiffApp = (function () {
         try {
           var res = await liff.shareTargetPicker([{ type: 'text', text: accessRequestText(me.name, me.id) }], { isMultiple: false });
           if (res && res.status === 'success') say('ส่งรหัสแล้ว รอผู้ดูแลเปิดสิทธิ์ แล้วเปิดหน้านี้ใหม่', true);
-          else say('ยังไม่ได้ส่ง — กดอีกครั้งเพื่อเลือกผู้ดูแล', false);
+          else say('ยังไม่ได้ส่ง กดอีกครั้งเพื่อเลือกผู้ดูแล', false);
         } catch (e) {
-          say('ส่งไม่สำเร็จ — กด "คัดลอกรหัส" แล้วส่งให้ผู้ดูแลเอง', false);
+          say('ส่งไม่สำเร็จ กด "คัดลอกรหัส" แล้วส่งให้ผู้ดูแลเอง', false);
         }
         share.disabled = false;
       });
@@ -389,7 +416,7 @@ var LiffApp = (function () {
       } catch (e) {
         // คัดลอกเองไม่ได้ (บางเบราว์เซอร์) → เลือกข้อความรหัสไว้ให้ กดค้างแล้วเลือก "คัดลอก"
         try { window.getSelection().selectAllChildren(card.querySelector('#denied-id')); } catch (e2) { /* ไม่เป็นไร */ }
-        say('คัดลอกอัตโนมัติไม่ได้ — เลือกรหัสไว้ให้แล้ว กดค้างที่รหัสแล้วเลือก "คัดลอก"', false);
+        say('คัดลอกไม่สำเร็จ กดค้างที่รหัส แล้วเลือก "คัดลอก"', false);
       }
     });
     actions.appendChild(copy);

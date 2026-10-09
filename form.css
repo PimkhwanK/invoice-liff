@@ -85,8 +85,20 @@ input.num { text-align: right; }
 .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 .two > * { min-width: 0; } /* ช่องในคอลัมน์ห้ามดันคอลัมน์ให้กว้างกว่าครึ่ง */
 .hint { font-size: 12px; color: var(--theme-text-2); margin-top: 3px; }
-.hint.th-date { color: var(--theme-text); font-weight: 700; }
-.hint.th-date.off { color: var(--theme-warn-text); } /* ไม่ใช่วันนี้ */
+/* รอบ 9: ช่องวันที่ = วันที่ไทยบรรทัดเดียว + ช่องวันที่จริงโปร่งใสซ้อนทับ (แตะแล้วเปิดปฏิทินของมือถือ) */
+.date-box {
+  position: relative; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 9px 10px;
+  border: 1px solid var(--theme-field-border); border-radius: 8px; background: var(--theme-card); color: var(--theme-text); font-size: 16px;
+}
+.date-box .date-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.date-box svg.icon { width: 18px; height: 18px; flex: none; color: var(--theme-text-2); }
+.date-box input[type=date] {
+  position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; padding: 0;
+  border: 0; opacity: 0; cursor: pointer; background: transparent;
+}
+.date-box:focus-within { outline: 2px solid var(--theme-primary); outline-offset: -1px; border-color: transparent; }
+.date-box.off { background: var(--theme-field-off); color: var(--theme-text-2); }
+.date-box.off input[type=date] { cursor: default; }
 
 /* รอบ 5B: ช่องวันที่ของ iOS (เบราว์เซอร์ใน LINE) มีความกว้างขั้นต่ำของตัวเอง ทำให้ทับช่องข้าง ๆ / ล้นการ์ด
    ปิดหน้าตาแบบระบบ (appearance) แล้วบังคับให้กว้างเท่ากรอบ / ช่องว่างของ iOS ไม่มีความสูง → min-height */

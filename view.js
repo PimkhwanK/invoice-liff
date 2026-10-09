@@ -53,9 +53,9 @@
     S.stale = false;
     if (S.no < 0) {
       S.state = 'error';
-      return LiffApp.showError({ title: 'ไม่ได้ระบุเลขที่เอกสาร', text: 'กรุณาเปิดจากปุ่ม "ดู PDF" ในแชท หรือจากหน้าประวัติเอกสาร' }, null, 'no_doc', scr);
+      return LiffApp.showError({ title: 'ไม่ได้ระบุเลขที่บิล', text: 'กรุณาเปิดจากปุ่ม "ดู PDF" ในแชท หรือจากหน้าประวัติเอกสาร' }, null, 'no_doc', scr);
     }
-    $('title').textContent = 'เอกสาร #' + LiffApp.docNoText(S.no);
+    $('title').textContent = 'บิล #' + LiffApp.docNoText(S.no);
     $('subtitle').textContent = 'ใบกำกับภาษี';
     LiffApp.loading('กำลังโหลด PDF เลขที่ ' + LiffApp.docNoText(S.no) + '…', view);
     var lib = loadPdfJs(); // โหลดพร้อมกับรอเซิร์ฟเวอร์
@@ -81,7 +81,7 @@
     if (!r.hasPdf) {
       view.innerHTML = head(S.doc) +
         '<section class="card" id="no-pdf"><p style="margin-top:0"><span class="badge amber">ยังไม่มี PDF</span></p>' +
-        '<p class="small muted">เอกสารถูกบันทึกแล้ว แต่ยังสร้างไฟล์ PDF ไม่สำเร็จ กดปุ่มด้านล่างเพื่อสร้างใหม่ (เลขที่เดิม ไม่ออกเลขใหม่)</p>' +
+        '<p class="small muted">บิลนี้ยังไม่มี PDF กดปุ่มด้านล่างเพื่อสร้าง</p>' +
         '<button type="button" class="btn primary block" id="btn-regen">สร้าง PDF ใหม่</button><div id="regen-msg"></div></section>';
       $('btn-regen').addEventListener('click', regenerate);
       return;
@@ -97,14 +97,14 @@
     });
     $('zoom-in').addEventListener('click', function () { setZoom(S.zoom + 1); });
     $('zoom-out').addEventListener('click', function () { setZoom(S.zoom - 1); });
-    if (r.pdfError || !r.pdfBase64) return showRenderError(r.pdfError || 'เปิด PDF ในแอปไม่สำเร็จ');
+    if (r.pdfError || !r.pdfBase64) return showRenderError('เปิด PDF ไม่สำเร็จ');
     openPdf(r.pdfBase64, lib || loadPdfJs());
   }
 
   function showRenderError(msg) {
     $('pdf-bar').querySelector('.zoom').classList.add('hidden');
     $('pages').outerHTML = '<section class="card alert err" id="render-error">' + esc(msg) +
-      '<br>กด "ดาวน์โหลด / ส่งต่อ" ด้านบนเพื่อเปิดนอกแอป LINE</section>';
+      '<br>กด "ดาวน์โหลด / ส่งต่อ" แทน</section>';
   }
 
   async function openPdf(b64, lib) {
@@ -113,7 +113,7 @@
     LiffApp.loading('กำลังแสดงผล PDF…', pages);
     var ok = await lib;
     if (id !== S.loadId) return;
-    if (!ok) return showRenderError('โหลดตัวแสดง PDF ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)');
+    if (!ok) return showRenderError('แสดง PDF ไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต');
     try {
       pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
       var bin = atob(b64);
@@ -126,7 +126,7 @@
       await render();
     } catch (e) {
       console.error(e);
-      showRenderError('แสดง PDF ในแอปไม่สำเร็จ');
+      showRenderError('แสดง PDF ไม่สำเร็จ');
     }
   }
 
@@ -162,7 +162,7 @@
       canvas.height = Math.floor(vp.height);
       canvas.style.width = Math.floor(base.width * css) + 'px';
       canvas.style.height = Math.floor(base.height * css) + 'px';
-      canvas.setAttribute('aria-label', 'หน้า ' + n + ' ของเอกสาร #' + LiffApp.docNoText(S.no));
+      canvas.setAttribute('aria-label', 'หน้า ' + n + ' ของบิล #' + LiffApp.docNoText(S.no));
       await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
       if (id !== S.renderId) return; // มีการซูมใหม่ระหว่างวาด
       canvases.push(canvas);
@@ -183,7 +183,7 @@
     var msg = $('regen-msg');
     var no = S.no;
     btn.disabled = true;
-    btn.textContent = 'กำลังสร้าง PDF… อาจใช้เวลา 10–20 วินาที';
+    btn.textContent = 'กำลังสร้าง PDF…';
     msg.innerHTML = '';
     var r = await LiffApp.api('regeneratePdf', { docNo: no, withPdf: true });
     if (no !== S.no) return;
@@ -194,7 +194,7 @@
       msg.innerHTML = '<div class="alert err" id="regen-error" style="margin-top:10px">' + LiffApp.errorHtml(r.error || 'สร้าง PDF ไม่สำเร็จ') + '</div>';
       return;
     }
-    LiffApp.toast('สร้าง PDF ของเอกสาร #' + LiffApp.docNoText(no) + ' แล้ว');
+    LiffApp.toast('สร้าง PDF ของบิล #' + LiffApp.docNoText(no) + ' แล้ว');
     if (AppData.has()) AppData.patchDoc(no, { hasPdf: true, pdfUrl: r.pdfUrl });
     S.stale = false; // ไฟล์ที่ได้มาคือไฟล์ล่าสุดแล้ว
     if (r.pdfBase64) return show({ document: S.doc, hasPdf: true, pdfUrl: r.pdfUrl, pdfBase64: r.pdfBase64 });

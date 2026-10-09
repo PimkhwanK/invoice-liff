@@ -61,10 +61,10 @@
       }
     } catch (e) { /* sessionStorage ใช้ไม่ได้ → แสดงข้อความเลย (กันโหลดใหม่วนไม่จบ) */ }
     var box = document.getElementById('app') || document.getElementById('view') || document.body;
-    box.innerHTML = '<section class="card alert err" id="error" data-code="load_failed" role="alert"><h2>โหลดหน้าไม่ครบ</h2>' +
-      '<p>อินเทอร์เน็ตอาจช้าหรือหลุดระหว่างเปิดหน้า กรุณากด "ลองใหม่"</p><div class="detail" id="error-detail"></div>' +
-      '<button type="button" class="btn primary block" id="error-action">ลองใหม่</button></section>';
-    document.getElementById('error-detail').textContent = 'รายละเอียดสำหรับผู้ดูแลระบบ: โหลดไม่สำเร็จ ' + missing.join(', ');
+    box.innerHTML = '<section class="card alert err" id="error" data-code="load_failed" role="alert"><h2>เปิดหน้าไม่สำเร็จ</h2>' +
+      '<p>ตรวจสอบอินเทอร์เน็ต แล้วลองอีกครั้ง</p>' +
+      '<button type="button" class="btn primary block" id="error-action">ลองอีกครั้ง</button></section>';
+    try { console.error('[ผู้ดูแลระบบ] โหลดไม่สำเร็จ: ' + missing.join(', ')); } catch (e) { /* ไม่เป็นไร */ }
     document.getElementById('error-action').addEventListener('click', function () { location.reload(); });
   })([
     ['form.css', function () { return getComputedStyle(document.documentElement).getPropertyValue('--radius') !== ''; }],

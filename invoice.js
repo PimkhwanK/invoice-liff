@@ -170,26 +170,26 @@ function docDateCheck(docDate, documents, today, config) {
   var diff = isoDayDiff(today, docDate); // บวก = ล่วงหน้า, ลบ = ย้อนหลัง
   var shown = formatThaiDateShort(docDate);
   if (diff < -lim.max_backdate_days) {
-    out.errors.push('วันที่เอกสาร (' + shown + ') ย้อนหลัง ' + (-diff) + ' วัน เกินที่กำหนด (ไม่เกิน ' + lim.max_backdate_days + ' วัน) — ออกเอกสารไม่ได้ กรุณาแก้วันที่');
+    out.errors.push((lim.max_backdate_days > 0 ? 'ย้อนหลังได้ไม่เกิน ' + lim.max_backdate_days + ' วัน' : 'ลงวันที่ย้อนหลังไม่ได้') + ' กรุณาแก้วันที่');
     return out;
   }
   if (diff > lim.max_future_days) {
-    out.errors.push('วันที่เอกสาร (' + shown + ') ล่วงหน้า ' + diff + ' วัน เกินที่กำหนด (ไม่เกิน ' + lim.max_future_days + ' วัน) — ออกเอกสารไม่ได้ กรุณาแก้วันที่');
+    out.errors.push((lim.max_future_days > 0 ? 'ล่วงหน้าได้ไม่เกิน ' + lim.max_future_days + ' วัน' : 'ลงวันที่ล่วงหน้าไม่ได้') + ' กรุณาแก้วันที่');
     return out;
   }
   var latest = latestIssuedDoc(documents || []);
   var order = latest && isIsoDate(latest.doc_date) && docDate < latest.doc_date
-    ? 'อยู่ก่อนวันที่ของบิลใบล่าสุด #' + latest.doc_no + ' (' + formatThaiDateShort(latest.doc_date) + ') — เลขที่จะไม่เรียงตามวันที่'
+    ? 'อยู่ก่อนบิลใบล่าสุด #' + latest.doc_no
     : '';
   if (diff === 0) {
-    if (order) out.warnings.push('วันที่เอกสาร (' + shown + ') ' + order);
+    if (order) out.warnings.push('วันที่นี้' + order);
     return out;
   }
-  var messages = ['วันที่เอกสาร (' + shown + ') ' + (diff < 0 ? 'ย้อนหลัง ' + (-diff) : 'ล่วงหน้า ' + diff) + ' วัน จากวันนี้ (' + formatThaiDateShort(today) + ')'];
+  var messages = ['วันที่บิล (' + shown + ') ' + (diff < 0 ? 'ย้อนหลัง ' + (-diff) : 'ล่วงหน้า ' + diff) + ' วัน จากวันนี้ (' + formatThaiDateShort(today) + ')'];
   if (order) messages.push('วันที่นี้' + order);
   if (docDate.slice(0, 7) < today.slice(0, 7)) {
     var m = docDate.split('-').map(Number);
-    messages.push('ย้อนไปเดือน ' + THAI_MONTHS_SHORT[m[1] - 1] + ' ' + (m[0] + 543) + ' — เดือนนั้นอาจยื่นภาษีไปแล้ว ควรเช็กกับนักบัญชี');
+    messages.push('เป็นเดือนก่อนหน้า (' + THAI_MONTHS_SHORT[m[1] - 1] + ' ' + (m[0] + 543) + ') อาจยื่นภาษีไปแล้ว ควรเช็กกับนักบัญชี');
   }
   out.confirm = { date: docDate, days: Math.abs(diff), future: diff > 0, messages: messages };
   return out;
@@ -255,15 +255,15 @@ function textLimitErrors(input, ctx, shop) {
   var errors = [];
   function check(label, text, max, hint) {
     var n = textDisplayLength(text);
-    if (n > max) errors.push(label + ' ยาว ' + n + ' ตัวอักษร (เกิน ' + max + ') ข้อความจะล้นช่องใน PDF — ' + hint);
+    if (n > max) errors.push(label + 'ยาวเกิน ' + max + ' ตัวอักษร ' + hint); // max = ค่าจากแท็บตั้งค่า (text_max_*)
   }
   if (shop) {
     var snap = shopSnapshot(shop);
-    check('ชื่อลูกค้า', snap.shop_legal_name, lim.text_max_customer_name, 'กรุณาย่อชื่อเต็มของร้านในข้อมูลร้านค้า');
-    check('ที่อยู่บรรทัด 1 ของร้าน', snap.shop_address1, lim.text_max_address_line, 'กรุณาย่อที่อยู่ของร้านในข้อมูลร้านค้า');
-    check('ที่อยู่บรรทัด 2 ของร้าน', snap.shop_address2, lim.text_max_address_line, 'กรุณาย่อที่อยู่ของร้านในข้อมูลร้านค้า');
+    check('ชื่อลูกค้า', snap.shop_legal_name, lim.text_max_customer_name, 'กรุณาย่อในข้อมูลร้านค้า');
+    check('ที่อยู่บรรทัด 1 ของร้าน', snap.shop_address1, lim.text_max_address_line, 'กรุณาย่อในข้อมูลร้านค้า');
+    check('ที่อยู่บรรทัด 2 ของร้าน', snap.shop_address2, lim.text_max_address_line, 'กรุณาย่อในข้อมูลร้านค้า');
   }
-  check('ช่อง "อ้างถึง"', input.ref ? String(input.ref) : '', lim.text_max_ref, 'กรุณาย่อข้อความ');
+  check('ข้อความอ้างถึง', input.ref ? String(input.ref) : '', lim.text_max_ref, 'กรุณาย่อข้อความ');
   var items = Array.isArray(input.items) ? input.items : [];
   for (var i = 0; i < items.length; i++) {
     var it = items[i] || {};
@@ -273,7 +273,7 @@ function textLimitErrors(input, ctx, shop) {
     var product = it.barcode ? findBy(ctx.products, 'barcode', it.barcode) : null;
     if (product) {
       check(p + (note ? 'ชื่อสินค้ารวมหมายเหตุ' : 'ชื่อสินค้า'), itemLineText(product.name, note), lim.text_max_item_name,
-        note ? 'กรุณาย่อหมายเหตุ' : 'กรุณาย่อชื่อสินค้าในข้อมูลสินค้า');
+        note ? 'กรุณาย่อหมายเหตุ' : 'กรุณาย่อในข้อมูลสินค้า');
     }
   }
   return errors;
@@ -342,7 +342,7 @@ function validateDocumentInput(input, ctx) {
       if (!isNumberLike(it.price)) errors.push(p + 'กรุณาระบุราคา');
       else if (Number(it.price) < 0) errors.push(p + 'ราคาติดลบไม่ได้');
       else if (ctx.liveChecks && Number(it.price) === 0) {
-        warnings.push(p + (product ? '"' + product.name + '" ' : '') + 'ราคา 0 บาท แต่ไม่ได้ติ๊ก "แถม" — ถ้าเป็นของแถมกรุณาติ๊กแถม');
+        warnings.push(p + (product ? '"' + product.name + '" ' : '') + 'ราคา 0 บาท ถ้าเป็นของแถมกรุณาติ๊ก "แถม"');
       }
       var disc = it.discount === '' || it.discount === undefined || it.discount === null ? 0 : it.discount;
       if (!isNumberLike(disc)) errors.push(p + 'ส่วนลดไม่ถูกต้อง');
@@ -366,8 +366,7 @@ function validateDocumentInput(input, ctx) {
       var over = toSatang(totals.total) > MAX_DOC_TOTAL_SATANG ? ['ยอดรวมทั้งสิ้น', totals.total]
         : toSatang(totals.sum_amount) > MAX_DOC_TOTAL_SATANG ? ['รวมเงิน (ก่อนส่วนลด)', totals.sum_amount] : null;
       if (over) {
-        errors.push(over[0] + ' ' + formatMoney(over[1]) + ' บาท เกินช่องในใบกำกับ (สูงสุด ' + formatMoney(MAX_DOC_TOTAL_SATANG / 100) +
-          ' บาท) — กรุณาแยกเป็นหลายใบ');
+        errors.push('ยอดเกิน ' + formatMoney(MAX_DOC_TOTAL_SATANG / 100) + ' บาท กรุณาแยกเป็นหลายใบ');
       }
     }
   }
@@ -379,7 +378,7 @@ function validateDocumentInput(input, ctx) {
     warnings = warnings.concat(dc.warnings);
     // ctx.requireDateConfirm (createDocument): วันที่ไม่ใช่วันนี้ต้องส่งการยืนยันของวันที่นั้นมาด้วย
     if (dc.confirm && ctx.requireDateConfirm && input.date_confirmed !== input.doc_date) {
-      errors.push('วันที่เอกสาร (' + formatThaiDateShort(input.doc_date) + ') ไม่ใช่วันนี้ ต้องติ๊ก "ยืนยันว่าตั้งใจลงวันที่นี้" ในหน้าตรวจสอบก่อน');
+      errors.push('วันที่บิล (' + formatThaiDateShort(input.doc_date) + ') ไม่ใช่วันนี้ ต้องติ๊ก "ยืนยันว่าตั้งใจลงวันที่นี้" ในหน้าตรวจสอบก่อน');
     }
     return { errors: errors, warnings: warnings, dateConfirm: dc.confirm };
   }

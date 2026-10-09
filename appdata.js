@@ -83,7 +83,7 @@ var AppData = (function () {
       if (!r.ok) {
         // ไม่มีสิทธิ์แล้ว / หมดอายุ → แทนที่หน้าจอทั้งหมด (api() ล้างข้อมูลที่จำไว้แล้ว) / ติดต่อไม่ได้ → ใช้ที่จำไว้ต่อ
         if (LiffApp.isAuthFail(r.code)) { clear(); LiffApp.showApiError(r); }
-        else LiffApp.toast('อัปเดตข้อมูลไม่สำเร็จ — กำลังแสดงข้อมูลที่จำไว้', true);
+        else LiffApp.toast('อัปเดตข้อมูลไม่สำเร็จ แสดงข้อมูลเดิมไปก่อน', true);
         return r;
       }
       var same = S.data && JSON.stringify(r) === JSON.stringify(S.data);

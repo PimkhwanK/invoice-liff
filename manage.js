@@ -37,7 +37,7 @@
     return false;
   }
 
-  var LOADING = { shops: 'กำลังโหลดรายชื่อร้านค้า…', products: 'กำลังโหลดรายการสินค้า…', cancel: 'กำลังโหลดเอกสารที่ยกเลิกได้…' };
+  var LOADING = { shops: 'กำลังโหลดรายชื่อร้านค้า…', products: 'กำลังโหลดรายการสินค้า…', cancel: 'กำลังโหลดบิลที่ยกเลิกได้…' };
 
   var CANCEL_LIMIT = 50; // แท็บยกเลิกเอกสาร: ใบที่ยังไม่ยกเลิก ล่าสุดกี่ใบ
 
@@ -87,7 +87,7 @@
           ' <span class="small muted">#' + esc(s.shop_id) + '</span></div><div class="s">' + esc(s.legal_name) + '</div>' +
           '<div class="s">สาขา ' + esc(s.branch || '-') + ' · ' + esc(s.tax_id || 'ไม่มีเลขภาษี') + ' · เครดิต ' + (s.credit_days === '' ? 'ค่าเริ่มต้น' : esc(s.credit_days) + ' วัน') + '</div></div>' +
           (s.active ? '' : '<span class="badge gray">ปิด</span>') +
-          (s.tax_id && !taxIdCheckDigitOk(s.tax_id) ? '<span class="badge amber">เลขภาษี?</span>' : '') + '</li>';
+          (s.tax_id && !taxIdCheckDigitOk(s.tax_id) ? '<span class="badge amber">เช็กเลขภาษี</span>' : '') + '</li>';
       }).join('') || '<li class="empty">ไม่พบร้าน</li>';
     }
     q.addEventListener('input', draw);
@@ -105,7 +105,7 @@
       return '<div class="field"><label class="f" for="f-' + key + '">' + label + '</label><input type="' + (type || 'text') + '" id="f-' + key + '" value="' + esc(s[key]) + '"' + (extra || '') + '></div>';
     };
     var sh = LiffApp.sheet(shop ? 'แก้ไขร้าน #' + shop.shop_id : 'เพิ่มร้านใหม่',
-      (shop ? '<div class="alert warn small" style="margin-bottom:10px">แก้แล้วมีผลกับเอกสารใหม่เท่านั้น เอกสารเก่ายังใช้ข้อมูล ณ วันที่ออกเหมือนเดิม</div>' : '') +
+      (shop ? '<div class="alert warn small" style="margin-bottom:10px">มีผลกับบิลใหม่เท่านั้น บิลเก่าไม่เปลี่ยน</div>' : '') +
       f('short_name', 'ชื่อร้านค้า (ชื่อย่อ ใช้ค้นหา)') +
       f('legal_name', 'ชื่อเต็มตามใบกำกับ') +
       '<div class="field"><label class="f" for="f-address">ที่อยู่ (บรรทัดเดียว)</label><textarea id="f-address" rows="3">' + esc(s.address) + '</textarea><div class="hint" id="addr-preview"></div></div>' +
@@ -118,7 +118,7 @@
     var addr = sh.el.querySelector('#f-address');
     function preview() {
       var p = splitAddress(addr.value);
-      sh.el.querySelector('#addr-preview').innerHTML = 'บนเอกสาร: <b>' + esc(p[0]) + '</b><br>' + (p[1] ? '<b>' + esc(p[1]) + '</b>' : '');
+      sh.el.querySelector('#addr-preview').innerHTML = 'บนบิล: <b>' + esc(p[0]) + '</b><br>' + (p[1] ? '<b>' + esc(p[1]) + '</b>' : '');
     }
     addr.addEventListener('input', preview);
     preview();
@@ -172,7 +172,7 @@
     var v = p || { barcode: '', name: '', unit: 'ลัง', price: '', active: true };
     var sh = LiffApp.sheet(p ? 'แก้ไขสินค้า' : 'เพิ่มสินค้าใหม่',
       '<div class="field"><label class="f" for="p-barcode">บาร์โค้ดลัง</label><input type="text" id="p-barcode" inputmode="numeric" value="' + esc(v.barcode) + '"' + (p ? ' disabled' : '') + '>' +
-      (p ? '<div class="hint">แก้บาร์โค้ดไม่ได้ (ใช้ระบุสินค้า) ถ้าบาร์โค้ดผิด ให้เพิ่มสินค้าใหม่แล้วปิด "ยังขายอยู่" ของอันเดิม</div>' : '') + '</div>' +
+      (p ? '<div class="hint">แก้บาร์โค้ดไม่ได้ ถ้าผิดให้เพิ่มสินค้าใหม่ แล้วปิด "ยังขายอยู่" ของอันเดิม</div>' : '') + '</div>' +
       '<div class="field"><label class="f" for="p-name">รายการสินค้า</label><input type="text" id="p-name" value="' + esc(v.name) + '"></div>' +
       '<div class="two"><div><label class="f" for="p-unit">หน่วย</label><input type="text" id="p-unit" value="' + esc(v.unit) + '" list="units"></div>' +
       '<div><label class="f" for="p-price">ราคา (รวม VAT)</label><input type="number" id="p-price" class="num" min="0" step="any" inputmode="decimal" value="' + esc(v.price) + '"></div></div>' +
@@ -207,7 +207,7 @@
   // ---------- ยกเลิกเอกสาร
   function renderCancel(r) {
     view.innerHTML =
-      '<section class="card"><p class="small muted" style="margin-top:0">ห้ามลบเอกสาร — การยกเลิกจะเปลี่ยนสถานะเป็น "ยกเลิก" เก็บเหตุผล และทำ PDF ใหม่ที่มีลายน้ำ "ยกเลิก" ทับไฟล์เดิม (ลิงก์ที่ส่งให้ลูกค้าไปแล้วจะเห็นลายน้ำ) เลขที่เอกสารจะไม่ถูกนำกลับมาใช้</p>' +
+      '<section class="card"><p class="small muted" style="margin-top:0" id="cancel-note">บิลที่ออกแล้วลบไม่ได้ ถ้าออกผิดให้ยกเลิก แล้วออกใบใหม่<br>บิลที่ยกเลิกจะยังอยู่ในประวัติ และ PDF จะมีคำว่า "ยกเลิก"</p>' +
       '<div class="toolbar"><input type="search" id="q" inputmode="numeric" placeholder="กรองด้วยเลขที่" autocomplete="off"></div>' +
       '<ul class="list" id="list"></ul></section>';
     var q = $('q');
@@ -218,7 +218,7 @@
           '<div class="s">' + formatThaiDate(d.doc_date) + ' · ' + formatMoney(d.total) + ' บาท</div></div>' +
           (d.hasPdf ? '<a class="btn sm" href="view?no=' + d.doc_no + '">' + iconSvg('file') + '<span>PDF</span></a>' : '<span class="badge amber">ไม่มี PDF</span>') +
           '<button type="button" class="btn sm danger" data-cancel="' + d.doc_no + '">ยกเลิก</button></li>';
-      }).join('') || '<li class="empty">ไม่มีเอกสารที่ยกเลิกได้</li>';
+      }).join('') || '<li class="empty">ไม่มีบิลที่ยกเลิกได้</li>';
     }
     q.addEventListener('input', draw);
     $('list').addEventListener('click', function (e) {
@@ -229,7 +229,7 @@
   }
 
   function cancelForm(d) {
-    var sh = LiffApp.sheet('ยกเลิกเอกสาร #' + LiffApp.docNoText(d.doc_no),
+    var sh = LiffApp.sheet('ยกเลิกบิล #' + LiffApp.docNoText(d.doc_no),
       '<p style="margin-top:0">' + esc(d.shop_legal_name) + '<br><span class="muted">' + formatThaiDate(d.doc_date) + ' · ' + formatMoney(d.total) + ' บาท</span></p>' +
       '<label class="f" for="reason">เหตุผลที่ยกเลิก (ต้องระบุ)</label><textarea id="reason" rows="3" maxlength="200" placeholder="เช่น ออกผิดร้าน, ลูกค้าคืนสินค้า"></textarea><div id="c-msg" style="margin-top:8px"></div>',
       '<button type="button" class="btn grow" data-close>ไม่ยกเลิก</button><button type="button" class="btn danger grow" id="c-ok">ยืนยันยกเลิก</button>');
@@ -258,18 +258,19 @@
     async function makePdf() {
       ok.disabled = true;
       ok.textContent = 'กำลังทำ PDF…';
-      msg.innerHTML = '<div class="alert ok" id="c-wait">บันทึกการยกเลิกแล้ว กำลังทำ PDF ลายน้ำ… (อาจใช้เวลา 10–20 วินาที ปิดหน้านี้ได้ แต่ PDF อาจยังไม่มีลายน้ำ)</div>';
+      msg.innerHTML = '<div class="alert ok" id="c-wait">ยกเลิกแล้ว กำลังใส่ลายน้ำใน PDF…</div>';
       var r = await LiffApp.api('regeneratePdf', { docNo: d.doc_no, replace: true });
       ok.disabled = false;
       if (!r.ok) {
         if (fatal(r)) { sh.close(); return; }
-        // ยกเลิกแล้ว แต่ทำ PDF ลายน้ำไม่สำเร็จ → ปุ่มเดิมกลายเป็น "ลองทำ PDF ใหม่"
-        ok.textContent = 'ลองทำ PDF ใหม่';
-        msg.innerHTML = '<div class="alert err" id="c-error">' + errText('ยกเลิกเอกสารเลขที่ ' + LiffApp.docNoText(d.doc_no) + ' แล้ว แต่' + (r.error || 'ทำ PDF ใหม่ไม่สำเร็จ')) + '</div>';
+        // ยกเลิกแล้ว แต่ทำ PDF ลายน้ำไม่สำเร็จ → ปุ่มเดิมกลายเป็น "ลองอีกครั้ง" (สาเหตุอยู่ใน console)
+        if (r.error) { try { console.error('[ใส่ลายน้ำ] ' + r.error); } catch (e) { /* ไม่เป็นไร */ } }
+        ok.textContent = 'ลองอีกครั้ง';
+        msg.innerHTML = '<div class="alert err" id="c-error">' + errText('ยกเลิกบิล #' + LiffApp.docNoText(d.doc_no) + ' แล้ว แต่ใส่ลายน้ำใน PDF ไม่สำเร็จ กด "ลองอีกครั้ง"') + '</div>';
         return;
       }
       sh.close();
-      LiffApp.toast('ยกเลิกเอกสาร #' + LiffApp.docNoText(d.doc_no) + ' แล้ว (PDF มีลายน้ำ "ยกเลิก")');
+      LiffApp.toast('ยกเลิกบิล #' + LiffApp.docNoText(d.doc_no) + ' แล้ว');
       AppData.patchDoc(d.doc_no, { pdfUrl: r.pdfUrl, hasPdf: !!r.pdfUrl }); // PDF เปลี่ยน (ลายน้ำ) → หน้าจอดู PDF ของใบนี้โหลดใหม่
     }
     // เมื่อปิดแผ่น ให้รายการอัปเดตเสมอ (เผื่อยกเลิกไปแล้วแต่ PDF ล้มเหลว)
@@ -283,11 +284,11 @@
     build: function (s) {
       scr = s;
       s.root.innerHTML =
-        '<div class="topbar"><h1>จัดการข้อมูล</h1><div class="sub" id="subtitle">ร้านค้า · สินค้า · ยกเลิกเอกสาร</div></div>' +
+        '<div class="topbar"><h1>จัดการข้อมูล</h1><div class="sub" id="subtitle">ร้านค้า · สินค้า · ยกเลิกบิล</div></div>' +
         '<nav class="tabs hidden" id="tabs">' +
         '<button type="button" data-tab="shops">ร้านค้า</button>' +
         '<button type="button" data-tab="products">สินค้า</button>' +
-        '<button type="button" data-tab="cancel">ยกเลิกเอกสาร</button></nav>' +
+        '<button type="button" data-tab="cancel">ยกเลิกบิล</button></nav>' +
         '<div id="view" aria-live="polite"></div>';
       view = $('view');
       tabs = $('tabs');
