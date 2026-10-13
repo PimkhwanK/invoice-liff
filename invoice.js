@@ -498,6 +498,37 @@ function validateProductInput(product) {
   return { errors: errors, warnings: [] };
 }
 
+/**
+ * รอบ 10: สินค้าที่ไม่มีบาร์โค้ด — ระบบสร้างรหัสภายใน "NB-0001", "NB-0002", … เก็บในช่องบาร์โค้ดลัง (ไม่ซ้ำ) / PDF เว้นช่องบาร์โค้ดว่าง
+ * ใช้ทั้งใบกำกับและใบเงินสด (รายการสินค้าชุดเดียวกัน) / ระบบจำลองไม่ใช้
+ */
+var INTERNAL_BARCODE_PREFIX = 'NB-';
+
+/** รหัสภายในที่ระบบสร้าง (ไม่ใช่บาร์โค้ดจริง) */
+function isInternalBarcode(code) {
+  return /^NB-[0-9]+$/.test(String(code == null ? '' : code).trim());
+}
+
+/** รหัสภายในถัดไป = เลขสูงสุดของ NB-xxxx + 1 (เติม 0 ให้ครบ 4 หลัก) */
+function nextInternalBarcode(products) {
+  var max = 0;
+  (products || []).forEach(function (p) {
+    var b = p ? p.barcode : '';
+    var s = String(b == null ? '' : b).trim();
+    if (!isInternalBarcode(s)) return;
+    var n = Number(s.slice(INTERNAL_BARCODE_PREFIX.length));
+    if (n > max) max = n;
+  });
+  var next = String(max + 1);
+  while (next.length < 4) next = '0' + next;
+  return INTERNAL_BARCODE_PREFIX + next;
+}
+
+/** บาร์โค้ดที่พิมพ์ลง PDF / แสดงบนจอ (รหัสภายใน → ว่าง) */
+function printedBarcode(code) {
+  return isInternalBarcode(code) ? '' : String(code == null ? '' : code);
+}
+
 /** ชื่อไฟล์ PDF: INV-{doc_no}_{short_name}.pdf (ตัดอักขระที่ใช้ในชื่อไฟล์ไม่ได้) */
 function pdfFileName(doc) {
   var name = String(doc.shop_short_name || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\s+/g, '_').trim();
@@ -537,6 +568,10 @@ if (typeof module !== 'undefined' && module.exports) {
     validateShopInput: validateShopInput,
     validateProductInput: validateProductInput,
     pdfFileName: pdfFileName,
+    INTERNAL_BARCODE_PREFIX: INTERNAL_BARCODE_PREFIX,
+    isInternalBarcode: isInternalBarcode,
+    nextInternalBarcode: nextInternalBarcode,
+    printedBarcode: printedBarcode,
     findBy: findBy
   };
 }

@@ -14,6 +14,7 @@
  *   scr = { root, dock } ของหน้าจอ — ตัวช่วยที่แตะหน้าจอ (loading, showError, syncing ...) รับ scr ได้ ไม่ส่ง = หน้าจอที่แสดงอยู่ (LiffApp.setScope)
  *   หน้าตรวจระบบ (check.html) ไม่มี shell → ใช้ทั้งเอกสารเหมือนเดิม
  *   LiffApp.hooks.timing(ชื่อ, ms) / hooks.denied(code) — shell ใช้แสดงแถบเวลา (?debug=1) และซ่อนเมนูเมื่อไม่มีสิทธิ์
+ * รอบ 10: LiffApp.MODE ('cash' ใบเงินสด / 'tax' ใบกำกับภาษี) จาก ?type= — ทุกคำขอส่ง type / docParam, sameNo ใช้กับเลขที่ทั้งสองแบบ
  *
  * fetch ด้วย Content-Type text/plain (ไม่เกิด CORS preflight ที่ Apps Script ตอบไม่ได้) และตาม redirect 302 ของ Apps Script
  */
@@ -21,6 +22,28 @@ var LiffApp = (function () {
   var CFG = window.APP_CONFIG || {};
   var hooks = { timing: null, denied: null, debugOn: null, server: null };
   var scope = null; // function → scr ของหน้าจอที่แสดงอยู่ (shell.js ตั้ง)
+
+  /**
+   * รอบ 10: โหมดเอกสารของการเปิดแอปครั้งนี้ (เปลี่ยนจาก Rich Menu เท่านั้น ไม่มีปุ่มสลับในแอป)
+   *   ?type=cash → ใบเงินสด / ?type=tax → ใบกำกับภาษี
+   *   ไม่มี ?type= → ใบเงินสด (ใช้บ่อยกว่า) ยกเว้นหน้าดู PDF (view?no=…) จากการ์ดบิลเดิมในแชท = ใบกำกับภาษี
+   * ทุกคำขอส่ง type ไปด้วย / ข้อมูลที่จำไว้แยกตามโหมด / body มี class mode-cash หรือ mode-tax (theme.css เปลี่ยนสีหลัก)
+   */
+  var MODE = (function () {
+    var q = new URLSearchParams(location.search);
+    var t = q.get('type');
+    if (t === 'cash' || t === 'tax') return t;
+    var page = location.pathname.split('/').pop().replace(/\.html$/, '');
+    if (page === 'check') return 'tax'; // หน้าตรวจระบบ (ผู้ดูแล) เรียก action ของใบกำกับ
+    return page === 'view' && q.has('no') ? 'tax' : 'cash';
+  })();
+  var MODE_LABEL = MODE === 'cash' ? 'ใบเงินสด' : 'ใบกำกับภาษี';
+  if (document.body) document.body.classList.add('mode-' + MODE);
+  function isCash() { return MODE === 'cash'; }
+  /** เลขที่สำหรับส่งเซิร์ฟเวอร์ / เทียบ: ใบเงินสด = ข้อความ ("1069-15") / ใบกำกับ = ตัวเลข */
+  function docParam(no) { return MODE === 'cash' ? String(no) : Number(no); }
+  /** เลขที่สองค่าเป็นใบเดียวกันไหม (ทั้งสองโหมด) */
+  function sameNo(a, b) { return String(a) === String(b); }
 
   function setScope(fn) { scope = fn; }
 
@@ -252,7 +275,7 @@ var LiffApp = (function () {
   async function api(action, payload) {
     var idToken = '';
     try { idToken = liff.getIDToken() || ''; } catch (e) { idToken = ''; }
-    var body = Object.assign({}, payload || {}, { action: action, idToken: idToken });
+    var body = Object.assign({}, payload || {}, { action: action, idToken: idToken, type: MODE }); // รอบ 10: ประเภทเอกสาร
     var debug = !!(hooks.debugOn && hooks.debugOn());
     if (debug) body.debug = true; // แถบเวลา ?debug=1: ขอเวลาแยกขั้นของเซิร์ฟเวอร์ (serverTiming) มาด้วย
     var t0 = Date.now();
@@ -515,6 +538,7 @@ var LiffApp = (function () {
     start: start, api: api, showError: showError, showApiError: showApiError, isRetryable: isRetryable,
     isDenied: isDenied, isAuthFail: isAuthFail, showDenied: showDenied, accessRequestText: accessRequestText,
     inClient: inClient, relogin: relogin, toast: toast, uuid: uuid, docNoText: docNoText, sheet: sheet, closeSheets: closeSheets, esc: esc, el: el, loading: loading,
+    MODE: MODE, MODE_LABEL: MODE_LABEL, isCash: isCash, docParam: docParam, sameNo: sameNo,
     syncing: syncing, setScope: setScope, find: find, hooks: hooks,
     openExternal: openExternal, remember: remember, keep: keep, forget: forget, drop: drop,
     MSG: MSG, SETUP: SETUP, splitSetup: splitSetup, errorHtml: errorHtml

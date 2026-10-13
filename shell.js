@@ -44,9 +44,13 @@ var Shell = (function () {
     return { name: name, params: params };
   }
 
-  /** {name, params} → URL แบบสัมพัทธ์ (ใช้ได้ทั้ง /issue และ /invoice-liff/issue) */
+  /**
+   * {name, params} → URL แบบสัมพัทธ์ (ใช้ได้ทั้ง /issue และ /invoice-liff/issue)
+   * รอบ 10: ทุก URL มี ?type=<โหมด> (ใบเงินสด / ใบกำกับ) — โหมดคงที่ตลอดการเปิดแอป ปุ่มย้อนกลับ / เปิดลิงก์ซ้ำได้โหมดเดิม
+   */
   function urlOf(name, params) {
     var q = new URLSearchParams();
+    q.set('type', LiffApp.MODE);
     (ROUTES[name] || []).forEach(function (k) { if (params && params[k] !== undefined && params[k] !== '') q.set(k, params[k]); });
     var s = q.toString();
     return name + (s ? '?' + s : '');
@@ -60,6 +64,14 @@ var Shell = (function () {
     s.dock = LiffApp.el('<div class="dock-part"></div>');
     s.$ = function (id) { return LiffApp.find(id, s); };
     s.def.build(s);
+    // รอบ 10: ป้ายประเภทเอกสารบนหัวทุกหน้าจอ (สีตามโหมด — theme.css .mode-pill) กันออกผิดประเภท
+    var bar = s.root.querySelector('.topbar');
+    if (bar) {
+      var pill = LiffApp.el('<div class="mode-pill" id="mode-pill" data-mode="' + LiffApp.MODE + '">' +
+        iconSvg(LiffApp.isCash() ? 'cash' : 'receipt') + '<span></span></div>');
+      pill.querySelector('span').textContent = LiffApp.MODE_LABEL;
+      bar.insertBefore(pill, bar.firstChild);
+    }
     screens[name] = s;
     return s;
   }
@@ -75,7 +87,7 @@ var Shell = (function () {
     appEl.replaceChildren(s.root);
     dockEl.replaceChildren(s.dock);
     appEl.scrollTop = s.scroll;
-    document.title = s.def.title;
+    document.title = s.def.title + ' · ' + LiffApp.MODE_LABEL;
     LiffApp.syncing(AppData.isRefreshing(), s);
     drawTabbar();
   }
@@ -167,7 +179,7 @@ var Shell = (function () {
   });
 
   // พิมพ์อยู่ (แป้นพิมพ์ขึ้น) → ซ่อนแถบเมนูล่าง ให้เนื้อหามีที่มากขึ้น
-  // เลิกพิมพ์ → แสดงแถบอีกครั้งหลัง 300ms: การแตะปุ่ม (เช่น "ตรวจสอบ") ที่ทำให้ช่องพิมพ์หลุดโฟกัสต้องจบก่อนหน้าจอขยับ
+  // เลิกพิมพ์ → แสดงแถบอีกครั้ง: การแตะปุ่ม (เช่น "ตรวจสอบ") ที่ทำให้ช่องพิมพ์หลุดโฟกัสต้องจบก่อนหน้าจอขยับ (รอบ 10: ดู pressing ด้านล่าง)
   var typingTimer = null;
   function isTyping() {
     var a = document.activeElement;
@@ -178,7 +190,7 @@ var Shell = (function () {
   function setTyping(on) {
     document.body.classList.toggle('typing', on);
     if (on && !typingCheck) {
-      typingCheck = setInterval(function () { if (!isTyping()) setTyping(false); }, 500);
+      typingCheck = setInterval(function () { if (!pressing && !isTyping()) setTyping(false); }, 500);
     } else if (!on && typingCheck) {
       clearInterval(typingCheck);
       typingCheck = null;
@@ -189,10 +201,27 @@ var Shell = (function () {
     clearTimeout(typingTimer);
     setTyping(true);
   });
-  document.addEventListener('focusout', function () {
+  // รอบ 10: แถบเมนูโผล่กลับมาจะดันแถบยอดรวมขึ้น ~55px — ห้ามขยับตอนนิ้วกำลังแตะ / กำลังจะแตะครั้งถัดไป
+  //   นิ้วยังแตะจออยู่ → ยังไม่แสดงแถบ / ปล่อยนิ้ว → แสดงทันทีหลัง click ของปุ่มทำงาน (ไม่รอ 0.3 วินาที)
+  //   (เดิม: แตะ "ตรวจสอบ" ค้างเกิน 0.3 วินาทีหลังพิมพ์ ปุ่มเลื่อนหนีนิ้ว การแตะหาย / พิมพ์จำนวนเสร็จแล้วแตะ "เพิ่มเติม" ทันที
+  //    แถบยอดรวมเลื่อนขึ้นมาทับจุดที่แตะ) — ออกจากช่องพิมพ์โดยไม่ได้แตะ (เช่น ปุ่ม Done ของแป้นพิมพ์) ยังรอ 0.3 วินาทีเหมือนเดิม
+  var pressing = false;
+  function settleTyping(ms) {
     clearTimeout(typingTimer);
-    typingTimer = setTimeout(function () { setTyping(isTyping()); }, 300);
-  });
+    typingTimer = setTimeout(function () {
+      if (pressing) return; // ปล่อยนิ้วแล้วค่อยตรวจใหม่ (pointerup)
+      setTyping(isTyping());
+    }, ms);
+  }
+  document.addEventListener('pointerdown', function () { pressing = true; clearTimeout(typingTimer); }, true);
+  function release() {
+    if (!pressing) return;
+    pressing = false;
+    if (document.body.classList.contains('typing')) settleTyping(0); // หลัง click (งานถัดไปของเบราว์เซอร์)
+  }
+  document.addEventListener('pointerup', release, true);
+  document.addEventListener('pointercancel', release, true);
+  document.addEventListener('focusout', function () { if (!pressing) settleTyping(300); });
 
   // ข้อมูลในแอปเปลี่ยน → หน้าจอที่แสดงอยู่วาดใหม่ (หน้าจออื่นวาดใหม่ตอนเข้า) / ป้ายกำลังอัปเดต
   AppData.onChange(function (kind) {

@@ -27,7 +27,10 @@ var ICONS = {
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   pause: '<circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/>',
   calendar: '<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
-  link: '<path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1"/><path d="M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1"/>'
+  link: '<path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1"/><path d="M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1"/>',
+  // รอบ 10: ป้ายประเภทเอกสาร / Rich Menu — ใบเงินสด (ธนบัตร) / ใบกำกับภาษี (ใบเสร็จมีเปอร์เซ็นต์)
+  cash: '<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6.5 9.5v.1M17.5 14.5v.1"/>',
+  receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9.5 14.5l5-5"/><path d="M9.6 9.6v.1M14.4 14.4v.1"/>'
 };
 
 /** <svg> ของไอคอน (ตกแต่งเท่านั้น aria-hidden — ปุ่มต้องมีข้อความหรือ aria-label เอง) */

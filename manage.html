@@ -28,6 +28,7 @@
 <script src="thaiDate.js"></script>
 <script src="address.js"></script>
 <script src="invoice.js"></script>
+<script src="cashDoc.js"></script>
 <script src="preview.js"></script>
 <script src="search.js"></script>
 <script src="icons.js"></script>
@@ -75,6 +76,7 @@
     ['thaiDate.js', function () { return typeof formatThaiDate === 'function'; }],
     ['address.js', function () { return typeof splitAddress === 'function'; }],
     ['invoice.js', function () { return typeof validateDocumentInput === 'function'; }],
+    ['cashDoc.js', function () { return typeof cashDocValidate === 'function'; }],
     ['preview.js', function () { return typeof previewLocal === 'function'; }],
     ['search.js', function () { return typeof searchShops === 'function'; }],
     ['icons.js', function () { return typeof iconSvg === 'function'; }],

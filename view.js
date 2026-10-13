@@ -8,6 +8,7 @@
  * รอบ 6 ข้อ 3.5: หน้าจอหนึ่งของแอปหน้าเดียว (shell.js)
  *   pdf.js โหลดตอนเข้าหน้าจอนี้ครั้งแรกเท่านั้น (พร้อมกับคำขอ getPdf) / ไม่ใช้ข้อมูลของ AppData (เปิดจากการ์ดแชทได้ไฟล์ในคำขอเดียว)
  *   กลับมาดูใบเดิม → แสดงที่วาดไว้ ไม่โหลดใหม่ (ยกเว้นใบนั้นถูกยกเลิก / สร้าง PDF ใหม่ในแอประหว่างนั้น) / ปุ่ม "‹ กลับ" เมื่อเปิดมาจากหน้าอื่นในแอป
+ * รอบ 10: ใบเงินสด → view?type=cash&no=1069-15 (เลขที่เป็นข้อความ) / ไม่มี type + เลขตัวเลข (การ์ดเดิม) = ใบกำกับภาษี
  */
 (function () {
   var esc = LiffApp.esc;
@@ -18,7 +19,7 @@
   var PDFJS_TAG = '<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" integrity="sha512-q+4liFwdPC/bNdhUpZx6aXDx/h77yEQtn4I1slHydcbZK34nLaR3cAeYSJshoxIOq3mjEf7xJE8YWIUHMn+oCQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>';
   var ZOOMS = [1, 1.5, 2, 3];
   var MAX_CANVAS_PIXELS = 16000000; // iPhone วาด canvas ใหญ่กว่านี้ไม่ได้ (จอขาว)
-  var S = { no: -1, doc: null, pdf: null, zoom: 0, renderId: 0, state: '', stale: false, width: 0, loadId: 0 };
+  var S = { no: null, doc: null, pdf: null, zoom: 0, renderId: 0, state: '', stale: false, width: 0, loadId: 0 };
   var pdfjsLoading = null;
   function $(id) { return scr.$(id); }
 
@@ -39,10 +40,14 @@
     return pdfjsLoading;
   }
 
-  /** เลขที่จาก ?no= (0 = บิลทดสอบ 0000) / ไม่มีหรือไม่ถูกต้อง → -1 */
+  /** เลขที่จาก ?no= — ใบกำกับ: ตัวเลข (0 = บิลทดสอบ 0000) / ใบเงินสด: "1069-15" หรือ "0000" / ไม่มีหรือไม่ถูกต้อง → null */
   function docNoParam(v) {
     v = v || '';
-    return /^[0-9]{1,12}$/.test(v) ? Number(v) : -1;
+    if (LiffApp.isCash()) {
+      var p = cashDocParse(v);
+      return p ? p.text : null;
+    }
+    return /^[0-9]{1,12}$/.test(v) ? Number(v) : null;
   }
 
   async function load(no) {
@@ -51,12 +56,12 @@
     S.pdf = null;
     S.state = 'loading';
     S.stale = false;
-    if (S.no < 0) {
+    if (S.no === null) {
       S.state = 'error';
       return LiffApp.showError({ title: 'ไม่ได้ระบุเลขที่บิล', text: 'กรุณาเปิดจากปุ่ม "ดู PDF" ในแชท หรือจากหน้าประวัติเอกสาร' }, null, 'no_doc', scr);
     }
     $('title').textContent = 'บิล #' + LiffApp.docNoText(S.no);
-    $('subtitle').textContent = 'ใบกำกับภาษี';
+    $('subtitle').textContent = LiffApp.MODE_LABEL;
     LiffApp.loading('กำลังโหลด PDF เลขที่ ' + LiffApp.docNoText(S.no) + '…', view);
     var lib = loadPdfJs(); // โหลดพร้อมกับรอเซิร์ฟเวอร์
     var r = await LiffApp.api('getPdf', { docNo: S.no });
@@ -70,7 +75,7 @@
     return '<section class="card" id="doc-head"><div class="doc-head"><span class="no' + (c ? ' cancel' : '') + '">#' + LiffApp.docNoText(d.doc_no) + '</span>' +
       (c ? '<span class="badge red">ยกเลิก</span>' : '<span class="badge">ออกแล้ว</span>') + '</div>' +
       '<div>' + esc(d.shop_legal_name || d.shop_short_name) + '</div>' +
-      '<div class="small muted">' + formatThaiDate(d.doc_date) + ' · ' + esc(d.doc_type) + ' · <b class="num">' + formatMoney(d.total) + '</b> บาท</div>' +
+      '<div class="small muted">' + formatThaiDate(d.doc_date) + ' · ' + esc(d.doc_type || LiffApp.MODE_LABEL) + ' · <b class="num">' + formatMoney(d.total) + '</b> บาท</div>' +
       (c ? '<div class="small cancel-reason">เหตุผลที่ยกเลิก: ' + esc(d.cancelled_reason) + '</div>' : '') + '</section>';
   }
 
@@ -216,7 +221,7 @@
       scr = s;
       s.root.innerHTML =
         '<div class="topbar"><div class="row"><button type="button" class="btn ghost back hidden" id="btn-back-app" aria-label="กลับ">' + iconSvg('back') + '<span>กลับ</span></button>' +
-        '<h1 id="title" class="grow">ดู PDF</h1></div><div class="sub" id="subtitle">ใบกำกับภาษี</div></div>' +
+        '<h1 id="title" class="grow">ดู PDF</h1></div><div class="sub" id="subtitle">' + LiffApp.MODE_LABEL + '</div></div>' +
         '<div id="view" aria-live="polite"></div>';
       view = $('view');
       $('btn-back-app').addEventListener('click', function () { Shell.back(); });
@@ -224,7 +229,7 @@
     show: function (s, params) {
       drawBack();
       var no = docNoParam(params.no);
-      if (no >= 0 && no === S.no && S.state === 'shown' && !S.stale) {
+      if (no !== null && no === S.no && S.state === 'shown' && !S.stale) {
         // ใบเดิมที่แสดงอยู่แล้ว: ไม่ถามเซิร์ฟเวอร์ใหม่ — ขนาดจอเปลี่ยนระหว่างไปหน้าอื่น → วาดใหม่
         var pages = $('pages');
         if (S.pdf && pages && pages.clientWidth !== S.width) render();

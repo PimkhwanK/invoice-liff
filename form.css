@@ -64,7 +64,8 @@ svg.icon {
 }
 
 /* ---------- ส่วนหัวของหน้า ---------- */
-.topbar { padding: 14px 16px 10px; background: var(--theme-card); border-bottom: 1px solid var(--theme-line); }
+.topbar { padding: 14px 16px 10px; background: var(--theme-card); border-bottom: 1px solid var(--theme-line); border-top: 4px solid var(--theme-primary); }
+.topbar .mode-pill { margin-bottom: 6px; } /* รอบ 10: ป้ายประเภทเอกสาร (สีใน theme.css) */
 .topbar h1 { color: var(--theme-primary-dark); }
 .topbar .sub { font-size: 13px; color: var(--theme-text-2); }
 
@@ -281,6 +282,13 @@ dl.kv dd { margin: 0; }
 .success .no { font-size: 30px; font-weight: 700; color: var(--theme-primary-dark); }
 
 /* รอบ 7: บิลใบแรกของระบบ — ช่องเลขที่บนสุดของฟอร์ม + เลขที่ตัวใหญ่ในหน้าตรวจสอบ */
+/* รอบ 10: ใบเงินสด — วันที่ / อ้างถึง พับไว้ใต้ "เพิ่มเติม" (สรุปวันที่บนแถบ วันที่ไม่ใช่วันนี้ = สีเตือน) */
+details.more > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; min-height: 32px; font-weight: 700; color: var(--theme-text); }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::after { content: ''; width: 8px; height: 8px; margin-left: 4px; border-right: 2px solid var(--theme-text-2); border-bottom: 2px solid var(--theme-text-2); transform: rotate(45deg); transition: transform .15s; }
+details.more[open] > summary::after { transform: rotate(-135deg); }
+details.more .more-sum { margin-left: auto; font-size: 13px; font-weight: 400; color: var(--theme-text-2); text-align: right; }
+details.more .more-sum.changed { color: var(--theme-warn-text); font-weight: 700; }
 .first-no { border: 2px solid var(--theme-primary); }
 .first-no input { font-size: 20px; font-weight: 700; }
 .first-no input::placeholder { font-size: 16px; font-weight: 400; color: var(--theme-text-2); } /* ไม่ให้ดูเหมือนกรอกไว้แล้ว */

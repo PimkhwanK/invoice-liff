@@ -1,17 +1,25 @@
 /*
  * appdata.js — ข้อมูลของทุกหน้าในแอป LIFF หน้าเดียว (รอบ 6 ข้อ 3.5)
  *
- *   เปิดแอป → คำขอเดียว appData (ผู้ใช้, ตั้งค่า, ร้าน, สินค้า, เอกสารล่าสุด) เก็บในแอป + localStorage ('app')
+ *   เปิดแอป → คำขอเดียว appData (ผู้ใช้, ตั้งค่า, ร้าน, สินค้า, เอกสารล่าสุด) เก็บในแอป + localStorage ('app' / ใบเงินสด 'app-cash')
  *   มีที่จำไว้ → แสดงทันที แล้วดึงใหม่เบื้องหลัง (ต่างจากเดิม → หน้าจอที่แสดงอยู่วาดใหม่)
  *   สลับหน้าจอในแอป → ใช้ข้อมูลที่มีอยู่ ไม่เรียกเซิร์ฟเวอร์
  *   หลังออกบิล / ยกเลิก / แก้ร้าน / แก้สินค้า / สร้าง PDF → แก้เฉพาะส่วนนั้นจากคำตอบของเซิร์ฟเวอร์ (addDoc, patchDoc, putShop, putProduct)
  *   เอกสารของร้านที่มีมากกว่าที่ส่งมา (shopStats.count) → loadShopDocs โหลดเพิ่มตอนแตะร้าน แล้วจำไว้ในแอป
  *
+ * รอบ 10: แยกตามโหมด (LiffApp.MODE) — ใบเงินสดเป็นข้อมูลของไฟล์ใบเงินสด เลขที่เป็นข้อความ ("1069-15" / บิลทดสอบ "0000")
+ *   ใบกำกับ: hasRealDoc + docNos (เลขที่ที่ใช้แล้ว — เตือนเลขซ้ำก่อนส่ง) / ใบเงินสด: hasRealDoc + monthMax (เลขที่โดยประมาณ)
+ *   เซิร์ฟเวอร์ที่ยังไม่รู้จักใบเงินสด (ตอบ appData โดยไม่มี type: 'cash') → "ระบบยังไม่พร้อมใช้งาน" (ไม่ให้ออกเอกสารผิดประเภท)
+ *
  * ข้อมูลที่จำไว้ใช้แสดงผลเท่านั้น — การบันทึกทุกอย่างตรวจสิทธิ์และคำนวณใหม่ที่เซิร์ฟเวอร์
- * เซิร์ฟเวอร์รุ่นก่อนรอบ 6 ข้อ 3.5 (ไม่มี appData) → ประกอบจาก init + historyData + listProducts แทน
+ * เซิร์ฟเวอร์รุ่นก่อนรอบ 6 ข้อ 3.5 (ไม่มี appData) → ใบกำกับประกอบจาก init + historyData + listProducts แทน
  */
 var AppData = (function () {
   var KEEP_DOCS = 200; // เอกสารล่าสุดที่จำไว้ (เท่ากับ API_APP_DOCS ใน Api.gs)
+  // common.js โหลดไม่สำเร็จ → ไม่ throw ตรงนี้ (ตัวตรวจท้ายหน้าจัดการ) / โหมดคงที่ตลอดการเปิดแอป
+  var CASH = typeof LiffApp !== 'undefined' && LiffApp.isCash();
+  var STORE = CASH ? 'app-cash' : 'app';
+  var TEST_NO = CASH ? '0000' : 0; // บิลทดสอบของโหมดนี้
   var S = {
     data: null,        // คำตอบของ appData (แก้ตามการบันทึกในแอป)
     cached: false,     // true = ยังเป็นข้อมูลที่จำไว้ (กำลังดึงใหม่)
@@ -19,7 +27,7 @@ var AppData = (function () {
     loading: null,     // Promise ระหว่างโหลดครั้งแรก
     version: 0,        // เพิ่มทุกครั้งที่ข้อมูลเปลี่ยน — หน้าจอเทียบกับรุ่นที่วาดไว้
     shopFull: {},      // shop_id → เอกสารทั้งหมดของร้าน (โหลดเพิ่มตอนแตะร้าน)
-    items: {}          // doc_no → รายการสินค้าในเอกสาร (คัดลอกจากบิลเก่า — เอกสารเก่าไม่เปลี่ยน)
+    items: {}          // เลขที่ → รายการสินค้าในเอกสาร (คัดลอกจากบิลเก่า — เอกสารเก่าไม่เปลี่ยน)
   };
   var listeners = [];
 
@@ -34,7 +42,7 @@ var AppData = (function () {
 
   function changed(kind, detail) {
     S.version++;
-    if (S.data) LiffApp.keep('app', S.data);
+    if (S.data) LiffApp.keep(STORE, S.data);
     emit(kind, detail);
   }
 
@@ -55,7 +63,7 @@ var AppData = (function () {
   function ensure() {
     if (S.data) return Promise.resolve({ ok: true });
     if (S.loading) return S.loading;
-    var c = LiffApp.remember('app');
+    var c = LiffApp.remember(STORE);
     if (c && usable(c.data)) {
       S.data = c.data;
       S.cached = true;
@@ -89,7 +97,7 @@ var AppData = (function () {
       var same = S.data && JSON.stringify(r) === JSON.stringify(S.data);
       S.data = r;
       S.cached = false;
-      if (same) { LiffApp.keep('app', S.data); return r; }
+      if (same) { LiffApp.keep(STORE, S.data); return r; }
       S.shopFull = {};
       changed('fresh');
       return r;
@@ -108,8 +116,16 @@ var AppData = (function () {
 
   // ---------- คำขอ
 
+  /** ใบเงินสด: เซิร์ฟเวอร์ต้องตอบ type 'cash' (Api.gs/Cash.gs รอบ 10) ไม่อย่างนั้นถือว่ายังไม่พร้อม */
+  var CASH_NOT_READY = { ok: false, code: 'config', error: 'ระบบยังไม่พร้อมใช้งาน กรุณาแจ้งผู้ดูแลระบบ\nรายละเอียดสำหรับผู้ดูแลระบบ: เซิร์ฟเวอร์ยังไม่รู้จักใบเงินสด (วาง Api.gs / Cash.gs รุ่นใหม่ แล้วกด New version)' };
+
   async function fetchAll() {
     var r = await LiffApp.api('appData');
+    if (CASH) {
+      if (r.ok && r.type !== 'cash') return CASH_NOT_READY;
+      if (!r.ok && r.code === 'unknown_action') return CASH_NOT_READY;
+      return r;
+    }
     if (r.ok || r.code !== 'unknown_action') return r;
     return fetchLegacy();
   }
@@ -137,6 +153,8 @@ var AppData = (function () {
     out.totalDocuments = docs.length;
     out.shopStats = statsOf(docs);
     out.documents = docs.slice(0, KEEP_DOCS);
+    out.docNos = docs.map(function (d) { return Number(d.doc_no); }).filter(function (n) { return n >= 1; });
+    out.hasRealDoc = out.docNos.length > 0;
     return out;
   }
 
@@ -163,6 +181,7 @@ var AppData = (function () {
 
   /**
    * ข้อมูลตั้งต้นของฟอร์มออกบิล — รูปแบบเดียวกับ action init (preview.js ใช้ชุดนี้คำนวณ / ตรวจบนมือถือ)
+   *   shops / products = ที่เลือกได้ (เปิดอยู่ / ขายอยู่) / allShops / allProducts = ทั้งหมดพร้อมสถานะ (ข้อความตรวจตรงกับเซิร์ฟเวอร์)
    * @returns {object} หรือ { error: {code, error} } ถ้าเซิร์ฟเวอร์บอกว่าตั้งค่าไม่ครบ
    */
   function issueInit() {
@@ -173,11 +192,16 @@ var AppData = (function () {
       name: d.name,
       today: S.cached ? phoneToday() : d.today,
       nextDocNo: d.nextDocNo,
-      needFirstDocNo: !!d.needFirstDocNo, // ยังไม่มีบิลจริง (ไม่นับบิลทดสอบ 0000) → ฟอร์มถามเลขที่
+      needFirstDocNo: !!d.needFirstDocNo,
+      hasRealDoc: !!d.hasRealDoc,                  // รอบ 10: มีบิลจริงแล้ว → ออกบิลทดสอบไม่ได้
+      docNos: Array.isArray(d.docNos) ? d.docNos : [], // ใบกำกับ: เลขที่ที่ใช้แล้ว
+      monthMax: d.monthMax || {},                  // ใบเงินสด: ลำดับสูงสุดของแต่ละเดือน
       shops: d.shops.filter(function (s) { return s.active; }),
+      allShops: d.shops,
       products: d.products.filter(function (p) { return p.active; }).map(function (p) {
         return { barcode: p.barcode, name: p.name, unit: p.unit, price: p.price };
       }),
+      allProducts: d.products,
       config: d.config,
       lastDoc: d.lastDoc || null
     };
@@ -212,9 +236,10 @@ var AppData = (function () {
 
   /** รายการสินค้าในเอกสาร (getDocument ครั้งเดียวต่อใบ — เอกสารที่ออกแล้วรายการไม่เปลี่ยน) */
   async function docItems(no) {
-    if (S.items[no]) return { ok: true, items: S.items[no] };
-    var r = await LiffApp.api('getDocument', { docNo: no });
-    if (r.ok) S.items[no] = r.items;
+    var key = String(no);
+    if (S.items[key]) return { ok: true, items: S.items[key] };
+    var r = await LiffApp.api('getDocument', { docNo: LiffApp.docParam(no) });
+    if (r.ok) S.items[key] = r.items;
     return r;
   }
 
@@ -225,52 +250,69 @@ var AppData = (function () {
     for (var k in S.shopFull) fn(S.shopFull[k]);
   }
 
-  /** เอกสารใหม่ (หลังออกบิล) — เลขที่ถัดไป / ใบล่าสุด / จำนวนของร้าน */
+  /** เรียงใหม่ → เก่า แบบเดียวกับเซิร์ฟเวอร์ (ใบกำกับ: เลขที่มากก่อน / ใบเงินสด: ปี เดือน ลำดับ) */
+  function sortDocs(list) {
+    list.sort(CASH ? cashDocCompareDesc : function (a, b) { return Number(b.doc_no) - Number(a.doc_no); });
+  }
+
+  function isTestNo(no) { return CASH ? cashDocIsTest(no) : Number(no) === 0 && String(no).trim() !== ''; }
+
+  /** เอกสารใหม่ (หลังออกบิล) — ใบล่าสุด / จำนวนของร้าน / เลขที่ที่ใช้แล้ว / ลำดับของเดือน */
   function addDoc(doc) {
     if (!S.data) return;
     var d = S.data;
-    var real = Number(doc.doc_no) >= 1;
-    // รอบ 8: บิลจริงใบแรก → บิลทดสอบ 0000 ถูกลบที่เซิร์ฟเวอร์แล้ว เอาออกจากรายการในแอปด้วย
-    if (d.needFirstDocNo && real) dropDoc(0);
-    // บิลทดสอบ 0000 ออกซ้ำ = เขียนทับใบเดิม → แทนที่ในรายการ (ไม่เพิ่มแถว)
-    var exists = d.documents.some(function (x) { return x.doc_no === doc.doc_no; });
-    if (exists && Number(doc.doc_no) === 0) {
-      eachDocList(function (list) { list.forEach(function (x, i) { if (x.doc_no === 0) list[i] = doc; }); });
+    var test = isTestNo(doc.doc_no);
+    // บิลจริงใบแรก → บิลทดสอบ 0000 ถูกลบที่เซิร์ฟเวอร์แล้ว เอาออกจากรายการในแอปด้วย
+    if (!d.hasRealDoc && !test) dropDoc(TEST_NO);
+    var exists = d.documents.some(function (x) { return LiffApp.sameNo(x.doc_no, doc.doc_no); });
+    if (exists && test) {
+      // บิลทดสอบ 0000 ออกซ้ำ = เขียนทับใบเดิม → แทนที่ในรายการ (ไม่เพิ่มแถว)
+      eachDocList(function (list) { list.forEach(function (x, i) { if (LiffApp.sameNo(x.doc_no, doc.doc_no)) list[i] = doc; }); });
     }
     if (!exists) {
       d.documents.unshift(doc);
+      sortDocs(d.documents);
       if (d.documents.length > KEEP_DOCS) d.documents.length = KEEP_DOCS;
       var full = S.shopFull[String(doc.shop_id)];
-      if (full) full.unshift(doc);
+      if (full) { full.unshift(doc); sortDocs(full); }
       var st = d.shopStats[String(doc.shop_id)] || (d.shopStats[String(doc.shop_id)] = { count: 0, lastDate: '' });
       st.count++;
       st.lastDate = doc.doc_date;
       d.totalDocuments = (Number(d.totalDocuments) || 0) + 1;
     }
-    // ออกบิลจริงใบแรกแล้ว → ใบต่อไปไม่ถามเลขอีก (เลขถัดไป = ใบนี้ + 1) / บิลทดสอบ 0000 → ยังถามเลข
-    if (d.needFirstDocNo) {
-      if (real) { d.needFirstDocNo = false; d.nextDocNo = Number(doc.doc_no) + 1; }
+    if (!test) {
+      d.hasRealDoc = true;
+      if (CASH) {
+        var p = cashDocParse(doc.doc_no);
+        if (p && !p.test) {
+          d.monthMax = d.monthMax || {};
+          d.monthMax[p.prefix] = Math.max(Number(d.monthMax[p.prefix]) || 0, p.seq);
+        }
+      } else {
+        d.docNos = Array.isArray(d.docNos) ? d.docNos : [];
+        if (d.docNos.indexOf(Number(doc.doc_no)) < 0) d.docNos.push(Number(doc.doc_no));
+      }
     }
-    else d.nextDocNo = Math.max(Number(d.nextDocNo) || 0, Number(doc.doc_no) + 1);
-    if (doc.status !== 'cancelled' && (!d.lastDoc || Number(doc.doc_no) >= Number(d.lastDoc.doc_no))) {
+    if (!CASH && doc.status !== 'cancelled' && (!d.lastDoc || Number(doc.doc_no) >= Number(d.lastDoc.doc_no))) {
       d.lastDoc = { doc_no: Number(doc.doc_no), doc_date: doc.doc_date, status: 'issued' };
     }
     changed('doc', doc.doc_no);
   }
 
-  /** รอบ 8: เอาเอกสารออกจากรายการในแอป (บิลทดสอบ 0000 ที่เซิร์ฟเวอร์ลบหลังออกบิลจริงใบแรก) */
+  /** เอาเอกสารออกจากรายการในแอป (บิลทดสอบ 0000 ที่เซิร์ฟเวอร์ลบหลังออกบิลจริงใบแรก) */
   function dropDoc(no) {
     var d = S.data;
-    var gone = d.documents.filter(function (x) { return x.doc_no === no; });
-    d.documents = d.documents.filter(function (x) { return x.doc_no !== no; });
-    for (var k in S.shopFull) S.shopFull[k] = S.shopFull[k].filter(function (x) { return x.doc_no !== no; });
+    var same = function (x) { return isTestNo(no) ? isTestNo(x.doc_no) : LiffApp.sameNo(x.doc_no, no); };
+    var gone = d.documents.filter(same);
+    d.documents = d.documents.filter(function (x) { return !same(x); });
+    for (var k in S.shopFull) S.shopFull[k] = S.shopFull[k].filter(function (x) { return !same(x); });
     gone.forEach(function (x) {
       var st = d.shopStats[String(x.shop_id)];
       if (st && st.count > 0) st.count--;
       d.totalDocuments = Math.max(0, (Number(d.totalDocuments) || 0) - 1);
     });
-    if (d.lastDoc && d.lastDoc.doc_no === no) d.lastDoc = null;
-    delete S.items[no];
+    if (d.lastDoc && same(d.lastDoc)) d.lastDoc = null;
+    delete S.items[String(no)];
   }
 
   /** แก้เอกสาร (ยกเลิก / มี PDF แล้ว) ทุกที่ที่มีใบนี้ */
@@ -278,18 +320,18 @@ var AppData = (function () {
     if (!S.data) return;
     eachDocList(function (list) {
       list.forEach(function (d) {
-        if (d.doc_no !== Number(no)) return;
+        if (!LiffApp.sameNo(d.doc_no, no)) return;
         for (var k in patch) d[k] = patch[k];
       });
     });
     var d = S.data;
-    if (patch.status === 'cancelled' && d.lastDoc && d.lastDoc.doc_no === Number(no)) {
+    if (patch.status === 'cancelled' && d.lastDoc && LiffApp.sameNo(d.lastDoc.doc_no, no)) {
       // ใบล่าสุดถูกยกเลิก → ใบล่าสุดที่ยังไม่ยกเลิก (คำเตือนวันที่ของฟอร์มออกบิล)
       var last = null;
       d.documents.forEach(function (x) { if (x.status !== 'cancelled' && (!last || x.doc_no > last.doc_no)) last = x; });
       d.lastDoc = last ? { doc_no: last.doc_no, doc_date: last.doc_date, status: 'issued' } : null;
     }
-    changed('doc', Number(no));
+    changed('doc', LiffApp.docParam(no));
   }
 
   function putShop(shop) {

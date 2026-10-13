@@ -19,6 +19,13 @@
   --theme-badge-bg: #E3ECE7;     /* ป้ายสีเน้น: พื้น */
   --theme-badge-text: #3F5A4D;   /* ป้ายสีเน้น: ตัวหนังสือ */
 
+  /* รอบ 10: โหมดใบเงินสด (body.mode-cash) ใช้สีเขียวแทนสีหลัก — แยกให้เห็นชัดว่ากำลังออกเอกสารประเภทไหน
+     ตัวหนังสือขาวบน --theme-cash 5.8:1 / --theme-cash-dark บน --theme-cash-soft 6.5:1 (การ์ดในแชทและรูป Rich Menu ใช้ค่าชุดเดียวกัน) */
+  --theme-cash: #3F6E5C;
+  --theme-cash-dark: #2F5D4C;
+  --theme-cash-soft: #E7F0EB;
+  --theme-tax: #9A6248;          /* ป้ายประเภทของใบกำกับภาษี (= สีหลักเดิม) */
+
   /* ความหมาย: สำเร็จ / เตือน / ผิดพลาด / ยกเลิก / ทั่วไป (พื้นอ่อน + ตัวหนังสือเข้ม + เส้นกรอบ) */
   --theme-ok-bg: #EAF1EC;
   --theme-ok-text: #3F5A4D;
@@ -43,6 +50,21 @@
   --theme-pdf-bg: #E9E3DA;       /* พื้นหลังหน้าดู PDF */
   --theme-debug-bg: rgba(58, 51, 45, .92);
 }
+
+/* ---------- รอบ 10: โหมดเอกสาร (common.js LiffApp.MODE → body.mode-cash / body.mode-tax) ----------
+ * ใบเงินสด: สีหลักทั้งหน้า (ปุ่ม ตัวเลือก แท็บ ลิงก์) เป็นสีเขียว / ใบกำกับภาษี: สีหลักเดิม
+ * ทุกหน้าจอมีป้ายประเภทเอกสาร (.mode-pill) บนหัวหน้า + แถบสีใต้หัวหน้า */
+body.mode-cash {
+  --theme-primary: var(--theme-cash);
+  --theme-primary-dark: var(--theme-cash-dark);
+  --theme-primary-soft: var(--theme-cash-soft);
+}
+.mode-pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
+  font-size: 13px; font-weight: 700; line-height: 1.4; letter-spacing: .2px;
+  background: var(--theme-primary-soft); color: var(--theme-primary-dark); border: 1px solid var(--theme-primary);
+}
+.mode-pill svg { width: 15px; height: 15px; }
 
 /* ---------- หน้า "ไม่มีสิทธิ์ใช้งาน" (LiffApp.showDenied ใน common.js) ----------
  * body.denied-mode = ซ่อนส่วนอื่นของหน้า (หัวหน้า แท็บ แถบยอดรวม แถบเมนูล่าง) เหลือแต่การ์ดนี้บนพื้นครีม */

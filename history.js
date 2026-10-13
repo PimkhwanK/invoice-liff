@@ -6,6 +6,7 @@
  * รอบ 6 ข้อ 3.5: หน้าจอหนึ่งของแอปหน้าเดียว (shell.js) — ร้าน + เอกสารล่าสุดจาก AppData (appData ตอนเปิดแอป)
  *   จำนวนเอกสารของแต่ละร้านมาจากเซิร์ฟเวอร์ (shopStats) / ร้านที่มีเอกสารมากกว่าที่ส่งมา → โหลดเพิ่มตอนแตะร้าน (listDocuments) แล้วจำไว้
  *   แตะร้าน = เพิ่มรายการใน history (ปุ่มย้อนกลับกลับไปหน้าค้นหา) / ?shopId= เปิดร้านนั้นตรง ๆ
+ * รอบ 10: โหมดใบเงินสด = ร้านและเอกสารของไฟล์ใบเงินสด (เลขที่เป็นข้อความ เช่น 1069-15)
  */
 (function () {
   var esc = LiffApp.esc;
@@ -64,7 +65,7 @@
     current = null;
     view.innerHTML =
       '<section class="card"><label class="f" for="q">ค้นหาชื่อร้าน</label>' +
-      '<input type="search" id="q" placeholder="พิมพ์ชื่อร้าน ชื่อเต็ม หรือเลขภาษี" autocomplete="off"></section>' +
+      '<input type="search" id="q" placeholder="' + (LiffApp.isCash() ? 'พิมพ์ชื่อร้าน หรือชื่อเต็ม' : 'พิมพ์ชื่อร้าน ชื่อเต็ม หรือเลขภาษี') + '" autocomplete="off"></section>' +
       '<section class="card"><ul class="list" id="shops"></ul></section>';
     var q = $('q');
     q.value = term;
@@ -97,7 +98,7 @@
     view.innerHTML =
       '<section class="card chosen"><div class="t"><div class="n" id="shop-name">' + esc(shop.short_name) +
       (shop.active ? '' : ' <span class="badge gray">ปิด</span>') + '</div>' +
-      '<div class="small muted">' + esc(shop.legal_name) + '</div></div>' +
+      '<div class="small muted">' + esc(shop.legal_name || '') + '</div></div>' +
       '<button type="button" class="btn sm" id="change">เปลี่ยนร้าน</button></section>' +
       '<section class="card" id="shop-docs"></section>';
     $('change').addEventListener('click', function () {
@@ -137,7 +138,7 @@
     var no = btn.getAttribute('data-regen');
     btn.disabled = true;
     btn.textContent = 'กำลังสร้าง PDF…';
-    var r = await LiffApp.api('regeneratePdf', { docNo: Number(no) });
+    var r = await LiffApp.api('regeneratePdf', { docNo: LiffApp.docParam(no) });
     if (!r.ok) {
       if (LiffApp.isDenied(r.code) || r.code === 'token_expired') return LiffApp.showApiError(r, scr);
       btn.disabled = false;
@@ -145,8 +146,8 @@
       LiffApp.toast(r.error || 'สร้าง PDF ไม่สำเร็จ', true);
       return;
     }
-    AppData.patchDoc(Number(no), { hasPdf: true, pdfUrl: r.pdfUrl }); // วาดรายการใหม่ (มีปุ่ม "ดู PDF")
-    LiffApp.toast('สร้าง PDF ของบิล #' + no + ' แล้ว');
+    AppData.patchDoc(LiffApp.docParam(no), { hasPdf: true, pdfUrl: r.pdfUrl }); // วาดรายการใหม่ (มีปุ่ม "ดู PDF")
+    LiffApp.toast('สร้าง PDF ของบิล #' + LiffApp.docNoText(no) + ' แล้ว');
   }
 
   /** ปุ่ม "ดู PDF" → หน้าจอ view (ดูในแอป LINE ก่อน มีปุ่มดาวน์โหลด / ส่งต่อในหน้านั้น) */
@@ -156,16 +157,16 @@
 
   function docRow(d) {
     var c = d.status === 'cancelled';
-    return '<li class="doc" data-no="' + d.doc_no + '">' +
+    return '<li class="doc" data-no="' + esc(d.doc_no) + '">' +
       '<div class="no' + (c ? ' cancel' : '') + '">#' + LiffApp.docNoText(d.doc_no) + ' ' + (c ? '<span class="badge red">ยกเลิก</span>' : '<span class="badge">ออกแล้ว</span>') + '</div>' +
       '<div class="amt num">' + formatMoney(d.total) + '</div>' +
-      '<div class="meta">' + formatThaiDate(d.doc_date) + ' · ' + esc(d.doc_type) + ' · ' + esc(d.sale_type) +
+      '<div class="meta">' + formatThaiDate(d.doc_date) + ' · ' + (LiffApp.isCash() ? 'ใบเงินสด · เงินสด' : esc(d.doc_type) + ' · ' + esc(d.sale_type)) +
       (d.issued_by ? '<br>ออกโดย ' + esc(d.issued_by) : '') +
       (c ? '<br>เหตุผล: ' + esc(d.cancelled_reason) + (d.cancelled_by ? ' · ยกเลิกโดย ' + esc(d.cancelled_by) : '') : '') + '</div>' +
       (d.hasPdf
         ? pdfActs(d.doc_no)
         : '<div class="acts"><span class="badge amber no-pdf">ไม่มี PDF</span>' +
-          '<button type="button" class="btn sm" data-regen="' + d.doc_no + '">สร้าง PDF ใหม่</button></div>') +
+          '<button type="button" class="btn sm" data-regen="' + esc(d.doc_no) + '">สร้าง PDF ใหม่</button></div>') +
       '</li>';
   }
 
