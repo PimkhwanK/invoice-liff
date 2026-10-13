@@ -24,7 +24,7 @@
   /** เลื่อนเนื้อหากลับบนสุด (เนื้อหาเลื่อนใน #app ไม่ใช่ window) */
   function scrollTop() { Shell.scrollTop(scr); }
 
-  var TITLE = CASH ? 'ออกใบเงินสด' : 'ออกใบกำกับภาษี';
+  var TITLE = 'ออกบิล'; // รอบ 13: ทั้งสองประเภท (ประเภทดูจากป้ายบนหัว)
   var CHAT_CMD = CASH ? 'เงินสด ' : 'บิล '; // คำสั่งในแชทที่บอทตอบเป็นการ์ดของบิล
 
   var S = {
@@ -65,7 +65,6 @@
     S.dueTouched = false;
     S.docNoInput = '';
     S.cashTest = false;
-    S.moreOpen = false;
     showForm();
   }
 
@@ -110,20 +109,20 @@
     if (S.screen === 'form') { setSubtitle(); updateDocDateHint(); }
   }
 
-  /** ใบเงินสด: เลขที่โดยประมาณของวันที่ในฟอร์ม (เซิร์ฟเวอร์ออกจริงใน lock) */
-  function cashNextNo() {
-    return S.cashTest ? '0000' : cashDocNextFromMax(S.init.monthMax, S.doc.doc_date);
-  }
-
   /** ใบกำกับ: เลขที่บิลจริงสูงสุดที่ใช้แล้ว (0 = ยังไม่มี) — ช่วยผู้ใช้พิมพ์เลขถัดไป */
   function lastTaxNo() {
     return S.init.docNos.reduce(function (m, n) { return n > m ? n : m; }, 0);
   }
 
+  /** ใบเงินสด: เลขที่ใบจริงล่าสุด (เรียงตามเลขที่ — ไม่นับ 0000) หรือ '' */
+  function lastCashNo() {
+    var docs = AppData.recentDocs().filter(function (d) { var p = cashDocParse(d.doc_no); return p && !p.test; });
+    return docs.length ? cashDocNoText(docs.slice().sort(cashDocCompareDesc)[0].doc_no) : '';
+  }
+
   function setSubtitle() {
-    $('subtitle').textContent = CASH
-      ? 'เลขที่ถัดไป #' + (cashNextNo() || '-') + ' · ' + S.init.name
-      : (lastTaxNo() ? 'เลขที่ล่าสุด #' + lastTaxNo() : 'ยังไม่มีบิล') + ' · ' + S.init.name;
+    var last = CASH ? lastCashNo() : (lastTaxNo() ? LiffApp.docNoText(lastTaxNo()) : '');
+    $('subtitle').textContent = (last ? 'เลขที่ล่าสุด #' + last : 'ยังไม่มีบิล') + ' · ' + S.init.name;
   }
 
   /** ใบกำกับ: ช่องเลขที่บนสุดของฟอร์ม (ทุกใบ ว่างทุกครั้ง — ตัวอย่างในช่อง = เลขล่าสุด + 1) */
@@ -168,7 +167,6 @@
     } else {
       var t = $('cash-test');
       if (t) t.addEventListener('change', function () { S.cashTest = t.checked; setSubtitle(); });
-      $('more').addEventListener('toggle', function () { S.moreOpen = $('more').open; });
     }
     $('doc-date').addEventListener('change', function (e) { S.doc.doc_date = e.target.value; S.dueTouched = false; updateDocDateHint(); updateDue(); if (CASH) setSubtitle(); });
     $('doc-ref').addEventListener('input', function (e) { S.doc.ref = e.target.value; updateDocDateHint(); });
@@ -220,15 +218,20 @@
       shopCard() + linesCard();
   }
 
-  /** ใบเงินสด: (บิลทดสอบ) → ร้าน → สินค้า → เพิ่มเติม (วันที่ อ้างถึง — พับไว้ วันที่เป็นวันนี้) */
+  /**
+   * ใบเงินสด: ลำดับเดียวกับใบกำกับ (รอบ 13) — (บิลทดสอบ แทนช่องเลขที่) → ข้อมูลบิล (วันที่ / อ้างถึง) → ร้าน → สินค้า
+   * ช่องที่ใบเงินสดไม่มี (เลขที่ ประเภทเอกสาร ชนิดการขาย ครบกำหนด) ไม่แสดง
+   */
   function cashFormHtml() {
-    return cashTestField() + shopCard() + linesCard() +
-      '<section class="card"><details class="more" id="more"' + (S.moreOpen ? ' open' : '') + '>' +
-      '<summary><span class="more-title">เพิ่มเติม</span><span class="more-sum" id="more-sum"></span></summary>' +
-      '<div class="field two" style="margin-top:10px">' +
-      '  <div><label class="f" for="doc-date">วันที่</label>' + dateBox('doc-date', S.doc.doc_date) + '</div>' +
-      '  <div><label class="f" for="doc-ref">อ้างถึง</label><input type="text" id="doc-ref" placeholder="ถ้ามี" maxlength="100" value="' + esc(S.doc.ref) + '"></div>' +
-      '</div></details></section>';
+    return cashTestField() +
+      '<section class="card">' +
+      '  <h2>ข้อมูลบิล</h2>' +
+      '  <div class="field two">' +
+      '    <div><label class="f" for="doc-date">วันที่</label>' + dateBox('doc-date', S.doc.doc_date) + '</div>' +
+      '    <div><label class="f" for="doc-ref">อ้างถึง</label><input type="text" id="doc-ref" placeholder="เช่น เลข PO" maxlength="100" value="' + esc(S.doc.ref) + '"></div>' +
+      '  </div>' +
+      '</section>' +
+      shopCard() + linesCard();
   }
 
   /**
@@ -248,19 +251,12 @@
     });
   }
 
-  /** ข้อความในช่องวันที่เอกสาร (วันที่ไทย) / ใบเงินสด: สรุปบนแถบ "เพิ่มเติม" — ย้อนหลัง/ล่วงหน้า แจ้งตอนกด "ตรวจสอบ" */
+  /** ข้อความในช่องวันที่เอกสาร (วันที่ไทย) — ย้อนหลัง/ล่วงหน้า แจ้งตอนกด "ตรวจสอบ" */
   function updateDocDateHint() {
     var el = $('doc-date-th');
     if (!el) return;
     var d = S.doc.doc_date;
     el.textContent = isIsoDate(d) ? formatThaiDateShort(d) : 'เลือกวันที่';
-    var sum = $('more-sum');
-    if (sum) {
-      var today = d === S.init.today;
-      sum.textContent = (isIsoDate(d) ? (today ? 'วันนี้ ' : '') + formatThaiDateShort(d) : 'ยังไม่ได้เลือกวันที่') +
-        (S.doc.ref.trim() ? ' · อ้างถึง ' + S.doc.ref.trim() : '');
-      sum.classList.toggle('changed', !today);
-    }
   }
 
   function updateDue() {
@@ -297,7 +293,7 @@
     var s = S.shop;
     var addr = splitAddress(s.address);
     var detail = CASH
-      ? '  <div class="small" style="margin-top:4px">โทร: <b>' + esc(s.tel || '-') + '</b></div>'
+      ? ''
       : '  <div class="small" style="margin-top:4px">สาขา: <b>' + esc(s.branch || '-') + '</b> · เลขผู้เสียภาษี: <b>' + esc(s.tax_id || '-') + '</b></div>' +
         (isValidTaxId(s.tax_id) ? '' : '<div class="alert warn small" style="margin-top:8px">เลขผู้เสียภาษีไม่ครบ 13 หลัก กรุณาตรวจสอบ</div>');
     box.innerHTML =
@@ -358,9 +354,9 @@
         '<div class="b">' + esc(barcodeText(l.barcode)) + ' · ราคาตั้งต้น ' + money(l.list_price) + '/' + esc(l.unit) + '</div></div>' +
         '<button type="button" class="x" data-act="del" aria-label="ลบบรรทัด">' + iconSvg('x') + '</button></div>' +
         '<div class="grid">' +
-        '<div><label>จำนวน (' + esc(l.unit) + ')</label><input type="number" inputmode="decimal" class="num" data-f="qty" min="0" step="any" value="' + esc(l.qty) + '"></div>' +
-        '<div><label>ราคา/หน่วย</label><input type="number" inputmode="decimal" class="num" data-f="price" min="0" step="any" value="' + esc(l.is_free ? 0 : l.price) + '"' + (l.is_free ? ' disabled' : '') + '></div>' +
-        '<div><label>ส่วนลด (บาท)</label><input type="number" inputmode="decimal" class="num" data-f="discount" min="0" step="any" value="' + esc(l.is_free ? 0 : l.discount) + '"' + (l.is_free ? ' disabled' : '') + '></div>' +
+        '<div><label>จำนวน (' + esc(l.unit) + ')</label><input type="number" inputmode="decimal" class="num" data-f="qty" min="0" step="any" placeholder="0" value="' + esc(l.qty) + '"></div>' +
+        '<div><label>ราคา/หน่วย</label><input type="number" inputmode="decimal" class="num" data-f="price" min="0" step="any" placeholder="0.00" value="' + esc(l.is_free ? '' : l.price) + '"' + (l.is_free ? ' disabled' : '') + '></div>' +
+        '<div><label>ส่วนลด (บาท)</label><input type="number" inputmode="decimal" class="num" data-f="discount" min="0" step="any" placeholder="0.00" value="' + esc(l.is_free ? '' : l.discount) + '"' + (l.is_free ? ' disabled' : '') + '></div>' +
         '</div>' +
         '<div class="note"><input type="text" data-f="note" maxlength="200" placeholder="หมายเหตุ (ถ้ามี)" value="' + esc(l.note) + '"></div>' +
         '<div class="foot"><label class="chk"><input type="checkbox" data-f="is_free"' + (l.is_free ? ' checked' : '') + '> แถม</label>' +
@@ -389,7 +385,7 @@
       if (e.target.dataset && e.target.dataset.f === 'is_free') {
         var l = lineByEl(e.target);
         l.is_free = e.target.checked;
-        if (!l.is_free && Number(l.price) === 0) l.price = l.list_price;
+        if (!l.is_free && Number(l.price || 0) === 0) l.price = startPrice(l.list_price);
         renderLines();
       }
     });
@@ -402,6 +398,11 @@
     });
   }
 
+  /** รอบ 13: ราคาตั้งต้นจากรายการสินค้า — มากกว่า 0 เติมให้ / 0 หรือไม่มี = ช่องว่าง */
+  function startPrice(v) {
+    return Number(v) > 0 ? v : '';
+  }
+
   function addLine(p, over) {
     if (S.lines.length >= cfg().max_items) {
       LiffApp.toast('ใส่ได้ไม่เกิน ' + cfg().max_items + ' บรรทัด', true);
@@ -409,7 +410,7 @@
     }
     S.lines.push(Object.assign({
       key: ++S.lastKey, barcode: p.barcode, name: p.name, unit: p.unit, list_price: p.price,
-      qty: 1, price: p.price, discount: 0, is_free: false, note: ''
+      qty: '', price: startPrice(p.price), discount: '', is_free: false, note: '' // รอบ 13: ช่องตัวเลขเริ่มว่าง (ไม่ใส่ 0)
     }, over || {}));
     return true;
   }
@@ -474,7 +475,7 @@
       g.items.forEach(function (it) {
         var p = S.init.products.find(function (x) { return x.barcode === it.barcode; }); // มีเฉพาะสินค้าที่ยังขาย
         if (!p) { skipped.push(it.name); return; }
-        addLine(p, { qty: it.qty, price: it.is_free ? p.price : it.price, discount: it.discount, is_free: !!it.is_free, note: it.note || '' });
+        addLine(p, { qty: it.qty, price: it.is_free ? startPrice(p.price) : it.price, discount: it.discount, is_free: !!it.is_free, note: it.note || '' });
       });
       s.close();
       renderLines();
@@ -503,9 +504,13 @@
     });
   }
 
+  function blankNum(v) {
+    return v === '' || v === null || v === undefined || String(v).trim() === '';
+  }
+
   function itemsPayload() {
     return S.lines.map(function (l) {
-      return { barcode: l.barcode, qty: l.qty, price: l.is_free ? 0 : l.price, discount: l.is_free ? 0 : (l.discount === '' ? 0 : l.discount), is_free: l.is_free, note: l.note.trim() };
+      return { barcode: l.barcode, qty: blankNum(l.qty) ? '' : l.qty, price: l.is_free || blankNum(l.price) ? 0 : l.price, discount: l.is_free || blankNum(l.discount) ? 0 : l.discount, is_free: l.is_free, note: l.note.trim() };
     });
   }
 
@@ -534,6 +539,11 @@
     S.dateConfirmed = ''; // ทุกรอบตรวจต้องติ๊กยืนยันวันที่ใหม่
     var payload = buildDocumentPayload();
     var r = CASH ? previewCashLocal(payload, S.init) : previewLocal(payload, S.init);
+    payload.items.forEach(function (it, i) {
+      if (it.qty !== '') return;
+      var p = 'บรรทัดที่ ' + (i + 1) + ': ';
+      r.errors = r.errors.map(function (e) { return e === p + 'จำนวนต้องมากกว่า 0' ? p + 'กรุณากรอกจำนวน' : e; });
+    });
     if (!CASH) {
       // เลขที่ที่แสดงในหน้านี้คือเลขที่ส่งไป / -1 = ยังไม่ได้ใส่ / 0 = บิลทดสอบ 0000 / 1–9999 = บิลจริง
       S.reviewNo = docNoOf(S.docNoInput);
@@ -548,7 +558,7 @@
     totalbar.classList.add('hidden');
     $('title').textContent = 'ตรวจสอบก่อนยืนยัน';
     $('subtitle').textContent = CASH
-      ? (S.cashTest ? 'บิลทดสอบ #' + CASH_DOC_TEST_NO : 'เลขที่โดยประมาณ #' + (r.nextDocNo || '-'))
+      ? 'เลขที่บิลใบนี้ #' + (S.cashTest ? CASH_DOC_TEST_NO : (r.nextDocNo || '-'))
       : (S.reviewNo >= 0 ? 'เลขที่บิลใบนี้ #' + LiffApp.docNoText(S.reviewNo) : 'ยังไม่ได้ใส่เลขที่บิลใบนี้');
     var t = r.totals;
     var s = S.shop;
@@ -560,12 +570,11 @@
         '<div class="sumrow"><span>ส่วนลดร้านค้า</span><span>' + money(t.discount) + '</span></div>' +
         '<div class="sumrow"><span>มูลค่าสินค้า (ก่อน VAT)</span><span>' + money(t.net_before_vat) + '</span></div>' +
         '<div class="sumrow"><span>ภาษีมูลค่าเพิ่ม ' + Math.round(cfg().vat_rate * 100) + '%</span><span>' + money(t.vat) + '</span></div>' +
-        '<div class="sumrow grand"><span>รวมทั้งสิ้น</span><span id="review-total">' + money(t.total) + '</span></div>';
+        '<div class="sumrow grand"><span>รวมสุทธิ</span><span id="review-total">' + money(t.total) + '</span></div>';
     var head = CASH
       ? '<section class="card"><h2>' + esc(cfg().doc_title || LiffApp.MODE_LABEL) + '</h2><dl class="kv">' +
         '<dt>วันที่</dt><dd>' + esc(formatThaiDate(payload.doc_date) || '-') + '</dd>' +
-        '<dt>อ้างถึง</dt><dd>' + esc(payload.ref || '-') + '</dd>' +
-        '<dt>ชนิดการขาย</dt><dd>เงินสด</dd></dl></section>'
+        '<dt>อ้างถึง</dt><dd>' + esc(payload.ref || '-') + '</dd></dl></section>'
       : '<section class="card"><h2>' + esc(payload.doc_type) + '</h2><dl class="kv">' +
         '<dt>วันที่</dt><dd>' + esc(formatThaiDate(payload.doc_date) || '-') + '</dd>' +
         '<dt>อ้างถึง</dt><dd>' + esc(payload.ref || '-') + '</dd>' +
@@ -574,7 +583,7 @@
         '</dl></section>';
     var customer = !s ? '<div class="muted">ยังไม่ได้เลือกร้าน</div>'
       : '<div><b>' + esc(s.legal_name || s.short_name) + '</b></div><div class="small">' + esc(s.address || '-') + '</div>' +
-        (CASH ? '<div class="small">โทร ' + esc(s.tel || '-') + '</div>' : '<div class="small">สาขา ' + esc(s.branch || '-') + ' · เลขผู้เสียภาษี ' + esc(s.tax_id || '-') + '</div>');
+        (CASH ? '' : '<div class="small">สาขา ' + esc(s.branch || '-') + ' · เลขผู้เสียภาษี ' + esc(s.tax_id || '-') + '</div>');
     view.innerHTML =
       (r.errors.length ? '<div class="card alert err" id="review-errors"><b>ต้องแก้ไขก่อนออกบิล</b><ul>' + r.errors.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>' : '') +
       (!r.errors.length ? noBox(r) : '') +
@@ -594,7 +603,7 @@
       '<div class="card" style="background:transparent;box-shadow:none;padding:0 0 24px">' +
       '<div id="confirm-msg"></div>' +
       '<div class="row"><button type="button" class="btn grow" id="btn-back">' + iconSvg('back') + '<span>แก้ไข</span></button>' +
-      '<button type="button" class="btn primary grow" id="btn-confirm"' + (r.errors.length ? ' disabled' : '') + '>' + (CASH ? 'ยืนยันออกใบเงินสด' : 'ยืนยันออกบิล') + '</button></div></div>';
+      '<button type="button" class="btn primary grow" id="btn-confirm"' + (r.errors.length ? ' disabled' : '') + '>ยืนยันออกบิล</button></div></div>';
 
     $('btn-back').addEventListener('click', function () { showForm(); scrollTop(); });
     $('btn-confirm').addEventListener('click', confirmCreate);
@@ -621,7 +630,7 @@
   function noBox(r) {
     var test = CASH ? S.cashTest : S.reviewNo === TEST_DOC_NO;
     var no = CASH ? (S.cashTest ? '0000' : r.nextDocNo) : LiffApp.docNoText(S.reviewNo);
-    return '<div class="card first-no-review" id="first-no-box"><div class="muted">' + (CASH && !test ? 'เลขที่ (ระบบใส่ให้)' : 'เลขที่บิลใบนี้') + '</div>' +
+    return '<div class="card first-no-review" id="first-no-box"><div class="muted">เลขที่บิลใบนี้</div>' +
       '<div class="big-no num" id="first-no-big">#' + esc(no) + '</div>' +
       (test
         ? '<div><span class="badge amber test-badge" id="test-badge">บิลทดสอบ</span></div><div class="small muted" id="test-note">ออกซ้ำจะแทนที่ใบเดิม</div>'
@@ -783,7 +792,7 @@
   function showSuccess(r, note) {
     S.screen = 'done';
     totalbar.classList.add('hidden');
-    $('title').textContent = CASH ? 'ออกใบเงินสดสำเร็จ' : 'ออกบิลสำเร็จ';
+    $('title').textContent = 'ออกบิลสำเร็จ';
     $('subtitle').textContent = '';
     view.innerHTML =
       '<div class="success" id="success"><div class="check">' + iconSvg('check') + '</div><div class="muted">เลขที่บิล</div><div class="no" id="success-no">#' + esc(LiffApp.docNoText(r.docNo)) + '</div>' +
@@ -795,7 +804,7 @@
       (r.pdfUrl
         ? '<a class="btn block" id="btn-pdf" href="' + esc(r.pdfUrl) + '" target="_blank" rel="noopener">' + iconSvg('file') + '<span>เปิด PDF</span></a>'
         : '<div class="small muted" id="no-pdf">ยังไม่มี PDF สร้างได้ที่เมนู "ประวัติเอกสาร"</div>') +
-      '<button type="button" class="btn primary block" id="btn-new">' + (CASH ? 'ออกใบเงินสดใหม่' : 'ออกบิลใหม่') + '</button>' +
+      '<button type="button" class="btn primary block" id="btn-new">ออกบิลใหม่</button>' +
       '</div>';
     $('btn-new').addEventListener('click', load);
     scrollTop();
@@ -812,8 +821,8 @@
       s.dock.innerHTML =
         '<div class="totalbar hidden" id="totalbar"><div class="inner"><div class="sums num">' +
         (CASH
-          ? '<div>รวมสุทธิ</div><div><b id="t-total">0.00</b> บาท</div>'
-          : '<div>ก่อน VAT <span id="t-net">0.00</span> · VAT <span id="t-vat">0.00</span></div><div>รวมทั้งสิ้น <b id="t-total">0.00</b></div>') +
+          ? '<div>รวมสุทธิ <b id="t-total">0.00</b></div>' // รอบ 13: แบบเดียวกับใบกำกับ (ไม่มีบรรทัด VAT)
+          : '<div>ก่อน VAT <span id="t-net">0.00</span> · VAT <span id="t-vat">0.00</span></div><div>รวมสุทธิ <b id="t-total">0.00</b></div>') +
         '</div><button type="button" class="btn primary" id="btn-review"><span>ตรวจสอบ</span>' + iconSvg('next') + '</button></div></div>';
       view = $('view');
       totalbar = $('totalbar');

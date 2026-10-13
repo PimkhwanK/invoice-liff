@@ -79,6 +79,8 @@ input[type=text], input[type=number], input[type=date], input[type=search], inpu
   padding: 9px 10px; border: 1px solid var(--theme-field-border); border-radius: 8px; background: var(--theme-card); color: var(--theme-text);
 }
 input::placeholder, textarea::placeholder { color: var(--theme-text-2); opacity: 1; }
+/* รอบ 13: ช่องตัวเลขเริ่มว่าง — placeholder 0 / 0.00 จางกว่าค่าที่กรอก (ไม่ให้ดูเหมือนกรอก 0 ไว้แล้ว) */
+input.num::placeholder { opacity: .45; }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--theme-primary); outline-offset: -1px; border-color: transparent; }
 input:disabled { background: var(--theme-field-off); color: var(--theme-text-2); }
 input.num { text-align: right; }
@@ -282,13 +284,6 @@ dl.kv dd { margin: 0; }
 .success .no { font-size: 30px; font-weight: 700; color: var(--theme-primary-dark); }
 
 /* รอบ 7: บิลใบแรกของระบบ — ช่องเลขที่บนสุดของฟอร์ม + เลขที่ตัวใหญ่ในหน้าตรวจสอบ */
-/* รอบ 10: ใบเงินสด — วันที่ / อ้างถึง พับไว้ใต้ "เพิ่มเติม" (สรุปวันที่บนแถบ วันที่ไม่ใช่วันนี้ = สีเตือน) */
-details.more > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; min-height: 32px; font-weight: 700; color: var(--theme-text); }
-details.more > summary::-webkit-details-marker { display: none; }
-details.more > summary::after { content: ''; width: 8px; height: 8px; margin-left: 4px; border-right: 2px solid var(--theme-text-2); border-bottom: 2px solid var(--theme-text-2); transform: rotate(45deg); transition: transform .15s; }
-details.more[open] > summary::after { transform: rotate(-135deg); }
-details.more .more-sum { margin-left: auto; font-size: 13px; font-weight: 400; color: var(--theme-text-2); text-align: right; }
-details.more .more-sum.changed { color: var(--theme-warn-text); font-weight: 700; }
 .first-no { border: 2px solid var(--theme-primary); }
 .first-no input { font-size: 20px; font-weight: 700; }
 .first-no input::placeholder { font-size: 16px; font-weight: 400; color: var(--theme-text-2); } /* ไม่ให้ดูเหมือนกรอกไว้แล้ว */

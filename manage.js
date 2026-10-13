@@ -115,7 +115,7 @@
     var sh = LiffApp.sheet(shop ? 'แก้ไขร้าน #' + shop.shop_id : 'เพิ่มร้านใหม่',
       (shop ? '<div class="alert warn small" style="margin-bottom:10px">มีผลกับบิลใหม่เท่านั้น บิลเก่าไม่เปลี่ยน</div>' : '') +
       f('short_name', 'ชื่อร้านค้า (ชื่อย่อ ใช้ค้นหา)') +
-      f('legal_name', CASH ? 'ชื่อเต็ม (ถ้าว่าง ใช้ชื่อร้านค้า)' : 'ชื่อเต็มตามใบกำกับ') +
+      f('legal_name', 'ชื่อเต็มบนบิล') +
       '<div class="field"><label class="f" for="f-address">ที่อยู่ (บรรทัดเดียว)</label><textarea id="f-address" rows="3">' + esc(s.address) + '</textarea><div class="hint" id="addr-preview"></div></div>' +
       (CASH
         ? f('tel', 'โทรศัพท์', 'tel')
@@ -188,7 +188,7 @@
       (p ? '<div class="hint">แก้บาร์โค้ดไม่ได้ ถ้าผิดให้เพิ่มสินค้าใหม่ แล้วปิด "ยังขายอยู่" ของอันเดิม</div>' : '') + '</div>' +
       '<div class="field"><label class="f" for="p-name">รายการสินค้า</label><input type="text" id="p-name" value="' + esc(v.name) + '"></div>' +
       '<div class="two"><div><label class="f" for="p-unit">หน่วย</label><input type="text" id="p-unit" value="' + esc(v.unit) + '" list="units"></div>' +
-      '<div><label class="f" for="p-price">ราคา' + (CASH ? '' : ' (รวม VAT)') + '</label><input type="number" id="p-price" class="num" min="0" step="any" inputmode="decimal" value="' + esc(v.price) + '"></div></div>' +
+      '<div><label class="f" for="p-price">ราคา' + (CASH ? '' : ' (รวม VAT)') + '</label><input type="number" id="p-price" class="num" min="0" step="any" inputmode="decimal" placeholder="0.00" value="' + esc(v.price) + '"></div></div>' +
       '<datalist id="units"><option value="ลัง"><option value="กล่อง"><option value="แพ็ค"></datalist>' +
       '<div class="field"><label class="chk"><input type="checkbox" id="p-active"' + (v.active ? ' checked' : '') + '> ยังขายอยู่</label></div><div id="p-msg"></div>',
       '<button type="button" class="btn grow" data-close>ยกเลิก</button><button type="button" class="btn primary grow" id="p-save">บันทึก</button>');
@@ -198,7 +198,7 @@
         barcode: p ? p.barcode : sh.el.querySelector('#p-barcode').value, // แก้สินค้า: รหัสเดิม (รวมรหัสภายใน NB-xxxx)
         name: sh.el.querySelector('#p-name').value,
         unit: sh.el.querySelector('#p-unit').value,
-        price: sh.el.querySelector('#p-price').value,
+        price: sh.el.querySelector('#p-price').value.trim() || '0', // รอบ 13: ช่องว่าง = 0
         active: sh.el.querySelector('#p-active').checked
       };
       btn.disabled = true;

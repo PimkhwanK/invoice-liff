@@ -160,7 +160,7 @@
     return '<li class="doc" data-no="' + esc(d.doc_no) + '">' +
       '<div class="no' + (c ? ' cancel' : '') + '">#' + LiffApp.docNoText(d.doc_no) + ' ' + (c ? '<span class="badge red">ยกเลิก</span>' : '<span class="badge">ออกแล้ว</span>') + '</div>' +
       '<div class="amt num">' + formatMoney(d.total) + '</div>' +
-      '<div class="meta">' + formatThaiDate(d.doc_date) + ' · ' + (LiffApp.isCash() ? 'ใบเงินสด · เงินสด' : esc(d.doc_type) + ' · ' + esc(d.sale_type)) +
+      '<div class="meta">' + formatThaiDate(d.doc_date) + ' · ' + (LiffApp.isCash() ? esc(CASH_DOC_TITLE) : esc(d.doc_type) + ' · ' + esc(d.sale_type)) +
       (d.issued_by ? '<br>ออกโดย ' + esc(d.issued_by) : '') +
       (c ? '<br>เหตุผล: ' + esc(d.cancelled_reason) + (d.cancelled_by ? ' · ยกเลิกโดย ' + esc(d.cancelled_by) : '') : '') + '</div>' +
       (d.hasPdf
