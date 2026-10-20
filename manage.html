@@ -9,8 +9,8 @@
 <link rel="stylesheet" href="theme.css">
 </head>
 <body>
-<!-- แอป LIFF หน้าเดียว (รอบ 6 ข้อ 3.5): issue.html / history.html / manage.html / view.html เป็นไฟล์เดียวกันทุกตัวอักษร
-     หน้าจอที่แสดงเลือกจาก path (shell.js) แล้วสลับหน้าจอในแอปโดยไม่โหลดหน้าใหม่ — แก้ไฟล์นี้แล้วต้องคัดลอกทับอีก 3 ไฟล์ -->
+<!-- แอป LIFF หน้าเดียว (รอบ 6 ข้อ 3.5): issue.html / history.html / manage.html / view.html / summary.html / stock.html เป็นไฟล์เดียวกันทุกตัวอักษร
+     หน้าจอที่แสดงเลือกจาก path (shell.js) แล้วสลับหน้าจอในแอปโดยไม่โหลดหน้าใหม่ — แก้ไฟล์นี้แล้วต้องคัดลอกทับอีก 5 ไฟล์ -->
 <div class="wrap" id="app">
   <div class="screen"><div class="topbar"><h1>กำลังเปิด…</h1></div>
   <div id="view"><div class="loading" role="status"><span class="spinner" aria-hidden="true"></span><div class="msg">กำลังเปิดหน้า…</div></div></div></div>
@@ -29,6 +29,7 @@
 <script src="address.js"></script>
 <script src="invoice.js"></script>
 <script src="cashDoc.js"></script>
+<script src="salesSummary.js"></script>
 <script src="preview.js"></script>
 <script src="search.js"></script>
 <script src="icons.js"></script>
@@ -39,6 +40,8 @@
 <script src="history.js"></script>
 <script src="manage.js"></script>
 <script src="view.js"></script>
+<script src="summary.js"></script>
+<script src="stock.js"></script>
 <script>
   // ตรวจว่าไฟล์ทุกไฟล์โหลดครบก่อนเริ่มแอป (รอบ 6 ข้อ 4 ต่อ) — เน็ตช้า/หลุดจนไฟล์หนึ่งโหลดไม่สำเร็จ เบราว์เซอร์จะข้ามไฟล์นั้นแล้วรันไฟล์ถัดไป
   // (เดิม: หน้าวาดไม่ครบเงียบ ๆ เช่น "fromSatang is not defined" หรือค้างที่ "กำลังเปิด…")
@@ -77,6 +80,7 @@
     ['address.js', function () { return typeof splitAddress === 'function'; }],
     ['invoice.js', function () { return typeof validateDocumentInput === 'function'; }],
     ['cashDoc.js', function () { return typeof cashDocValidate === 'function'; }],
+    ['salesSummary.js', function () { return typeof salesView === 'function'; }],
     ['preview.js', function () { return typeof previewLocal === 'function'; }],
     ['search.js', function () { return typeof searchShops === 'function'; }],
     ['icons.js', function () { return typeof iconSvg === 'function'; }],
@@ -86,7 +90,9 @@
     ['issue.js', function () { return Shell.has('issue'); }],
     ['history.js', function () { return Shell.has('history'); }],
     ['manage.js', function () { return Shell.has('manage'); }],
-    ['view.js', function () { return Shell.has('view'); }]
+    ['view.js', function () { return Shell.has('view'); }],
+    ['summary.js', function () { return Shell.has('summary'); }],
+    ['stock.js', function () { return Shell.has('stock'); }]
   ], function () { Shell.boot(); });
 </script>
 </body>

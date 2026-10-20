@@ -11,10 +11,12 @@
  *   ปุ่มย้อนกลับ (Android) / ปัดย้อนกลับ: history.pushState ทุกครั้งที่เปลี่ยนหน้าจอ → popstate กลับหน้าจอก่อนหน้าในแอป
  *   ลำดับโหลด: shell.js → หน้าจอ (Shell.define) → Shell.boot() ท้ายหน้า
  *   แถบเมนูล่าง 3 ปุ่ม: ออกบิล / ประวัติ / จัดการข้อมูล (หน้าดู PDF ไม่อยู่ในแถบ)
+ *   รอบ 15: หน้าสรุป (summary) / สต็อก (stock) เปิดจาก Rich Menu ตรง ๆ — ไม่ผูกกับประเภทเอกสาร (ALONE): ไม่มีแถบเมนูล่าง ไม่มีป้ายประเภท ไม่มี ?type= ใน URL
  *   ?debug=1 → แถบเวลาเล็ก ๆ บนจอ: liff.init, คำขอเซิร์ฟเวอร์แต่ละครั้ง, เวลาสลับหน้าจอ (จำไว้ในแท็บนี้จนปิด / ?debug=0 ปิด)
  */
 var Shell = (function () {
-  var ROUTES = { issue: [], history: ['shopId'], manage: ['tab'], view: ['no'] };
+  var ROUTES = { issue: [], history: ['shopId'], manage: ['tab'], view: ['no'], summary: [], stock: [] };
+  var ALONE = { summary: true, stock: true }; // รอบ 15: หน้าที่ไม่ผูกกับประเภทเอกสาร
   var TABS = ['issue', 'history', 'manage'];
   var defs = {};
   var screens = {};
@@ -50,7 +52,7 @@ var Shell = (function () {
    */
   function urlOf(name, params) {
     var q = new URLSearchParams();
-    q.set('type', LiffApp.MODE);
+    if (!ALONE[name]) q.set('type', LiffApp.MODE);
     (ROUTES[name] || []).forEach(function (k) { if (params && params[k] !== undefined && params[k] !== '') q.set(k, params[k]); });
     var s = q.toString();
     return name + (s ? '?' + s : '');
@@ -66,7 +68,7 @@ var Shell = (function () {
     s.def.build(s);
     // รอบ 10: ป้ายประเภทเอกสารบนหัวทุกหน้าจอ (สีตามโหมด — theme.css .mode-pill) กันออกผิดประเภท
     var bar = s.root.querySelector('.topbar');
-    if (bar) {
+    if (bar && !ALONE[name]) {
       var pill = LiffApp.el('<div class="mode-pill" id="mode-pill" data-mode="' + LiffApp.MODE + '">' +
         iconSvg(LiffApp.isCash() ? 'cash' : 'receipt') + '<span></span></div>');
       pill.querySelector('span').textContent = LiffApp.MODE_LABEL;
@@ -87,14 +89,15 @@ var Shell = (function () {
     appEl.replaceChildren(s.root);
     dockEl.replaceChildren(s.dock);
     appEl.scrollTop = s.scroll;
-    document.title = s.def.title + ' · ' + LiffApp.MODE_LABEL;
+    document.title = ALONE[s.name] ? s.def.title : s.def.title + ' · ' + LiffApp.MODE_LABEL;
     LiffApp.syncing(AppData.isRefreshing(), s);
     drawTabbar();
   }
 
   function drawTabbar() {
-    tabbar.classList.toggle('hidden', !ready || !!locked);
-    document.body.classList.toggle('has-tabbar', ready && !locked);
+    var on = ready && !locked && !(current && ALONE[current.name]);
+    tabbar.classList.toggle('hidden', !on);
+    document.body.classList.toggle('has-tabbar', on);
     tabbar.querySelectorAll('button[data-go]').forEach(function (b) {
       var on = !!current && b.dataset.go === current.name;
       b.classList.toggle('on', on);

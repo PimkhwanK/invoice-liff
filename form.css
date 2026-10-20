@@ -356,3 +356,56 @@ body.has-tabbar .toast { bottom: 140px; }
   padding: calc(2px + env(safe-area-inset-top)) 8px 2px;
 }
 .two + .field, .field + .two, .two + .two { margin-top: 10px; }
+
+/* ---------- รอบ 15: หน้าสรุป (summary.js) / หน้าสต็อก "เร็วๆ นี้" (stock.js) ---------- */
+.sum-pick { display: flex; gap: 8px; margin-top: 8px; }
+.sum-pick select { flex: 1; min-width: 0; }
+.sum-range { margin-top: 8px; }
+.sum-big { font-size: 28px; font-weight: 700; line-height: 1.25; }
+.sum-sub { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sum-delta { display: inline-flex; align-items: center; gap: 3px; font-size: 13px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--theme-neutral-bg); color: var(--theme-neutral-text); }
+.sum-delta svg.icon { width: 14px; height: 14px; stroke-width: 2.4; }
+.sum-delta.up { background: var(--theme-ok-bg); color: var(--theme-ok-text); }
+.sum-delta.down { background: var(--theme-err-bg); color: var(--theme-err-text); }
+.sum-tiles { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 12px; }
+.sum-tile { border-radius: 10px; padding: 10px; border: 1px solid var(--theme-line); }
+.sum-tile .t { font-size: 13px; font-weight: 700; }
+.sum-tile .v { font-size: 17px; font-weight: 700; margin: 2px 0 4px; overflow-wrap: anywhere; }
+.sum-tile.cash { background: var(--theme-cash-soft); border-color: var(--theme-cash); }
+.sum-tile.cash .t { color: var(--theme-cash-dark); }
+.sum-tile.tax { background: var(--theme-primary-soft); border-color: var(--theme-tax); }
+.sum-tile.tax .t { color: var(--theme-primary-dark); }
+.sum-stats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 12px; }
+.sum-stats > div { display: flex; flex-direction: column; font-size: 13px; }
+.sum-stats b { font-size: 17px; }
+.sum-graph { display: block; width: 100%; height: auto; }
+.sum-graph .grid { stroke: var(--theme-line); stroke-width: 1; }
+.sum-graph .ax { font-size: 10px; fill: var(--theme-text-2); font-family: 'Sarabun', system-ui, sans-serif; }
+.sum-graph .bar-cash { fill: var(--theme-cash); }
+.sum-graph .bar-tax { fill: var(--theme-tax); }
+.sum-legend { display: flex; gap: 14px; font-size: 12px; color: var(--theme-text-2); margin-top: 4px; }
+.sum-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.sum-legend i.cash { background: var(--theme-cash); }
+.sum-legend i.tax { background: var(--theme-tax); }
+.sum-rows > div { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; }
+.sum-rows > div + div { border-top: 1px solid var(--theme-line); }
+.seg-choice.sum-mini { margin-bottom: 4px; }
+.seg-choice.sum-mini label { padding: 5px 4px; font-size: 13px; }
+.sum-rank, .sum-lost { display: flex; gap: 10px; align-items: center; }
+.sum-rank[data-href], .sum-lost[data-href] { cursor: pointer; }
+.sum-rank[data-href]:active, .sum-lost[data-href]:active { background: var(--theme-pressed); }
+.sum-rank .no { width: 22px; height: 22px; flex: none; border-radius: 50%; background: var(--theme-badge-bg); color: var(--theme-badge-text);
+  font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.sum-rank .nm, .sum-lost .nm { flex: 1; min-width: 0; }
+.sum-rank .n, .sum-lost .n { font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
+.sum-rank .bar { height: 6px; border-radius: 3px; background: var(--theme-accent); margin-top: 4px; }
+.sum-rank .amt, .sum-lost .amt { display: flex; flex-direction: column; align-items: flex-end; text-align: right; white-space: nowrap; font-size: 15px; }
+.badge.sum-kind { font-weight: 400; vertical-align: 1px; }
+.badge.sum-kind.cash { background: var(--theme-cash-soft); color: var(--theme-cash-dark); }
+.badge.sum-kind.tax { background: var(--theme-primary-soft); color: var(--theme-primary-dark); }
+.soon { text-align: center; padding: 32px 20px; }
+.soon .soon-icon { width: 72px; height: 72px; margin: 0 auto 12px; border-radius: 50%; background: var(--theme-primary-soft); color: var(--theme-primary-dark);
+  display: flex; align-items: center; justify-content: center; }
+.soon .soon-icon svg.icon { width: 40px; height: 40px; }
+.soon p { margin: 0; }
+.card.soon > h2 { justify-content: center; }
