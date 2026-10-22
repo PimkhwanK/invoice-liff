@@ -531,6 +531,17 @@
 
   // ---------- หน้าตรวจสอบ
 
+  /** รอบ 16: บิลทดสอบ 0000 ไม่หักสต็อก */
+  function isTestIssue() { return CASH ? !!S.cashTest : S.reviewNo === TEST_DOC_NO; }
+
+  /** รอบ 16: สต็อกไม่พอ (เตือนอย่างเดียว ออกบิลได้ ยอดติดลบได้) — ยอดจากข้อมูลที่โหลดตอนเปิดแอป */
+  function stockBox(items) {
+    if (isTestIssue()) return '';
+    var list = stockShortages(items, AppData.stockMap());
+    return list.length ? '<div class="card alert warn" id="review-stock"><b>สต็อกไม่พอ (ออกบิลได้)</b><ul>' +
+      list.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>' : '';
+  }
+
   /**
    * ตรวจบนมือถือทันที (preview.js — invoice.js / cashDoc.js / money.js ชุดเดียวกับเซิร์ฟเวอร์ + ขีดจำกัดจากแท็บตั้งค่า) ไม่รอเซิร์ฟเวอร์
    * ยอดที่แสดงส่งไปเป็น expected ตอนยืนยัน → เซิร์ฟเวอร์คำนวณซ้ำ ถ้าไม่ตรงจะไม่บันทึก
@@ -589,6 +600,7 @@
       (!r.errors.length ? noBox(r) : '') +
       (r.dateConfirm && !r.errors.length ? dateConfirmBox(r.dateConfirm) : '') +
       (r.warnings.length ? '<div class="card alert warn" id="review-warnings"><b>โปรดตรวจสอบ</b><ul>' + r.warnings.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>' : '') +
+      stockBox(payload.items) +
       head +
       '<section class="card"><h2>ลูกค้า</h2>' + customer + '</section>' +
       '<section class="card"><h2>สินค้า <span class="count">' + payload.items.length + ' บรรทัด</span></h2><table class="review-items">' +
@@ -725,6 +737,7 @@
       cancelled_reason: '', cancelled_at: '', issued_by: S.init.name || '', cancelled_by: '', pdfUrl: r.pdfUrl || '', hasPdf: !!r.pdfUrl
     };
     AppData.addDoc(doc);
+    if (!r.isTest && !r.duplicate) AppData.takeStock(p.items); // รอบ 16
   }
 
   /** ข้อมูลที่จำไว้อาจเก่า (ยอดไม่ตรง / ข้อมูลไม่ผ่าน / เลขซ้ำ) → ดึงใหม่เบื้องหลัง ให้รอบตรวจถัดไปใช้ข้อมูลใหม่ */
@@ -799,6 +812,7 @@
       '<div>' + esc(r.legalName || (S.shop && (S.shop.legal_name || S.shop.short_name)) || '') + '</div><div class="num" style="font-size:20px;font-weight:700;margin-top:4px">' + money(r.total) + ' บาท</div></div>' +
       (r.duplicate ? '<div class="card alert warn">บิลนี้ออกไปแล้ว แสดงเลขที่เดิม</div>' : '') +
       (r.warnings && r.warnings.length ? '<div class="card alert warn"><ul style="margin:0">' + r.warnings.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></div>' : '') +
+      (r.stockMessage ? '<div class="card alert warn" id="stock-pending">' + esc(r.stockMessage) + '</div>' : '') + // รอบ 16: ตัดสต็อกไม่สำเร็จ (บิลบันทึกแล้ว)
       '<div class="card alert ok" id="success-note">' + esc(note) + '</div>' +
       '<div class="card stack">' +
       (r.pdfUrl

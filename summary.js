@@ -17,6 +17,7 @@
   var pick = { year: 0, month: 0 };  // ช่วง "เลือกเดือน"
   var yearPick = 0;                  // ช่วง "ทั้งปี"
   var prodBy = 'qty';                // สินค้าขายดี: ตามจำนวน / ตามยอดเงิน
+  var stockLow;                      // รอบ 16: สินค้าใกล้หมด { threshold, products } / null = ยังไม่ได้ตั้งค่าสต็อก / undefined = ยังไม่รู้
   var KINDS = [['today', 'วันนี้'], ['month', 'เดือนนี้'], ['pick', 'เลือกเดือน'], ['year', 'ทั้งปี']];
   var MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
   function $(id) { return scr.$(id); }
@@ -68,6 +69,7 @@
       fetched[year] = true;
       data[year] = r.summary;
       LiffApp.keep('sales-' + year, r.summary);
+      if ('stockLow' in r) { stockLow = r.stockLow; LiffApp.keep('stock-low', r.stockLow); }
       if (Shell.isCurrent(scr) && yearOf() === year) draw();
       return r;
     });
@@ -199,7 +201,7 @@
     if (v.missing.cash) miss.push('ใบเงินสด');
     body.innerHTML =
       (miss.length ? '<div class="alert warn" id="sum-missing" style="margin:12px">ยังไม่รวม' + miss.join(' และ ') + ' กรุณาแจ้งผู้ดูแลระบบ</div>' : '') +
-      totalCard(v) + chartCard(v) + vatCard(v) + shopsCard(v) + productsCard(v) + lostCard(v);
+      totalCard(v) + chartCard(v) + vatCard(v) + shopsCard(v) + productsCard(v) + lostCard(v) + lowCard();
   }
 
   function tile(kind, label, p) {
@@ -332,6 +334,22 @@
           '<div class="small muted">ซื้อล่าสุด ' + esc(formatThaiDateShort(x.last)) + ' (' + x.days + ' วันก่อน)</div></div>' +
           '<div class="amt"><b class="num">' + money(x.sat) + '</b><span class="small muted">' + x.n + ' บิล</span></div></li>';
       }).join('') : '<li class="empty">ไม่มีร้านที่หายไป</li>') + '</ul></section>';
+  }
+
+  /** รอบ 16: สินค้าใกล้หมด / ติดลบ (ยอดตอนนี้ ไม่ขึ้นกับช่วงเวลา) — ยังไม่ได้ตั้งค่าสต็อก → ไม่แสดง */
+  function lowCard() {
+    if (stockLow === undefined) {
+      var kept = LiffApp.remember('stock-low');
+      stockLow = kept ? kept.data : undefined;
+    }
+    if (!stockLow || !Array.isArray(stockLow.products)) return '';
+    var list = stockLow.products;
+    return '<section class="card" id="sum-low"><h2>สินค้าใกล้หมด <span class="count">เหลือไม่เกิน ' + esc(formatQty(stockLow.threshold)) + '</span></h2>' +
+      '<ul class="list">' + (list.length ? list.slice(0, 10).map(function (p) {
+        return '<li class="st-row"><div class="nm"><div class="n">' + esc(p.name) + '</div></div>' +
+          '<div class="q ' + esc(p.level) + '"><b class="num">' + esc(formatQty(p.qty)) + '</b> ' + esc(p.unit) + '</div></li>';
+      }).join('') : '<li class="empty">ไม่มีสินค้าใกล้หมด</li>') + '</ul>' +
+      '<a class="btn block" id="sum-to-stock" href="stock" style="margin-top:8px">ไปหน้าสต็อก</a></section>';
   }
 
   function go(el) {

@@ -342,6 +342,30 @@ var AppData = (function () {
     changed('shop', shop.shop_id);
   }
 
+  /**
+   * รอบ 16: ยอดสต็อกของสินค้าที่นับแล้ว (appData.stock) → { barcode: {qty, tracked, name, unit} } สำหรับคำเตือน "สต็อกไม่พอ" (stockCore.js stockShortages)
+   * เซิร์ฟเวอร์ยังไม่มีสต็อก / ยังไม่ได้ตั้งค่า → {} (ไม่เตือน)
+   */
+  function stockMap() {
+    var d = S.data;
+    var out = {};
+    if (!d || !d.stock || typeof d.stock !== 'object') return out;
+    (d.products || []).forEach(function (p) {
+      if (typeof d.stock[p.barcode] === 'number') out[p.barcode] = { qty: d.stock[p.barcode], tracked: true, name: p.name, unit: p.unit };
+    });
+    return out;
+  }
+
+  /** หลังออกบิลจริง: หักยอดที่จำไว้ในแอปเอง (เหมือนเซิร์ฟเวอร์ รวมของแถม) — รอบตรวจถัดไปเตือนถูก ไม่ต้องโหลดใหม่ */
+  function takeStock(items) {
+    var d = S.data;
+    if (!d || !d.stock) return;
+    stockSaleLines(items).forEach(function (l) {
+      if (typeof d.stock[l.barcode] === 'number') d.stock[l.barcode] = Math.round((d.stock[l.barcode] - l.qty) * 1000) / 1000;
+    });
+    LiffApp.keep(STORE, d);
+  }
+
   function putProduct(p) {
     if (!S.data) return;
     var list = S.data.products;
@@ -355,6 +379,6 @@ var AppData = (function () {
     ensure: ensure, refresh: refresh, clear: clear,
     data: data, shops: shops, products: products, recentDocs: recentDocs, name: name, issueInit: issueInit,
     shopStat: shopStat, docsOfShop: docsOfShop, shopComplete: shopComplete, loadShopDocs: loadShopDocs, docItems: docItems,
-    addDoc: addDoc, patchDoc: patchDoc, putShop: putShop, putProduct: putProduct
+    addDoc: addDoc, patchDoc: patchDoc, putShop: putShop, putProduct: putProduct, stockMap: stockMap, takeStock: takeStock
   };
 })();

@@ -30,6 +30,7 @@
 <script src="invoice.js"></script>
 <script src="cashDoc.js"></script>
 <script src="salesSummary.js"></script>
+<script src="stockCore.js"></script>
 <script src="preview.js"></script>
 <script src="search.js"></script>
 <script src="icons.js"></script>
@@ -81,6 +82,7 @@
     ['invoice.js', function () { return typeof validateDocumentInput === 'function'; }],
     ['cashDoc.js', function () { return typeof cashDocValidate === 'function'; }],
     ['salesSummary.js', function () { return typeof salesView === 'function'; }],
+    ['stockCore.js', function () { return typeof stockPlanManual === 'function'; }],
     ['preview.js', function () { return typeof previewLocal === 'function'; }],
     ['search.js', function () { return typeof searchShops === 'function'; }],
     ['icons.js', function () { return typeof iconSvg === 'function'; }],

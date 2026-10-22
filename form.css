@@ -409,3 +409,28 @@ body.has-tabbar .toast { bottom: 140px; }
 .soon .soon-icon svg.icon { width: 40px; height: 40px; }
 .soon p { margin: 0; }
 .card.soon > h2 { justify-content: center; }
+
+/* ---------- รอบ 16: หน้าสต็อก (stock.js) / สินค้าใกล้หมดในหน้าสรุป ---------- */
+.st-row { display: flex; gap: 10px; align-items: center; }
+.st-row .nm { flex: 1; min-width: 0; }
+.st-row .n { font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
+.st-row .q { text-align: right; white-space: nowrap; }
+.st-row .q b { font-size: 18px; }
+.q.neg b, .st-big.neg b { color: var(--theme-err-text); }
+.q.low b, .st-big.low b { color: var(--theme-warn-text); }
+.st-big b { font-size: 26px; }
+.st-grp { font-size: 13px; font-weight: 700; color: var(--theme-text-2); margin: 10px 0 0; }
+.stock-acts .inner { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stock-acts .btn { min-width: 0; justify-content: center; }
+.move-list { margin-top: 8px; }
+.move-line { display: flex; gap: 10px; align-items: center; }
+.move-line .t { flex: 1; min-width: 0; }
+.move-line .t .n { font-weight: 700; }
+.move-line .t .s { font-size: 12px; color: var(--theme-text-2); }
+.move-line input { width: 96px; flex: none; text-align: right; }
+.move-line.picked-line .t .s { color: var(--theme-text); font-weight: 700; }
+.mv { display: flex; gap: 10px; }
+.mv .t { flex: 1; min-width: 0; }
+.mv .d { text-align: right; white-space: nowrap; }
+.mv .plus { color: var(--theme-ok-text); }
+.mv .minus { color: var(--theme-err-text); }

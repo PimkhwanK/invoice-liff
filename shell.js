@@ -15,7 +15,7 @@
  *   ?debug=1 → แถบเวลาเล็ก ๆ บนจอ: liff.init, คำขอเซิร์ฟเวอร์แต่ละครั้ง, เวลาสลับหน้าจอ (จำไว้ในแท็บนี้จนปิด / ?debug=0 ปิด)
  */
 var Shell = (function () {
-  var ROUTES = { issue: [], history: ['shopId'], manage: ['tab'], view: ['no'], summary: [], stock: [] };
+  var ROUTES = { issue: [], history: ['shopId'], manage: ['tab'], view: ['no'], summary: [], stock: ['barcode'] };
   var ALONE = { summary: true, stock: true }; // รอบ 15: หน้าที่ไม่ผูกกับประเภทเอกสาร
   var TABS = ['issue', 'history', 'manage'];
   var defs = {};
