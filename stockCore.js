@@ -22,17 +22,25 @@ var STOCK_KIND = {
   open: 'ยอดเริ่มต้น',
   sale: 'ขาย',
   ret: 'คืนจากยกเลิก',
-  in: 'รับเข้า',
-  out: 'หักออก',
-  count: 'นับสต็อก'
+  in: 'ของเข้า',
+  out: 'ของออก (ไม่มีบิล)',
+  count: 'แก้ยอดตามที่นับ'
 };
+/** รอบ 18: ชื่อประเภทเดิมในชีต (รอบ 16) → ชื่อปัจจุบัน (แถวเก่าในแท็บความเคลื่อนไหวยังอ่านได้ — ไม่แก้แถวเดิม) */
+var STOCK_KIND_OLD = { 'รับเข้า': 'ของเข้า', 'หักออก': 'ของออก (ไม่มีบิล)', 'นับสต็อก': 'แก้ยอดตามที่นับ' };
 var STOCK_LOW_DEFAULT = 10;  // ใกล้หมดเมื่อเหลือไม่เกินเท่านี้ (แท็บตั้งค่า stock_low_threshold)
-var STOCK_MAX_LINES = 50;    // รับเข้า / หักออก / นับสต็อก ได้ครั้งละไม่เกินกี่สินค้า
+var STOCK_MAX_LINES = 50;    // ของเข้า / ของออก / แก้ยอดตามที่นับ ได้ครั้งละไม่เกินกี่สินค้า
 var STOCK_MAX_QTY = 1000000; // จำนวนต่อบรรทัดไม่เกินเท่านี้ (กันพิมพ์เกิน)
 var STOCK_TEXT_MAX = 200;    // เหตุผล / หมายเหตุ
 
 function stockText(v) {
   return v === undefined || v === null ? '' : String(v).trim();
+}
+
+/** ชื่อประเภทสำหรับแสดง (ชื่อเดิมของรอบ 16 → ชื่อปัจจุบัน) */
+function stockKindText(v) {
+  var k = stockText(v);
+  return STOCK_KIND_OLD[k] || k;
 }
 
 function stockRound(n) {
@@ -190,7 +198,7 @@ function stockPlanManual(o) {
   if (!lines.length) errors.push('กรุณาเลือกสินค้าอย่างน้อย 1 รายการ');
   if (lines.length > STOCK_MAX_LINES) errors.push('บันทึกได้ครั้งละไม่เกิน ' + STOCK_MAX_LINES + ' รายการ');
   if (reason.length > STOCK_TEXT_MAX) errors.push('หมายเหตุยาวเกิน ' + STOCK_TEXT_MAX + ' ตัวอักษร');
-  if (o.kind === 'out' && !reason) errors.push('กรุณาใส่หมายเหตุว่าหักออกเพราะอะไร');
+  if (o.kind === 'out' && !reason) errors.push('กรุณาใส่หมายเหตุว่าของออกเพราะอะไร');
   var seen = {};
   var needReason = false;
   lines.forEach(function (l, i) {
@@ -221,7 +229,7 @@ function stockPlanManual(o) {
       moves.push({ kind: STOCK_KIND.count, barcode: bc, name: s.name, qty: diff, balance: q, note: 'นับได้ ' + q + ' (ระบบมี ' + stockRound(cur) + ')' });
       return;
     }
-    if (!s.tracked) { errors.push(label + ': ยังไม่เริ่มนับสต็อก กด "นับสต็อก" ใส่ยอดเริ่มต้นก่อน'); return; }
+    if (!s.tracked) { errors.push(label + ': ยังไม่เริ่มนับสต็อก กด "แก้ยอดตามที่นับ" ใส่ยอดเริ่มต้นก่อน'); return; }
     if (!(q > 0)) { errors.push(label + ': จำนวนต้องมากกว่า 0'); return; }
     var signed = o.kind === 'in' ? q : -q;
     var bal = stockRound(cur + signed);
@@ -325,6 +333,8 @@ function stockSyncDocKey(kind, v) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     STOCK_KIND: STOCK_KIND,
+    STOCK_KIND_OLD: STOCK_KIND_OLD,
+    stockKindText: stockKindText,
     STOCK_LOW_DEFAULT: STOCK_LOW_DEFAULT,
     STOCK_MAX_LINES: STOCK_MAX_LINES,
     stockTracked: stockTracked,

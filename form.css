@@ -434,3 +434,7 @@ body.has-tabbar .toast { bottom: 140px; }
 .mv .d { text-align: right; white-space: nowrap; }
 .mv .plus { color: var(--theme-ok-text); }
 .mv .minus { color: var(--theme-err-text); }
+/* รอบ 18: ชื่อปุ่มยาวขึ้น ("ของออก (ไม่มีบิล)") → ตัดได้ 2 บรรทัด ปุ่มสูงเท่ากัน */
+.stock-acts .inner { align-items: stretch; }
+.stock-acts .btn { font-size: 14px; line-height: 1.25; white-space: normal; text-align: center; padding-left: 6px; padding-right: 6px; }
+.move-desc { margin: 0; padding: 6px 16px 8px; border-bottom: 1px solid var(--theme-line); }

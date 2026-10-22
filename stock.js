@@ -1,7 +1,7 @@
 /*
  * stock.js — หน้า "สต็อก" (รอบ 16) เปิดจาก Rich Menu (/stock) ไม่ผูกกับประเภทเอกสาร (shell.js ALONE) ทุกคนในแท็บผู้ใช้ใช้ได้
  *   รายการสินค้า + คงเหลือ (ค้นหาได้) — ติดลบ / ใกล้หมด อยู่บนสุด / สินค้าที่ยังไม่นับอยู่ท้าย (ยังไม่ตัดอัตโนมัติ)
- *   ปุ่มล่าง: รับเข้า / หักออก / นับสต็อก (ทีละหลายสินค้า) → stockMove / แตะสินค้า → stock?barcode= ความเคลื่อนไหวย้อนหลัง (stockHistory)
+ *   ปุ่มล่าง: ของเข้า / ของออก (ไม่มีบิล) / แก้ยอดตามที่นับ (ทีละหลายสินค้า — รอบ 18 เปลี่ยนชื่อจาก รับเข้า / หักออก / นับสต็อก) → stockMove / แตะสินค้า → stock?barcode= ความเคลื่อนไหวย้อนหลัง (stockHistory)
  *   ข้อมูล: stockData (StockApi.gs) จำไว้ในเครื่อง ('stock') → เปิดครั้งถัดไปเห็นทันที แล้วอัปเดตเบื้องหลัง
  *   กติกา (ตรวจซ้ำที่เซิร์ฟเวอร์): stockCore.js stockPlanManual — หน้าเว็บใช้ตัวเดียวกันแสดงยอดใหม่ระหว่างพิมพ์
  */
@@ -14,9 +14,9 @@
   var fetched = false;  // ดึงจากเซิร์ฟเวอร์แล้วในการเปิดครั้งนี้
   var term = '';
   var KIND = {
-    in: { title: 'รับเข้า', note: 'หมายเหตุ (ไม่บังคับ)', hint: 'เช่น รับจากโรงงาน รอบเช้า', qty: 'จำนวนที่รับเข้า' },
-    out: { title: 'หักออก', note: 'หมายเหตุ (ต้องใส่)', hint: 'เช่น ขายหน้าร้าน แจกตัวอย่าง', qty: 'จำนวนที่หักออก' },
-    count: { title: 'นับสต็อก', note: 'เหตุผล (ใส่เมื่อยอดไม่ตรง)', hint: 'เช่น แตกเสียหาย นับใหม่', qty: 'ยอดที่นับได้' }
+    in: { title: 'ของเข้า', desc: 'มีของมาส่งเพิ่ม', note: 'หมายเหตุ (ไม่บังคับ)', hint: 'เช่น รับจากโรงงาน รอบเช้า', qty: 'จำนวนที่รับเข้า' },
+    out: { title: 'ของออก (ไม่มีบิล)', desc: 'ขายนอกบิล ของเสีย แจก', note: 'หมายเหตุ (ต้องใส่)', hint: 'เช่น ขายหน้าร้าน แจกตัวอย่าง', qty: 'จำนวนที่หักออก' },
+    count: { title: 'แก้ยอดตามที่นับ', desc: 'ใส่จำนวนที่นับได้จริง (ครั้งแรก = ยอดเริ่มต้น)', note: 'เหตุผล (ใส่เมื่อยอดไม่ตรง)', hint: 'เช่น แตกเสียหาย นับใหม่', qty: 'ยอดที่นับได้' }
   };
   var LEVEL = { neg: '<span class="badge red">ติดลบ</span>', low: '<span class="badge amber">ใกล้หมด</span>' };
   function $(id) { return scr.$(id); }
@@ -104,27 +104,29 @@
       (watch.length ? '<section class="card" id="stock-watch"><h2>ต้องดู <span class="count">' + watch.length + ' รายการ</span></h2><ul class="list">' + watch.map(row).join('') + '</ul></section>' : '') +
       '<section class="card" id="stock-all"><h2>สินค้า <span class="count">' + (ok.length + off.length) + ' รายการ</span></h2>' +
       (ok.length ? '<ul class="list">' + ok.map(row).join('') + '</ul>' : '') +
-      (off.length ? '<div class="st-grp">ยังไม่นับสต็อก (ไม่ตัดอัตโนมัติ) กด "นับสต็อก" เพื่อเริ่ม</div><ul class="list" id="stock-off">' + off.map(row).join('') + '</ul>' : '') +
+      (off.length ? '<div class="st-grp">ยังไม่นับสต็อก (ไม่ตัดอัตโนมัติ) กด "แก้ยอดตามที่นับ" เพื่อเริ่ม</div><ul class="list" id="stock-off">' + off.map(row).join('') + '</ul>' : '') +
       (!list.length ? '<div class="empty">ไม่พบสินค้าที่ค้นหา</div>' : '') + '</section>';
   }
 
-  // ---------- รับเข้า / หักออก / นับสต็อก
+  // ---------- ของเข้า / ของออก / แก้ยอดตามที่นับ
 
   function openMove(kind) {
     var K = KIND[kind];
     var choices = products().filter(function (p) { return kind === 'count' ? p.tracked || p.active : p.tracked; });
-    var body = (kind === 'count' ? '<p class="small muted" style="margin:0 0 6px">สินค้าที่ยังไม่เริ่มนับ: ยอดที่ใส่คือยอดเริ่มต้น</p>' : '') +
+    var body =
       '<input type="search" id="move-q" placeholder="ค้นหาสินค้า" autocomplete="off">' +
       '<ul class="list move-list" id="move-list">' + (choices.length ? choices.map(function (p) {
         return '<li class="move-line" data-bc="' + esc(p.barcode) + '"><div class="t"><div class="n">' + esc(p.name) + '</div>' +
           '<div class="s" data-now>' + (p.tracked ? 'คงเหลือ ' + esc(qtyText(p.qty)) + ' ' + esc(p.unit) : 'ยังไม่เริ่มนับ') + '</div></div>' +
           '<input type="number" inputmode="decimal" min="0" step="any" data-qty aria-label="' + esc(K.qty + ' ' + p.name) + '"></li>';
-      }).join('') : '<li class="empty">ยังไม่มีสินค้าที่นับสต็อก กด "นับสต็อก" ใส่ยอดเริ่มต้นก่อน</li>') + '</ul>' +
+      }).join('') : '<li class="empty">ยังไม่มีสินค้าที่นับสต็อก กด "แก้ยอดตามที่นับ" ใส่ยอดเริ่มต้นก่อน</li>') + '</ul>' +
       '<label class="f" for="move-reason" style="margin-top:10px">' + esc(K.note) + '</label>' +
       '<input type="text" id="move-reason" maxlength="200" placeholder="' + esc(K.hint) + '">' +
       '<div id="move-error"></div>';
     var s = LiffApp.sheet(K.title, body, '<button type="button" class="btn primary block" id="move-save" disabled>บันทึก' + esc(K.title) + '</button>');
     s.el.querySelector('.sheet').classList.add('move-sheet');
+    // คำอธิบาย 1 บรรทัดใต้หัวแผ่น (อยู่นอกส่วนที่เลื่อน → เห็นตลอดระหว่างพิมพ์)
+    s.el.querySelector('.sheet header').insertAdjacentHTML('afterend', '<p class="small muted move-desc" id="move-desc">' + esc(K.desc) + '</p>');
     var el = function (sel) { return s.el.querySelector(sel); };
     var requestId = LiffApp.uuid();
     function lines() {
@@ -236,9 +238,9 @@
       scr = s;
       s.root.innerHTML = '<div class="topbar"><h1 id="title">สต็อก</h1><div class="sub" id="sub"></div></div><div id="view" aria-live="polite"></div>';
       s.dock.innerHTML = '<div class="totalbar stock-acts hidden" id="stock-acts"><div class="inner">' +
-        '<button type="button" class="btn primary" id="btn-in">รับเข้า</button>' +
-        '<button type="button" class="btn" id="btn-out">หักออก</button>' +
-        '<button type="button" class="btn" id="btn-count">นับสต็อก</button></div></div>';
+        '<button type="button" class="btn primary" id="btn-in">' + KIND.in.title + '</button>' +
+        '<button type="button" class="btn" id="btn-out">ของออก <br>(ไม่มีบิล)</button>' + // ตัดบรรทัดตรงวงเล็บ (textContent = ชื่อเต็ม)
+        '<button type="button" class="btn" id="btn-count">' + KIND.count.title + '</button></div></div>';
       view = $('view');
       acts = $('stock-acts');
       view.addEventListener('click', tap);
