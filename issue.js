@@ -11,8 +11,9 @@
  *   ทุกการหา element อยู่ในหน้าจอนี้ ($) เพราะหน้าจอที่ไม่ได้แสดงถูกถอดออกจากเอกสาร
  * รอบ 10: สองโหมด (LiffApp.MODE)
  *   ใบกำกับภาษี: ช่อง "เลขที่บิล" บนสุดทุกใบ (ว่างทุกครั้ง พิมพ์เอง 1–9999 / 0000 = บิลทดสอบจนกว่าจะมีบิลจริง) เตือนเลขซ้ำก่อนส่ง ไม่มีช่องติ๊กยืนยัน
- *   ใบเงินสด: สั้นที่สุด — ร้าน → สินค้า → ตรวจสอบ / วันที่ (วันนี้) และอ้างถึงอยู่ใต้ "เพิ่มเติม" / ไม่มีภาษี ประเภท ชนิดการขาย วันครบกำหนด
+ *   ใบเงินสด: ร้าน → สินค้า → ตรวจสอบ / ไม่มีภาษี ประเภท (รอบ 19: มีชนิดการขาย เงินสด/เครดิต/สินเชื่อ + วันครบกำหนดเหมือนใบกำกับ)
  *     เลขที่ระบบรันให้ (แสดงเลขโดยประมาณ) / ยังไม่มีใบจริง → ติ๊ก "บิลทดสอบ (0000)" ได้
+ *   รอบ 19 ทั้งสองประเภท: วันครบกำหนดเริ่มว่าง ผู้ใช้เลือกเอง (เครดิต/สินเชื่อต้องใส่ ไม่ก่อนวันที่บิล) / เงินสดซ่อนช่อง
  */
 (function () {
   var esc = LiffApp.esc;
@@ -32,7 +33,6 @@
     doc: null,        // หัวเอกสารในฟอร์ม
     shop: null,       // ร้านที่เลือก
     lines: [],        // รายการสินค้า
-    dueTouched: false,
     requestId: null,  // 1 ค่าต่อ 1 รอบการยืนยัน (ใช้ซ้ำถ้ากดลองใหม่หลังเน็ตหลุด)
     lastKey: 0,
     docNoInput: '',   // ใบกำกับ: เลขที่ที่พิมพ์
@@ -40,8 +40,9 @@
   };
 
   function cfg() { return S.init.config; }
-  function labels() { return cfg().sale_type_labels; }
-  function isCashSaleType() { return !CASH && S.doc.sale_type === cfg().cash_sale_label; }
+  /** ชนิดการขายที่เลือกได้ — ใบเงินสด (รอบ 19) เซิร์ฟเวอร์รุ่นเก่า / ชีตยังไม่อัปเดตส่งมาแค่ ['เงินสด'] หรือไม่ส่ง → ไม่มีตัวเลือก */
+  function labels() { var l = cfg().sale_type_labels; return Array.isArray(l) && l.length ? l : [CASH_DOC_SALE_TYPE]; }
+  function isCashSaleType() { return S.doc.sale_type === (cfg().cash_sale_label || CASH_DOC_SALE_TYPE); }
   function money(n) { return formatMoney(n); }
   /** บาร์โค้ดที่แสดง (สินค้าที่ไม่มีบาร์โค้ด → "ไม่มีบาร์โค้ด") */
   function barcodeText(code) { return printedBarcode(code) || 'ไม่มีบาร์โค้ด'; }
@@ -57,12 +58,12 @@
     Shell.drawn(scr);
     if (init.error) { S.screen = 'error'; return LiffApp.showApiError(init.error, scr); }
     S.init = init;
+    // รอบ 19: วันครบกำหนดเริ่มว่างเสมอ (ผู้ใช้เลือกเอง ระบบไม่คำนวณ) / ชนิดการขายตัวแรก (ใบกำกับ = เครดิต, ใบเงินสด = เงินสด)
     S.doc = CASH
-      ? { doc_date: init.today, ref: '' }
-      : { doc_type: init.config.doc_types[0], doc_date: init.today, ref: '', sale_type: init.config.sale_type_labels[0], due_date: '' };
+      ? { doc_date: init.today, ref: '', sale_type: labels()[0], due_date: '' }
+      : { doc_type: init.config.doc_types[0], doc_date: init.today, ref: '', sale_type: labels()[0], due_date: '' };
     S.shop = null;
     S.lines = [];
-    S.dueTouched = false;
     S.docNoInput = '';
     S.cashTest = false;
     showForm();
@@ -103,7 +104,7 @@
     S.init = r;
     if (sameDay && S.doc) S.doc.doc_date = r.today;
     if (!CASH && S.doc && r.config.doc_types.indexOf(S.doc.doc_type) < 0) S.doc.doc_type = r.config.doc_types[0];
-    if (!CASH && S.doc && r.config.sale_type_labels.indexOf(S.doc.sale_type) < 0) S.doc.sale_type = r.config.sale_type_labels[0];
+    if (S.doc && labels().indexOf(S.doc.sale_type) < 0) S.doc.sale_type = labels()[0];
     if (r.hasRealDoc) S.cashTest = false;
     if (untouched || (realChanged && S.screen === 'form')) { showForm(); return; } // วาดใหม่จาก S (สิ่งที่กรอกไว้ไม่หาย)
     if (S.screen === 'form') { setSubtitle(); updateDocDateHint(); }
@@ -153,11 +154,6 @@
       view.querySelectorAll('input[name=doc_type]').forEach(function (i) {
         i.addEventListener('change', function () { S.doc.doc_type = i.value; });
       });
-      view.querySelectorAll('input[name=sale_type]').forEach(function (i) {
-        i.addEventListener('change', function () { S.doc.sale_type = i.value; S.dueTouched = false; updateDue(); });
-      });
-      $('due-date').addEventListener('change', function (e) { S.doc.due_date = e.target.value; S.dueTouched = true; updateDue(); });
-      listenDateBox('due-date');
       var noInput = $('first-doc-no');
       noInput.addEventListener('input', function () {
         var digits = noInput.value.replace(/[^0-9]/g, ''); // ตัวเลขเท่านั้น
@@ -168,7 +164,14 @@
       var t = $('cash-test');
       if (t) t.addEventListener('change', function () { S.cashTest = t.checked; setSubtitle(); });
     }
-    $('doc-date').addEventListener('change', function (e) { S.doc.doc_date = e.target.value; S.dueTouched = false; updateDocDateHint(); updateDue(); if (CASH) setSubtitle(); });
+    view.querySelectorAll('input[name=sale_type]').forEach(function (i) {
+      i.addEventListener('change', function () { S.doc.sale_type = i.value; updateDue(); });
+    });
+    if ($('due-date')) {
+      $('due-date').addEventListener('change', function (e) { S.doc.due_date = e.target.value; updateDue(); });
+      listenDateBox('due-date');
+    }
+    $('doc-date').addEventListener('change', function (e) { S.doc.doc_date = e.target.value; updateDocDateHint(); updateDue(); if (CASH) setSubtitle(); });
     $('doc-ref').addEventListener('input', function (e) { S.doc.ref = e.target.value; updateDocDateHint(); });
     listenDateBox('doc-date');
     $('btn-add').addEventListener('click', openProductPicker);
@@ -209,18 +212,27 @@
       '    <div><label class="f" for="doc-date">วันที่</label>' + dateBox('doc-date', S.doc.doc_date) + '</div>' +
       '    <div><label class="f" for="doc-ref">อ้างถึง</label><input type="text" id="doc-ref" placeholder="เช่น เลข PO" maxlength="100" value="' + esc(S.doc.ref) + '"></div>' +
       '  </div>' +
-      '  <div class="field"><label class="f">ชนิดการขาย</label><div class="seg-choice" id="sale-type">' +
-      labels().map(function (t) {
-        return '<label><input type="radio" name="sale_type" value="' + esc(t) + '"' + (t === S.doc.sale_type ? ' checked' : '') + '>' + esc(t) + '</label>';
-      }).join('') + '</div></div>' +
-      '  <div class="field"><label class="f" for="due-date">วันครบกำหนดชำระ</label>' + dateBox('due-date', '') + '</div>' +
+      saleTypeFields() +
       '</section>' +
       shopCard() + linesCard();
   }
 
   /**
-   * ใบเงินสด: ลำดับเดียวกับใบกำกับ (รอบ 13) — (บิลทดสอบ แทนช่องเลขที่) → ข้อมูลบิล (วันที่ / อ้างถึง) → ร้าน → สินค้า
-   * ช่องที่ใบเงินสดไม่มี (เลขที่ ประเภทเอกสาร ชนิดการขาย ครบกำหนด) ไม่แสดง
+   * รอบ 19: ชนิดการขาย + วันครบกำหนดชำระ (ใบกำกับและใบเงินสดตำแหน่งเดียวกัน ใต้วันที่/อ้างถึง)
+   * วันครบกำหนดเริ่มว่าง ผู้ใช้เลือกเอง / เงินสด → ซ่อนช่อง (updateDue) / ตัวเลือกเดียว (เซิร์ฟเวอร์ใบเงินสดรุ่นเก่า) → ไม่แสดงทั้งสองช่อง
+   */
+  function saleTypeFields() {
+    if (labels().length < 2) return '';
+    return '  <div class="field"><label class="f">ชนิดการขาย</label><div class="seg-choice" id="sale-type">' +
+      labels().map(function (t) {
+        return '<label><input type="radio" name="sale_type" value="' + esc(t) + '"' + (t === S.doc.sale_type ? ' checked' : '') + '>' + esc(t) + '</label>';
+      }).join('') + '</div></div>' +
+      '  <div class="field" id="due-field"><label class="f" for="due-date">วันครบกำหนดชำระ</label>' + dateBox('due-date', S.doc.due_date) + '</div>';
+  }
+
+  /**
+   * ใบเงินสด: ลำดับเดียวกับใบกำกับ (รอบ 13) — (บิลทดสอบ แทนช่องเลขที่) → ข้อมูลบิล (วันที่ / อ้างถึง / ชนิดการขาย / ครบกำหนด) → ร้าน → สินค้า
+   * ช่องที่ใบเงินสดไม่มี (เลขที่ ประเภทเอกสาร) ไม่แสดง
    */
   function cashFormHtml() {
     return cashTestField() +
@@ -230,6 +242,7 @@
       '    <div><label class="f" for="doc-date">วันที่</label>' + dateBox('doc-date', S.doc.doc_date) + '</div>' +
       '    <div><label class="f" for="doc-ref">อ้างถึง</label><input type="text" id="doc-ref" placeholder="เช่น เลข PO" maxlength="100" value="' + esc(S.doc.ref) + '"></div>' +
       '  </div>' +
+      saleTypeFields() +
       '</section>' +
       shopCard() + linesCard();
   }
@@ -259,25 +272,14 @@
     el.textContent = isIsoDate(d) ? formatThaiDateShort(d) : 'เลือกวันที่';
   }
 
+  /** รอบ 19: เงินสด → ซ่อนช่องวันครบกำหนด / เครดิต-สินเชื่อ → แสดง (ว่างจนผู้ใช้เลือก — ไม่คำนวณจากเครดิตของร้าน) */
   function updateDue() {
-    if (CASH) return;
     var input = $('due-date');
     if (!input) return;
     var th = $('due-date-th');
-    var box = $('due-date-box');
-    if (isCashSaleType()) {
-      S.doc.due_date = '';
-      input.value = '';
-      input.disabled = true;
-      box.classList.add('off');
-      th.textContent = 'ไม่มี (เงินสด)';
-      return;
-    }
-    input.disabled = false;
-    box.classList.remove('off');
-    var days = creditDaysOf(S.shop, { default_credit_days: cfg().default_credit_days });
-    if (!S.dueTouched) S.doc.due_date = S.doc.doc_date ? addDaysIso(S.doc.doc_date, days) : '';
+    $('due-field').classList.toggle('hidden', isCashSaleType());
     input.value = S.doc.due_date;
+    input.min = isIsoDate(S.doc.doc_date) ? S.doc.doc_date : ''; // ปฏิทินเริ่มที่วันที่บิล (ตรวจจริงตอนกดตรวจสอบ)
     th.textContent = isIsoDate(S.doc.due_date) ? formatThaiDateShort(S.doc.due_date) : 'เลือกวันที่';
   }
 
@@ -328,7 +330,6 @@
       var li = e.target.closest('li[data-id]');
       if (!li) return;
       S.shop = S.init.shops.find(function (x) { return String(x.shop_id) === li.dataset.id; });
-      S.dueTouched = false;
       s.close();
       renderShop();
       updateDue();
@@ -522,10 +523,10 @@
       date_confirmed: S.dateConfirmed || '', // ติ๊ก "ยืนยันว่าตั้งใจลงวันที่นี้" แล้ว = วันที่นั้น (เซิร์ฟเวอร์ตรวจว่าตรงกับ doc_date)
       items: itemsPayload()
     };
-    if (CASH) return base;
-    base.doc_type = S.doc.doc_type;
     base.sale_type = S.doc.sale_type;
     base.due_date = isCashSaleType() ? '' : S.doc.due_date;
+    if (CASH) return base;
+    base.doc_type = S.doc.doc_type;
     return base;
   }
 
@@ -585,7 +586,10 @@
     var head = CASH
       ? '<section class="card"><h2>' + esc(cfg().doc_title || LiffApp.MODE_LABEL) + '</h2><dl class="kv">' +
         '<dt>วันที่</dt><dd>' + esc(formatThaiDate(payload.doc_date) || '-') + '</dd>' +
-        '<dt>อ้างถึง</dt><dd>' + esc(payload.ref || '-') + '</dd></dl></section>'
+        '<dt>อ้างถึง</dt><dd>' + esc(payload.ref || '-') + '</dd>' +
+        '<dt>ชนิดการขาย</dt><dd>' + esc(payload.sale_type) + '</dd>' +
+        (isCashSaleType() ? '' : '<dt>ครบกำหนดชำระ</dt><dd>' + esc(r.due_date ? formatThaiDate(r.due_date) : '-') + '</dd>') +
+        '</dl></section>'
       : '<section class="card"><h2>' + esc(payload.doc_type) + '</h2><dl class="kv">' +
         '<dt>วันที่</dt><dd>' + esc(formatThaiDate(payload.doc_date) || '-') + '</dd>' +
         '<dt>อ้างถึง</dt><dd>' + esc(payload.ref || '-') + '</dd>' +

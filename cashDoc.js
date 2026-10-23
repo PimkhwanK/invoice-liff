@@ -4,7 +4,8 @@
  *   เลขที่ = MMYY-ลำดับ เช่น 1069-15 (เดือน 2 หลัก + ปี พ.ศ. 2 หลัก + ลำดับในเดือน ไม่เติม 0)
  *     ระบบรันเอง ตามเดือนของ "วันที่บิล" เริ่ม 1 ใหม่ทุกเดือน (ลำดับ = สูงสุดของเดือนนั้น + 1 นับรวมใบที่ยกเลิก)
  *     บิลทดสอบ = "0000" (ใบเดียว ออกซ้ำเขียนทับ / ออกใบเงินสดจริงใบแรกแล้วถูกลบ — เหมือนบิลทดสอบของใบกำกับ)
- *   ไม่มีภาษีเลย: ยอด = รวมสุทธิ (รวมเงิน − ส่วนลด) ไม่มี VAT / เลขผู้เสียภาษี / สาขา / วันครบกำหนด / ชนิดการขายให้เลือก (เงินสดเสมอ)
+ *   ไม่มีภาษีเลย: ยอด = รวมสุทธิ (รวมเงิน − ส่วนลด) ไม่มี VAT / เลขผู้เสียภาษี / สาขา
+ *   รอบ 19: ชนิดการขาย เงินสด (ค่าเริ่มต้น) / เครดิต / สินเชื่อ + วันครบกำหนดชำระ (ผู้ใช้เลือกเอง เครดิต/สินเชื่อต้องใส่ — invoice.js liveChecks)
  *   ตรวจข้อมูลและสร้างแถวด้วย validateDocumentInput / buildDocument ของ invoice.js (กฎชุดเดียวกับใบกำกับ) ผ่านตั้งค่าแบบใบเงินสด
  *
  * ใช้ได้ทั้ง Node (test), เบราว์เซอร์ (liff-site/cashDoc.js) และ Apps Script (gas/cashDoc.gs) — สำเนาตรงตัวทุกไฟล์
@@ -20,6 +21,14 @@ if (typeof require === 'function' && typeof module !== 'undefined') {
 var CASH_DOC_TEST_NO = '0000';
 var CASH_DOC_TITLE = 'ใบส่งสินค้าชั่วคราว/ใบเสร็จรับเงิน';
 var CASH_DOC_SALE_TYPE = 'เงินสด';
+/** รอบ 19: ชนิดการขายของใบเงินสด (ตัวแรก = ค่าเริ่มต้นในฟอร์ม) */
+var CASH_DOC_SALE_TYPES = ['เงินสด', 'เครดิต', 'สินเชื่อ'];
+
+/** ชนิดการขายของแถวใบเงินสด (บิลเก่าก่อนรอบ 19 ช่องว่าง = เงินสด) */
+function cashDocSaleType(doc) {
+  var s = String(doc && doc.sale_type != null ? doc.sale_type : '').trim();
+  return s || CASH_DOC_SALE_TYPE;
+}
 
 /** เลขที่เป็นบิลทดสอบ "0000" ไหม (เลข 0 ที่ชีตแปลงเป็นตัวเลขก็นับ) */
 function cashDocIsTest(v) {
@@ -110,7 +119,7 @@ function cashDocCompareDesc(a, b) {
 
 /**
  * ตั้งค่าแบบใบเงินสดสำหรับ validateDocumentInput / buildDocument ของ invoice.js
- * ประเภทเอกสารมีแบบเดียว (doc_title ในแท็บตั้งค่า), ชนิดการขาย = เงินสด (ไม่มีวันครบกำหนด), VAT 0
+ * ประเภทเอกสารมีแบบเดียว (doc_title ในแท็บตั้งค่า), ชนิดการขาย เงินสด / เครดิต / สินเชื่อ (เงินสดไม่มีวันครบกำหนด), VAT 0
  */
 function cashDocConfig(config) {
   config = config || {};
@@ -119,13 +128,13 @@ function cashDocConfig(config) {
   var title = typeof config.doc_title === 'string' && config.doc_title.trim() ? config.doc_title.trim() : CASH_DOC_TITLE;
   out.doc_title = title;
   out.doc_types = [title];
-  out.sale_type_labels = [CASH_DOC_SALE_TYPE];
+  out.sale_type_labels = CASH_DOC_SALE_TYPES.slice();
   out.cash_sale_label = CASH_DOC_SALE_TYPE;
   out.vat_rate = 0;
   return out;
 }
 
-/** ข้อมูลจากฟอร์มใบเงินสด → รูปแบบที่ invoice.js รับ (ประเภทเอกสาร/ชนิดการขายใส่ให้ ไม่มีวันครบกำหนด) */
+/** ข้อมูลจากฟอร์มใบเงินสด → รูปแบบที่ invoice.js รับ (ประเภทเอกสารใส่ให้ / ไม่ส่งชนิดการขาย = เงินสด) */
 function cashDocInput(input, config) {
   input = input || {};
   var c = cashDocConfig(config);
@@ -133,8 +142,8 @@ function cashDocInput(input, config) {
     doc_type: c.doc_title,
     doc_date: input.doc_date,
     ref: input.ref,
-    sale_type: CASH_DOC_SALE_TYPE,
-    due_date: '',
+    sale_type: input.sale_type === undefined || input.sale_type === null || input.sale_type === '' ? CASH_DOC_SALE_TYPE : input.sale_type,
+    due_date: input.due_date || '',
     shop_id: input.shop_id,
     date_confirmed: input.date_confirmed,
     items: input.items
@@ -162,7 +171,8 @@ function cashDocTotals(items) {
 
 /** คอลัมน์ของแถวใบเงินสด (ตรงกับ SCHEMA.cash_documents) */
 var CASH_DOC_KEYS = ['doc_no', 'shop_id', 'doc_date', 'ref', 'shop_legal_name', 'shop_address1', 'shop_address2', 'shop_tel', 'shop_short_name',
-  'sum_amount', 'discount', 'total', 'pdf_path', 'status', 'cancelled_reason', 'cancelled_at', 'request_id', 'created_at', 'issued_by', 'cancelled_by'];
+  'sum_amount', 'discount', 'total', 'pdf_path', 'status', 'cancelled_reason', 'cancelled_at', 'request_id', 'created_at', 'issued_by', 'cancelled_by',
+  'sale_type', 'due_date'];
 
 /**
  * สร้างแถวใบเงินสด + รายการ (เรียกหลังตรวจผ่านแล้ว) — snapshot ร้านและชื่อ/หน่วยสินค้า ณ วันออก
@@ -185,6 +195,8 @@ if (typeof module !== 'undefined' && module.exports) {
     CASH_DOC_TEST_NO: CASH_DOC_TEST_NO,
     CASH_DOC_TITLE: CASH_DOC_TITLE,
     CASH_DOC_SALE_TYPE: CASH_DOC_SALE_TYPE,
+    CASH_DOC_SALE_TYPES: CASH_DOC_SALE_TYPES,
+    cashDocSaleType: cashDocSaleType,
     CASH_DOC_KEYS: CASH_DOC_KEYS,
     cashDocIsTest: cashDocIsTest,
     cashDocParse: cashDocParse,

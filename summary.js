@@ -296,7 +296,7 @@
   }
 
   function kindBadge(kind) {
-    return kind === 'c' ? '<span class="badge sum-kind cash">เงินสด</span>' : '<span class="badge sum-kind tax">ใบกำกับ</span>';
+    return kind === 'c' ? '<span class="badge sum-kind cash">ใบเงินสด</span>' : '<span class="badge sum-kind tax">ใบกำกับ</span>';
   }
 
   /** แตะร้าน → ประวัติของร้านนั้น (เปิดแอปในโหมดของร้าน: ร้านของสองไฟล์เป็นคนละรายชื่อ) */

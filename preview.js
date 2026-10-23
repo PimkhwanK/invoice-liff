@@ -44,7 +44,6 @@ function previewLocal(input, init) {
   (input.items || []).forEach(function (it, i) {
     if (String((it && it.note) || '').length > PREVIEW_NOTE_MAX) errors.push('บรรทัดที่ ' + (i + 1) + ': หมายเหตุยาวเกิน ' + PREVIEW_NOTE_MAX + ' ตัวอักษร');
   });
-  var shop = findBy(ctx.shops, 'shop_id', input.shop_id);
   var totals = calcTotals(input.items || [], config.vat_rate);
   return {
     ok: true,
@@ -53,7 +52,7 @@ function previewLocal(input, init) {
     dateConfirm: v.dateConfirm || null, // วันที่ไม่ใช่วันนี้ → กล่องเตือน + ต้องติ๊กยืนยัน
     totals: totals,
     amount_text: bahtText(totals.total),
-    due_date: isCashSale(input.sale_type, config) ? '' : (input.due_date || computeDueDate(input.doc_date, shop, config, input.sale_type)),
+    due_date: isCashSale(input.sale_type, config) ? '' : (input.due_date || ''), // รอบ 19: ไม่คำนวณให้ (ตรงกับ previewDocument)
     nextDocNo: init.nextDocNo,
     needFirstDocNo: !!init.needFirstDocNo, // ฟอร์มถามเลขที่ (รอบ 10: ทุกใบ) — ตรงกับ previewDocument
     hasRealDoc: !!init.hasRealDoc          // รอบ 10: มีบิลจริงแล้ว (ออกบิลทดสอบ 0000 ไม่ได้)
@@ -62,7 +61,7 @@ function previewLocal(input, init) {
 
 /**
  * รอบ 10: ตรวจใบเงินสดบนมือถือ — ผลเหมือน previewDocument ของ Cash.gs (cashDoc.js ชุดเดียวกับเซิร์ฟเวอร์)
- * @param {object} input { doc_date, ref, shop_id, date_confirmed, items }
+ * @param {object} input { doc_date, ref, sale_type, due_date (รอบ 19), shop_id, date_confirmed, items }
  * @param {object} init ข้อมูลตั้งต้นของฟอร์มใบเงินสด (AppData.issueInit: shops, products, config, today, monthMax, hasRealDoc)
  */
 function previewCashLocal(input, init) {
@@ -83,6 +82,7 @@ function previewCashLocal(input, init) {
     dateConfirm: v.dateConfirm || null,
     totals: totals,
     amount_text: bahtText(totals.total),
+    due_date: isCashSale(cashDocInput(input, init.config).sale_type, cashDocConfig(init.config)) ? '' : (input.due_date || ''), // รอบ 19
     nextDocNo: cashDocNextFromMax(init.monthMax || {}, input.doc_date), // เลขที่โดยประมาณ (เซิร์ฟเวอร์ออกจริงใน lock)
     hasRealDoc: !!init.hasRealDoc
   };

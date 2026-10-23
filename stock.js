@@ -2,6 +2,7 @@
  * stock.js — หน้า "สต็อก" (รอบ 16) เปิดจาก Rich Menu (/stock) ไม่ผูกกับประเภทเอกสาร (shell.js ALONE) ทุกคนในแท็บผู้ใช้ใช้ได้
  *   รายการสินค้า + คงเหลือ (ค้นหาได้) — ติดลบ / ใกล้หมด อยู่บนสุด / สินค้าที่ยังไม่นับอยู่ท้าย (ยังไม่ตัดอัตโนมัติ)
  *   ปุ่มล่าง: ของเข้า / ของออก (ไม่มีบิล) / แก้ยอดตามที่นับ (ทีละหลายสินค้า — รอบ 18 เปลี่ยนชื่อจาก รับเข้า / หักออก / นับสต็อก) → stockMove / แตะสินค้า → stock?barcode= ความเคลื่อนไหวย้อนหลัง (stockHistory)
+ *   เรียง (รอบ 19): คงเหลือมาก→น้อย / น้อย→มาก / ชื่อ ก-ฮ ใช้กับรายการ "สินค้า" (ต้องดูอยู่บนสุดเสมอ) จำไว้ในเครื่อง (stock-sort)
  *   ข้อมูล: stockData (StockApi.gs) จำไว้ในเครื่อง ('stock') → เปิดครั้งถัดไปเห็นทันที แล้วอัปเดตเบื้องหลัง
  *   กติกา (ตรวจซ้ำที่เซิร์ฟเวอร์): stockCore.js stockPlanManual — หน้าเว็บใช้ตัวเดียวกันแสดงยอดใหม่ระหว่างพิมพ์
  */
@@ -19,6 +20,9 @@
     count: { title: 'แก้ยอดตามที่นับ', desc: 'ใส่จำนวนที่นับได้จริง (ครั้งแรก = ยอดเริ่มต้น)', note: 'เหตุผล (ใส่เมื่อยอดไม่ตรง)', hint: 'เช่น แตกเสียหาย นับใหม่', qty: 'ยอดที่นับได้' }
   };
   var LEVEL = { neg: '<span class="badge red">ติดลบ</span>', low: '<span class="badge amber">ใกล้หมด</span>' };
+  // การเรียงรายการ "สินค้า" (กลุ่ม "ต้องดู" อยู่บนสุดเสมอ ไม่เรียงตามนี้) จำไว้ในเครื่อง ('stock-sort')
+  var SORTS = { desc: 'คงเหลือ มากสุด → น้อยสุด', asc: 'คงเหลือ น้อยสุด → มากสุด', name: 'ชื่อ ก-ฮ' };
+  var sortBy = null;
   function $(id) { return scr.$(id); }
   function qtyText(n) { return formatQty(n); }
 
@@ -84,22 +88,45 @@
     if (!$('stock-q')) {
       view.innerHTML =
         '<div id="stock-pending-box"></div>' +
-        '<section class="card"><input type="search" id="stock-q" placeholder="ค้นหาชื่อสินค้า หรือบาร์โค้ด" autocomplete="off"></section>' +
+        '<section class="card"><input type="search" id="stock-q" placeholder="ค้นหาชื่อสินค้า หรือบาร์โค้ด" autocomplete="off">' +
+        '<div class="sum-pick"><select id="stock-sort" aria-label="เรียงตาม">' + Object.keys(SORTS).map(function (k) {
+          return '<option value="' + k + '">เรียง: ' + esc(SORTS[k]) + '</option>';
+        }).join('') + '</select></div></section>' +
         '<div id="stock-lists"></div>';
       $('stock-q').addEventListener('input', function (e) { term = e.target.value; drawLists(); });
       $('stock-q').value = term;
+      $('stock-sort').value = currentSort();
+      $('stock-sort').addEventListener('change', function (e) { sortBy = SORTS[e.target.value] ? e.target.value : 'desc'; LiffApp.keep('stock-sort', sortBy); drawLists(); });
     }
     $('stock-pending-box').innerHTML = data.pending
       ? '<section class="card alert warn" id="stock-pending">มีบิลที่ยังตัดสต็อกไม่ครบ ระบบกำลังตัดให้อัตโนมัติ ยอดอาจยังไม่ตรง</section>' : '';
     drawLists();
   }
 
+  function currentSort() {
+    if (!sortBy) {
+      var kept = LiffApp.remember('stock-sort');
+      sortBy = kept && SORTS[kept.data] ? kept.data : 'desc';
+    }
+    return sortBy;
+  }
+
+  function byName(a, b) { return String(a.name).localeCompare(String(b.name), 'th'); }
+
+  /** เรียงสินค้าที่นับแล้ว (ยอดเท่ากัน → ชื่อ) / สินค้าที่ยังไม่นับไม่มียอด → เรียงชื่อเมื่อเลือกเรียงชื่อเท่านั้น */
+  function sorted(list, counted) {
+    var s = currentSort();
+    if (s === 'name') return list.slice().sort(byName);
+    if (!counted) return list;
+    return list.slice().sort(function (a, b) { return (s === 'asc' ? a.qty - b.qty : b.qty - a.qty) || byName(a, b); });
+  }
+
   function drawLists() {
     var t = term.trim().toLowerCase();
     var list = products().filter(function (p) { return !t || (p.name + ' ' + p.barcode).toLowerCase().indexOf(t) >= 0; });
     var watch = list.filter(function (p) { return p.level === 'neg' || p.level === 'low'; });
-    var ok = list.filter(function (p) { return p.level === 'ok'; });
-    var off = list.filter(function (p) { return p.level === 'off'; });
+    var ok = sorted(list.filter(function (p) { return p.level === 'ok'; }), true);
+    var off = sorted(list.filter(function (p) { return p.level === 'off'; }), false);
     $('stock-lists').innerHTML =
       (watch.length ? '<section class="card" id="stock-watch"><h2>ต้องดู <span class="count">' + watch.length + ' รายการ</span></h2><ul class="list">' + watch.map(row).join('') + '</ul></section>' : '') +
       '<section class="card" id="stock-all"><h2>สินค้า <span class="count">' + (ok.length + off.length) + ' รายการ</span></h2>' +

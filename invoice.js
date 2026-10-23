@@ -283,7 +283,7 @@ function textLimitErrors(input, ctx, shop) {
  * ตรวจข้อมูลก่อนออกเอกสาร
  * @param {object} input { doc_type, doc_date, ref, sale_type, due_date, shop_id, items:[{barcode, qty, price, discount, is_free, note}] }
  * @param {object} ctx { shops, products, documents, config, today, checkTextLimits?, liveChecks?, requireDateConfirm? }
- *   liveChecks (Apps Script + LIFF จริง เท่านั้น ระบบจำลองไม่เปิด): กฎวันที่ (docDateCheck), เตือนราคา 0 ที่ไม่ใช่ของแถม, ยอดเกินช่องในใบกำกับ
+ *   liveChecks (Apps Script + LIFF จริง เท่านั้น ระบบจำลองไม่เปิด): กฎวันที่ (docDateCheck), เตือนราคา 0 ที่ไม่ใช่ของแถม, ยอดเกินช่องในใบกำกับ, เครดิต/สินเชื่อต้องมีวันครบกำหนด (รอบ 19)
  * @returns {{errors:string[], warnings:string[], dateConfirm?:object|null}} dateConfirm มีเมื่อเปิด liveChecks
  */
 function validateDocumentInput(input, ctx) {
@@ -300,6 +300,9 @@ function validateDocumentInput(input, ctx) {
   }
   if (saleTypeLabels(config).indexOf(input.sale_type) < 0) {
     errors.push('กรุณาเลือกชนิดการขาย (' + saleTypeLabels(config).join('/') + ')');
+  } else if (ctx.liveChecks && !isCashSale(input.sale_type, config) && !input.due_date) {
+    // รอบ 19: เครดิต/สินเชื่อ ผู้ใช้ต้องเลือกวันครบกำหนดเอง (ระบบไม่คำนวณให้) — ระบบจำลองไม่เปิด liveChecks จึงยังคำนวณจากเครดิตของร้าน
+    errors.push('กรุณาเลือกวันครบกำหนดชำระ');
   } else if (!isCashSale(input.sale_type, config) && input.due_date) {
     if (!isIsoDate(input.due_date)) errors.push('วันครบกำหนดชำระไม่ถูกต้อง');
     else if (isIsoDate(input.doc_date) && input.due_date < input.doc_date) {
