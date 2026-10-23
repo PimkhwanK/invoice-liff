@@ -515,12 +515,33 @@ var LiffApp = (function () {
     back.querySelector('h2').textContent = title;
     back.querySelector('.body').innerHTML = bodyHtml;
     if (footerHtml) back.querySelector('footer').innerHTML = footerHtml;
+    var opener = document.activeElement; // รอบ 20: ปิดแล้วคืนโฟกัสให้ปุ่มที่เปิด (คีย์บอร์ด)
     function close() {
       back.remove();
       document.removeEventListener('keydown', onKey);
       openSheets = openSheets.filter(function (c) { return c !== close; });
+      if (opener && opener.isConnected && opener.focus && (!document.activeElement || document.activeElement === document.body)) opener.focus();
     }
-    function onKey(e) { if (e.key === 'Escape') close(); }
+    // รอบ 20: Esc ปิด / Tab วนอยู่ในแผ่น / Enter ในช่องค้นหา = เลือกรายการแรก
+    function onKey(e) {
+      if (openSheets[openSheets.length - 1] !== close) return; // แผ่นบนสุดเท่านั้น
+      if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+      if (e.key === 'Tab') {
+        var all = Array.prototype.filter.call(back.querySelectorAll('button, input, select, textarea, [tabindex="0"]'), function (x) {
+          return !x.disabled && x.offsetParent !== null;
+        });
+        if (!all.length) return;
+        var first = all[0], last = all[all.length - 1];
+        if (!back.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+        else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        return;
+      }
+      if (e.key === 'Enter' && e.target.matches && e.target.matches('input[type=search]') && back.contains(e.target)) {
+        var li = back.querySelector('li.tap');
+        if (li) { e.preventDefault(); li.click(); }
+      }
+    }
     // ปิดด้วยการคลิก (พื้นหลัง / ปุ่ม data-close) ส่ง event "click" ต่อให้ผู้เรียกฟังได้ก่อนปิด
     back.addEventListener('click', function (e) { if (e.target === back || e.target.closest('[data-close]')) close(); });
     document.addEventListener('keydown', onKey);
@@ -529,6 +550,16 @@ var LiffApp = (function () {
     return { el: back, close: close };
   }
   var openSheets = [];
+
+  // รอบ 20: รายการที่แตะได้ (li.tap role=button tabindex=0) กด Enter / Space = แตะ
+  // (รายการแบบลิงก์ role=link ของหน้าสรุป/สต็อก มีตัวจัดการ Enter ของตัวเอง)
+  document.addEventListener('keydown', function (e) {
+    var t = e.target;
+    if ((e.key === 'Enter' || e.key === ' ') && t && t.matches && t.matches('li.tap[role=button]')) {
+      e.preventDefault();
+      t.click();
+    }
+  });
 
   /** ปิดแผ่นเลื่อนขึ้นทั้งหมด (เปลี่ยนหน้าจอในแอป / กดย้อนกลับ) */
   function closeSheets() {

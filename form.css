@@ -438,3 +438,68 @@ body.has-tabbar .toast { bottom: 140px; }
 .stock-acts .inner { align-items: stretch; }
 .stock-acts .btn { font-size: 14px; line-height: 1.25; white-space: normal; text-align: center; padding-left: 6px; padding-right: 6px; }
 .move-desc { margin: 0; padding: 6px 16px 8px; border-bottom: 1px solid var(--theme-line); }
+
+/* ---------- รอบ 20: คีย์บอร์ด (Tab / Enter / Esc) ---------- */
+/* ปุ่มเลือกแบบแบ่งช่อง: ซ่อน radio แบบที่ยังกด Tab / ลูกศรได้ (display: none ทำให้คีย์บอร์ดเข้าไม่ถึง) */
+.seg-choice label { position: relative; }
+.seg-choice input { display: block; position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+.seg-choice label:has(input:focus-visible) { outline: 2px solid var(--theme-primary-dark); outline-offset: -4px; }
+.list > li.tap:focus-visible, .sum-rank[data-href]:focus-visible, .sum-lost[data-href]:focus-visible { outline: 2px solid var(--theme-primary); outline-offset: -2px; border-radius: 6px; }
+.btn:focus-visible, .tabbar button:focus-visible, .tabs button:focus-visible, .x:focus-visible { outline: 2px solid var(--theme-primary); outline-offset: 2px; }
+
+/* ---------- รอบ 20: จอกว้าง (iPad / คอมพิวเตอร์) — มือถือ (ต่ำกว่า 768) ไม่เปลี่ยน ---------- */
+@media (hover: hover) {
+  .list > li.tap:hover, .sum-rank[data-href]:hover, .sum-lost[data-href]:hover, .tabs button:not(.on):hover { background: var(--theme-pressed); }
+}
+@media (min-width: 768px) {
+  /* กรอบเลื่อนเต็มจอ (ลูกกลิ้งเมาส์ตรงไหนก็เลื่อนได้) เนื้อหาอยู่กลางจอ กว้างไม่เกิน --w / ส่วนหัวยาวเต็มจอ ตัวหนังสือตรงแนวการ์ด */
+  .wrap { max-width: none; }
+  .screen { --w: 720px; }
+  .screen > #view { padding-left: max(0px, calc((100% - var(--w)) / 2)); padding-right: max(0px, calc((100% - var(--w)) / 2)); }
+  .screen > .topbar { padding: 18px max(16px, calc((100% - var(--w)) / 2 + 12px)) 14px; }
+  .screen > .topbar h1 { font-size: 22px; }
+  .screen > .tabs { justify-content: center; }
+  .screen > .tabs button { flex: 0 1 180px; }
+  .totalbar .inner { max-width: 696px; }
+  .screen[data-screen=view] { --w: 960px; }
+
+  /* แผ่นเลื่อนขึ้น → กล่องกลางจอ */
+  .sheet-back { align-items: center; padding: 24px; }
+  .sheet { max-width: 560px; max-height: min(82vh, 760px); border-radius: 16px; box-shadow: var(--theme-shadow-pop); }
+  .sheet footer { padding-bottom: 12px; }
+
+  /* สรุป: การ์ดเรียง 2 คอลัมน์ (ตัวเลือกช่วงเวลาเต็มแถวด้านบน) */
+  .screen[data-screen=summary] { --w: 1100px; }
+  #sum-body { columns: 2; column-gap: 0; }
+  #sum-body > .card { break-inside: avoid; margin: 0 12px 12px; }
+  #sum-body > .alert { column-span: all; }
+
+  /* สต็อก: ต้องดู | สินค้า */
+  .screen[data-screen=stock] { --w: 1100px; }
+  #stock-lists:has(#stock-watch) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+}
+@media (min-width: 1024px) {
+  /* ฟอร์มออกบิล 2 คอลัมน์: ซ้าย = เลขที่ / ข้อมูลบิล / ร้าน — ขวา = รายการสินค้า (หน้าตรวจสอบ / สำเร็จ ยังคอลัมน์เดียว) */
+  .screen[data-screen=issue]:has(#lines) { --w: 1160px; }
+  #view:has(#lines) { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-rows: repeat(6, auto) 1fr; align-items: start; }
+  #view:has(#lines) > * { grid-column: 1; }
+  #view:has(#lines) > section:has(#lines) { grid-column: 2; grid-row: 1 / -1; }
+  .totalbar .inner { max-width: 1136px; justify-content: flex-end; }
+  .totalbar .sums { flex: none; text-align: right; }
+  .totalbar .btn { min-width: 160px; }
+  .totalbar.stock-acts .inner { max-width: 720px; justify-content: normal; }
+
+  /* แถบเมนู → บนสุดของจอ (แบบเว็บทั่วไป) และไม่ซ่อนตอนพิมพ์ */
+  .debug-bar { order: -2; }
+  .tabbar { order: -1; gap: 4px; padding: 0 16px; border-top: 4px solid var(--theme-primary); border-bottom: 1px solid var(--theme-line); }
+  body.typing .tabbar:not(.hidden) { display: flex; }
+  .tabbar button { flex: 0 1 auto; flex-direction: row; gap: 8px; min-height: 48px; padding: 0 18px; font-size: 15px; border-bottom: 3px solid transparent; }
+  .tabbar button svg.icon { width: 20px; height: 20px; }
+  .tabbar button.on { border-bottom-color: var(--theme-primary); }
+  body.has-tabbar .topbar { border-top: 0; }
+  body.has-tabbar:not(.typing) .totalbar { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+  body.has-tabbar .toast { bottom: 96px; }
+}
+@media (min-width: 1024px) and (hover: hover) {
+  .tabbar button:not(.on):hover { background: var(--theme-pressed); }
+}

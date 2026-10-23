@@ -85,7 +85,7 @@
     var list = searchShops(shops, t);
     $('shops').innerHTML = list.length ? list.map(function (s) {
       var st = AppData.shopStat(s.shop_id);
-      return '<li class="tap shop-row" data-id="' + esc(s.shop_id) + '"><div class="t"><div class="n">' + esc(s.short_name) +
+      return '<li role="button" tabindex="0" class="tap shop-row" data-id="' + esc(s.shop_id) + '"><div class="t"><div class="n">' + esc(s.short_name) +
         (s.active ? '' : ' <span class="badge gray">ปิด</span>') + '</div><div class="s">' + esc(s.legal_name) + '</div></div>' +
         '<div class="c"><b class="num">' + st.count + '</b> ใบ' +
         (st.count && st.lastDate ? '<br>ล่าสุด ' + formatThaiDate(st.lastDate) : '') + '</div></li>';

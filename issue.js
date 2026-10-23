@@ -321,7 +321,7 @@
         var sub = CASH
           ? '<div class="s">' + esc(x.address || '-') + (x.tel ? ' · ' + esc(x.tel) : '') + '</div>'
           : '<div class="s">สาขา ' + esc(x.branch || '-') + ' · ' + esc(x.tax_id || 'ไม่มีเลขภาษี') + '</div>';
-        return '<li class="tap" data-id="' + esc(x.shop_id) + '"><div class="t"><div class="n">' + esc(x.short_name) + '</div>' +
+        return '<li role="button" tabindex="0" class="tap" data-id="' + esc(x.shop_id) + '"><div class="t"><div class="n">' + esc(x.short_name) + '</div>' +
           (x.legal_name && x.legal_name !== x.short_name ? '<div class="s">' + esc(x.legal_name) + '</div>' : '') + sub + '</div></li>';
       }).join('') : '<li class="empty">ไม่พบร้านที่ค้นหา</li>';
     }
@@ -330,9 +330,11 @@
       var li = e.target.closest('li[data-id]');
       if (!li) return;
       S.shop = S.init.shops.find(function (x) { return String(x.shop_id) === li.dataset.id; });
+      var kb = e.detail === 0; // รอบ 20: เลือกด้วยคีย์บอร์ด (Enter) → โฟกัสปุ่ม "เปลี่ยน" ต่อ
       s.close();
       renderShop();
       updateDue();
+      if (kb && $('btn-shop')) $('btn-shop').focus();
     });
     draw();
     q.focus();
@@ -428,7 +430,7 @@
         return !term || (p.name + ' ' + printedBarcode(p.barcode)).toLowerCase().indexOf(term) >= 0;
       });
       ul.innerHTML = list.length ? list.map(function (p) {
-        return '<li class="tap" data-bc="' + esc(p.barcode) + '"><div class="t"><div class="n">' + esc(p.name) + '</div>' +
+        return '<li role="button" tabindex="0" class="tap" data-bc="' + esc(p.barcode) + '"><div class="t"><div class="n">' + esc(p.name) + '</div>' +
           '<div class="s">' + esc(barcodeText(p.barcode)) + '</div></div><div class="num right"><b>' + money(p.price) + '</b><div class="small muted">/' + esc(p.unit) + '</div></div></li>';
       }).join('') : '<li class="empty">ไม่พบสินค้า</li>';
     }
@@ -460,7 +462,7 @@
     if (!r.documents.length) { body.innerHTML = '<div class="empty" id="copy-empty">ร้านนี้ยังไม่มีบิลเก่า</div>'; return; }
     body.innerHTML = '<p class="small muted" style="margin-top:0">เลือกบิลที่จะคัดลอกรายการสินค้า</p><ul class="list pick-list" id="copy-list">' +
       r.documents.map(function (d) {
-        return '<li class="tap" data-no="' + esc(d.doc_no) + '"><div class="t"><div class="n">#' + esc(LiffApp.docNoText(d.doc_no)) + ' · ' + formatThaiDate(d.doc_date) + '</div>' +
+        return '<li role="button" tabindex="0" class="tap" data-no="' + esc(d.doc_no) + '"><div class="t"><div class="n">#' + esc(LiffApp.docNoText(d.doc_no)) + ' · ' + formatThaiDate(d.doc_date) + '</div>' +
           '<div class="s">' + esc(CASH ? LiffApp.MODE_LABEL : d.doc_type) + '</div></div><div class="right"><b class="num">' + money(d.total) + '</b><br>' +
           (d.status === 'cancelled' ? '<span class="badge red">ยกเลิก</span>' : '') + '</div></li>';
       }).join('') + '</ul>';

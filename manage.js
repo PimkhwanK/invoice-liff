@@ -89,7 +89,7 @@
         var detail = CASH
           ? '<div class="s">' + esc(s.address || '-') + (s.tel ? ' · ' + esc(s.tel) : '') + '</div>'
           : '<div class="s">สาขา ' + esc(s.branch || '-') + ' · ' + esc(s.tax_id || 'ไม่มีเลขภาษี') + ' · เครดิต ' + (s.credit_days === '' ? 'ค่าเริ่มต้น' : esc(s.credit_days) + ' วัน') + '</div>';
-        return '<li class="tap item" data-id="' + esc(s.shop_id) + '"><div class="t"><div class="n">' + esc(s.short_name) +
+        return '<li role="button" tabindex="0" class="tap item" data-id="' + esc(s.shop_id) + '"><div class="t"><div class="n">' + esc(s.short_name) +
           ' <span class="small muted">#' + esc(s.shop_id) + '</span></div>' + (s.legal_name ? '<div class="s">' + esc(s.legal_name) + '</div>' : '') + detail + '</div>' +
           (s.active ? '' : '<span class="badge gray">ปิด</span>') +
           (!CASH && s.tax_id && !taxIdCheckDigitOk(s.tax_id) ? '<span class="badge amber">เช็กเลขภาษี</span>' : '') + '</li>';
@@ -165,7 +165,7 @@
       $('list').innerHTML = rows.filter(function (p) {
         return !term || (p.name + ' ' + printedBarcode(p.barcode)).toLowerCase().indexOf(term) >= 0;
       }).map(function (p) {
-        return '<li class="tap item" data-bc="' + esc(p.barcode) + '"><div class="t"><div class="n">' + esc(p.name) + '</div>' +
+        return '<li role="button" tabindex="0" class="tap item" data-bc="' + esc(p.barcode) + '"><div class="t"><div class="n">' + esc(p.name) + '</div>' +
           '<div class="s">' + esc(printedBarcode(p.barcode) || 'ไม่มีบาร์โค้ด') + ' · ' + esc(p.unit) + '</div></div><div class="right"><b class="num">' + formatMoney(p.price) + '</b><br>' +
           (p.active ? '' : '<span class="badge gray">เลิกขาย</span>') + '</div></li>';
       }).join('') || '<li class="empty">ไม่พบสินค้า</li>';
