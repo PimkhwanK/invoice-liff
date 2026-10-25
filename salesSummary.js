@@ -19,9 +19,10 @@ if (typeof require === 'function' && typeof module !== 'undefined') {
   var isIsoDate = _salesDate.isIsoDate, addDaysIso = _salesDate.addDaysIso, isoDayDiff = _salesDate.isoDayDiff;
   var THAI_MONTHS_SHORT = _salesDate.THAI_MONTHS_SHORT;
   var cashDocParse = require('./cashDoc').cashDocParse;
+  var taxItemOwners = require('./invoice').taxItemOwners;
 }
 
-var SALES_VERSION = 2;        // รูปแบบข้อมูลสรุป (เปลี่ยนเมื่อรูปแบบเปลี่ยน → cache / ข้อมูลที่มือถือจำไว้รุ่นเก่าไม่ถูกใช้) — รอบ 21: + recent
+var SALES_VERSION = 3;        // รูปแบบข้อมูลสรุป (เปลี่ยนเมื่อรูปแบบเปลี่ยน → cache / ข้อมูลที่มือถือจำไว้รุ่นเก่าไม่ถูกใช้) — รอบ 21: + recent / รอบ 24: recent มีประเภทเอกสาร (ช่องที่ 8)
 var SALES_RECENT = 10;        // รอบ 21: บิลที่ออกล่าสุด (ทั้งสองประเภท รวมใบที่ยกเลิก ไม่รวม 0000)
 var SALES_TOP = 10;           // อันดับร้าน / สินค้า
 var SALES_LOST_DAYS = 30;     // ร้านที่หายไป: ไม่ได้ซื้อเกินกี่วัน
@@ -69,7 +70,7 @@ function salesQty(n) {
  *   shops [[เดือน, ร้าน, สตางค์, ใบ]] / shopsToday [[ร้าน, สตางค์, ใบ]]
  *   products [[เดือน, บาร์โค้ด, จำนวน, สตางค์]] / productsToday [[บาร์โค้ด, จำนวน, สตางค์]]
  *   names {ร้าน: ชื่อย่อล่าสุด} / pnames {บาร์โค้ด: [ชื่อ, หน่วย]} / lost [[ร้าน, วันที่ซื้อล่าสุด, ใบ, สตางค์]]
- *   recent [[ประเภท 't'|'c', เลขที่, วันที่บิล, เวลาที่ออก (created_at), ชื่อร้าน, สตางค์, ยกเลิก 0|1]] — รอบ 21: 10 ใบล่าสุดตามเวลาที่ออก (ไม่ขึ้นกับปีที่ขอ)
+ *   recent [[ประเภท 't'|'c', เลขที่, วันที่บิล, เวลาที่ออก (created_at), ชื่อร้าน, สตางค์, ยกเลิก 0|1, ประเภทเอกสาร (ใบกำกับ — รอบ 24)]] — รอบ 21: 10 ใบล่าสุดตามเวลาที่ออก (ไม่ขึ้นกับปีที่ขอ)
  */
 function salesBuild(input) {
   var year = Number(input.year);
@@ -98,14 +99,15 @@ function salesBuild(input) {
     var kind = pair[0];
     var book = pair[1];
     if (!book) return;
-    var inYear = {}; // เลขที่ → วันที่ (บิลของปีที่ขอ)
-    (book.docs || []).forEach(function (d) {
+    var inYear = {}; // บิล → วันที่ (บิลของปีที่ขอ) — ใบเงินสด: เลขที่ / ใบกำกับ (รอบ 24): ลำดับแถว (เลขที่ซ้ำได้ถ้าคนละประเภท)
+    var owners = kind === 't' ? taxItemOwners(book.docs, book.items) : null;
+    (book.docs || []).forEach(function (d, di) {
       var no = salesDocKey(kind, d.doc_no);
       if (!no) return;
       var date = salesIso(d.doc_date);
       if (!date) return;
       var cancelled = salesText(d.status) === 'cancelled';
-      recent.push([kind, kind === 'c' ? no : Number(no), date, salesText(d.created_at), salesText(d.shop_short_name) || salesText(d.shop_legal_name), toSatang(d.total), cancelled ? 1 : 0]);
+      recent.push([kind, kind === 'c' ? no : Number(no), date, salesText(d.created_at), salesText(d.shop_short_name) || salesText(d.shop_legal_name), toSatang(d.total), cancelled ? 1 : 0, kind === 't' ? salesText(d.doc_type) : '']);
       if (cancelled) return;
       var y = Number(date.slice(0, 4));
       years[y] = true;
@@ -124,13 +126,13 @@ function salesBuild(input) {
         day[2] += sat; day[3]++; day[4] += toSatang(d.vat); day[5] += toSatang(d.net_before_vat);
       }
       if (y !== year) return;
-      inYear[no] = date;
+      inYear[owners ? 'd' + di : no] = date;
       var m = Number(date.slice(5, 7));
       bump(shopMonth, m + '|' + shop, [m, shop, 0, 0], [sat, 1]);
       if (date === today) bump(shopToday, shop, [shop, 0, 0], [sat, 1]);
     });
-    (book.items || []).forEach(function (it) {
-      var date = inYear[salesDocKey(kind, it.doc_no)];
+    (book.items || []).forEach(function (it, ii) {
+      var date = inYear[owners ? 'd' + owners[ii] : salesDocKey(kind, it.doc_no)];
       if (!date || salesTrue(it.is_free)) return;
       var bc = salesText(it.barcode);
       if (!bc) return;

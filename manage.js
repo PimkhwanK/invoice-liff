@@ -109,6 +109,7 @@
 
   function shopForm(shop) {
     var s = shop || { short_name: '', legal_name: '', address: '', tel: '', fax: '', branch: 'สำนักงานใหญ่', tax_id: '', credit_days: '', active: true };
+    var requestId = LiffApp.uuid(); // รอบ 24: 1 ค่าต่อการเปิดฟอร์ม — กดซ้ำ/ส่งใหม่ได้คำตอบเดิม ไม่เพิ่มร้านซ้ำ
     var f = function (key, label, type, extra) {
       return '<div class="field"><label class="f" for="f-' + key + '">' + label + '</label><input type="' + (type || 'text') + '" id="f-' + key + '" value="' + esc(s[key]) + '"' + (extra || '') + '></div>';
     };
@@ -139,7 +140,7 @@
       if (shop) payload.shop_id = shop.shop_id;
       btn.disabled = true;
       btn.textContent = 'กำลังบันทึก…';
-      var r = await LiffApp.api('upsertShop', { shop: payload });
+      var r = await LiffApp.api('upsertShop', { shop: payload, requestId: requestId });
       btn.disabled = false;
       btn.textContent = 'บันทึก';
       if (!r.ok) {
@@ -181,6 +182,7 @@
 
   function productForm(p) {
     var v = p || { barcode: '', name: '', unit: 'ลัง', price: '', active: true };
+    var requestId = LiffApp.uuid(); // รอบ 24: กันเพิ่มสินค้าซ้ำ (สินค้าไม่มีบาร์โค้ดได้รหัส NB- ใหม่ทุกครั้ง)
     var shown = p ? printedBarcode(v.barcode) : '';
     var sh = LiffApp.sheet(p ? 'แก้ไขสินค้า' : 'เพิ่มสินค้าใหม่',
       '<div class="field"><label class="f" for="p-barcode">บาร์โค้ดลัง' + (p ? '' : ' (ไม่บังคับ)') + '</label><input type="text" id="p-barcode" inputmode="numeric" value="' + esc(shown) + '"' +
@@ -203,7 +205,7 @@
       };
       btn.disabled = true;
       btn.textContent = 'กำลังบันทึก…';
-      var r = await LiffApp.api('upsertProduct', { mode: p ? 'update' : 'create', product: product });
+      var r = await LiffApp.api('upsertProduct', { mode: p ? 'update' : 'create', product: product, requestId: requestId });
       btn.disabled = false;
       btn.textContent = 'บันทึก';
       if (!r.ok) {
@@ -227,22 +229,22 @@
     function draw() {
       var term = q.value.replace(/[^0-9-]/g, ''); // ใบเงินสดมีขีด เช่น 1069-15
       $('list').innerHTML = r.documents.filter(function (d) { return !term || String(d.doc_no).indexOf(term) >= 0; }).map(function (d) {
-        return '<li class="item" data-no="' + esc(d.doc_no) + '"><div class="t"><div class="n">#' + esc(LiffApp.docNoText(d.doc_no)) + ' · ' + esc(d.shop_short_name) + '</div>' +
+        return '<li class="item" data-no="' + esc(d.doc_no) + '" data-dt="' + esc(d.doc_type || '') + '"><div class="t"><div class="n">' + esc(LiffApp.docLabel(d.doc_no, d.doc_type)) + ' · ' + esc(d.shop_short_name) + '</div>' +
           '<div class="s">' + formatThaiDate(d.doc_date) + ' · ' + formatMoney(d.total) + ' บาท</div></div>' +
-          (d.hasPdf ? '<a class="btn sm" href="view?no=' + encodeURIComponent(d.doc_no) + '">' + iconSvg('file') + '<span>PDF</span></a>' : '<span class="badge amber">ไม่มี PDF</span>') +
-          '<button type="button" class="btn sm danger" data-cancel="' + esc(d.doc_no) + '">ยกเลิก</button></li>';
+          (d.hasPdf ? '<a class="btn sm" href="' + esc(LiffApp.viewHref(d.doc_no, d.doc_type)) + '">' + iconSvg('file') + '<span>PDF</span></a>' : '<span class="badge amber">ไม่มี PDF</span>') +
+          '<button type="button" class="btn sm danger" data-cancel="' + esc(d.doc_no) + '" data-dt="' + esc(d.doc_type || '') + '">ยกเลิก</button></li>';
       }).join('') || '<li class="empty">ไม่มีบิลที่ยกเลิกได้</li>';
     }
     q.addEventListener('input', draw);
     $('list').addEventListener('click', function (e) {
       var b = e.target.closest('[data-cancel]');
-      if (b) cancelForm(r.documents.find(function (d) { return String(d.doc_no) === b.dataset.cancel; }));
+      if (b) cancelForm(r.documents.find(function (d) { return LiffApp.sameDoc(d, b.dataset.cancel, b.dataset.dt); })); // รอบ 24: เลขที่ + ประเภท
     });
     draw();
   }
 
   function cancelForm(d) {
-    var sh = LiffApp.sheet('ยกเลิกบิล #' + LiffApp.docNoText(d.doc_no),
+    var sh = LiffApp.sheet('ยกเลิกบิล ' + LiffApp.docLabel(d.doc_no, d.doc_type),
       '<p style="margin-top:0">' + esc(d.shop_legal_name || d.shop_short_name) + '<br><span class="muted">' + formatThaiDate(d.doc_date) + ' · ' + formatMoney(d.total) + ' บาท</span></p>' +
       '<label class="f" for="reason">เหตุผลที่ยกเลิก (ต้องระบุ)</label><textarea id="reason" rows="3" maxlength="200" placeholder="เช่น ออกผิดร้าน, ลูกค้าคืนสินค้า"></textarea><div id="c-msg" style="margin-top:8px"></div>',
       '<button type="button" class="btn grow" data-close>ไม่ยกเลิก</button><button type="button" class="btn danger grow" id="c-ok">ยืนยันยกเลิก</button>');
@@ -255,7 +257,7 @@
       if (!reason.value.trim()) { msg.innerHTML = '<div class="alert err" id="c-error">กรุณาระบุเหตุผลที่ยกเลิก</div>'; return; }
       ok.disabled = true;
       ok.textContent = 'กำลังบันทึกการยกเลิก…';
-      var r = await LiffApp.api('cancelDocument', { docNo: LiffApp.docParam(d.doc_no), reason: reason.value });
+      var r = await LiffApp.api('cancelDocument', { docNo: LiffApp.docParam(d.doc_no), docType: LiffApp.isCash() ? '' : d.doc_type || '', reason: reason.value });
       if (!r.ok) {
         ok.disabled = false;
         ok.textContent = 'ยืนยันยกเลิก';
@@ -265,7 +267,7 @@
       }
       reason.disabled = true;
       stockNote = r.stockMessage || r.stockReturnNote || ''; // รอบ 21: "คืนสต็อกแล้ว N รายการ" / ออกก่อนเริ่มนับ / ยังตัดไม่ครบ
-      AppData.patchDoc(LiffApp.docParam(d.doc_no), r.document); // สถานะยกเลิก + เหตุผล + ยกเลิกโดย (ทุกหน้าจอในแอปเห็นทันที)
+      AppData.patchDoc(LiffApp.docParam(d.doc_no), r.document, d.doc_type); // สถานะยกเลิก + เหตุผล + ยกเลิกโดย (ทุกหน้าจอในแอปเห็นทันที)
       ok.dataset.retry = '1'; // ยกเลิกแล้ว: ปุ่มนี้ต่อจากนี้ = ทำ PDF ใหม่ (ห้ามส่งยกเลิกซ้ำ)
       makePdf();
     });
@@ -274,19 +276,19 @@
       ok.disabled = true;
       ok.textContent = 'กำลังทำ PDF…';
       msg.innerHTML = '<div class="alert ok" id="c-wait">ยกเลิกแล้ว กำลังใส่ลายน้ำใน PDF…' + (stockNote ? '<div id="c-stock">' + LiffApp.esc(stockNote) + '</div>' : '') + '</div>';
-      var r = await LiffApp.api('regeneratePdf', { docNo: LiffApp.docParam(d.doc_no), replace: true });
+      var r = await LiffApp.api('regeneratePdf', { docNo: LiffApp.docParam(d.doc_no), docType: LiffApp.isCash() ? '' : d.doc_type || '', replace: true });
       ok.disabled = false;
       if (!r.ok) {
         if (fatal(r)) { sh.close(); return; }
         // ยกเลิกแล้ว แต่ทำ PDF ลายน้ำไม่สำเร็จ → ปุ่มเดิมกลายเป็น "ลองอีกครั้ง" (สาเหตุอยู่ใน console)
         if (r.error) { try { console.error('[ใส่ลายน้ำ] ' + r.error); } catch (e) { /* ไม่เป็นไร */ } }
         ok.textContent = 'ลองอีกครั้ง';
-        msg.innerHTML = '<div class="alert err" id="c-error">' + errText('ยกเลิกบิล #' + LiffApp.docNoText(d.doc_no) + ' แล้ว แต่ใส่ลายน้ำใน PDF ไม่สำเร็จ กด "ลองอีกครั้ง"') + '</div>';
+        msg.innerHTML = '<div class="alert err" id="c-error">' + errText('ยกเลิกบิล ' + LiffApp.docLabel(d.doc_no, d.doc_type) + ' แล้ว แต่ใส่ลายน้ำใน PDF ไม่สำเร็จ กด "ลองอีกครั้ง"') + '</div>';
         return;
       }
       sh.close();
-      LiffApp.toast('ยกเลิกบิล #' + LiffApp.docNoText(d.doc_no) + ' แล้ว' + (stockNote ? String.fromCharCode(10) + stockNote : ''));
-      AppData.patchDoc(LiffApp.docParam(d.doc_no), { pdfUrl: r.pdfUrl, hasPdf: !!r.pdfUrl }); // PDF เปลี่ยน (ลายน้ำ) → หน้าจอดู PDF ของใบนี้โหลดใหม่
+      LiffApp.toast('ยกเลิกบิล ' + LiffApp.docLabel(d.doc_no, d.doc_type) + ' แล้ว' + (stockNote ? String.fromCharCode(10) + stockNote : ''));
+      AppData.patchDoc(LiffApp.docParam(d.doc_no), { pdfUrl: r.pdfUrl, hasPdf: !!r.pdfUrl }, d.doc_type); // PDF เปลี่ยน (ลายน้ำ) → หน้าจอดู PDF ของใบนี้โหลดใหม่
     }
     // เมื่อปิดแผ่น ให้รายการอัปเดตเสมอ (เผื่อยกเลิกไปแล้วแต่ PDF ล้มเหลว)
     sh.el.addEventListener('click', function (e) {

@@ -46,6 +46,35 @@ var LiffApp = (function () {
   /** เลขที่สองค่าเป็นใบเดียวกันไหม (ทั้งสองโหมด) */
   function sameNo(a, b) { return String(a) === String(b); }
 
+  // ---------- รอบ 24: ใบกำกับ — เลขที่ซ้ำได้ถ้าคนละประเภท (ใบกำกับภาษี 25 + ใบเสร็จรับเงิน 25) / ใบเงินสดไม่มีประเภท
+  function typeText(v) { return v === undefined || v === null ? '' : String(v).trim(); }
+  /** แถวเอกสาร x คือบิล (no, type) ไหม — type '' = ไม่ระบุ / 0000 ไม่สนประเภท / ใบเงินสดเทียบเลขที่อย่างเดียว */
+  function sameDoc(x, no, type) {
+    if (!x || !sameNo(x.doc_no, no)) return false;
+    if (MODE === 'cash' || Number(no) === 0 || !typeText(type)) return true;
+    return !typeText(x.doc_type) || typeText(x.doc_type) === typeText(type);
+  }
+  /** ประเภท → ค่าในลิงก์ (?dt=) : ใบเสร็จรับเงิน = rc / ประเภทแรก (ใบกำกับภาษี) = '' ไม่ใส่ (ลิงก์เดิม) / อื่น ๆ = ชื่อเต็ม */
+  function dtCode(type) {
+    var t = typeText(type);
+    if (MODE === 'cash' || !t || t === DEFAULT_DOC_TYPES[0]) return '';
+    return t === TAX_RECEIPT_TYPE ? 'rc' : t;
+  }
+  /** ค่าใน ?dt= → ประเภท ('' = ไม่ระบุ — เซิร์ฟเวอร์เลือกใบที่ไม่ใช่ใบเสร็จ) */
+  function dtType(code) {
+    var c = typeText(code);
+    return c === 'rc' ? TAX_RECEIPT_TYPE : c;
+  }
+  /** ลิงก์หน้าดู PDF ของบิล (no, type) */
+  function viewHref(no, type) {
+    var dt = Number(no) === 0 ? '' : dtCode(type);
+    return 'view?no=' + encodeURIComponent(String(no)) + (dt ? '&dt=' + encodeURIComponent(dt) : '');
+  }
+  /** ข้อความบิล: "#25" / "#25 ใบเสร็จรับเงิน" (ใบเสร็จบอกประเภทเสมอ เลขอาจซ้ำกับใบกำกับ) */
+  function docLabel(no, type) {
+    return '#' + docNoText(no) + (MODE !== 'cash' && Number(no) !== 0 && typeText(type) === TAX_RECEIPT_TYPE ? ' ' + TAX_RECEIPT_TYPE : '');
+  }
+
   function setScope(fn) { scope = fn; }
 
   /** หา element ตาม id ในหน้าจอ scr (ส่วนหัว/เนื้อหา แล้วแถบล่างของหน้าจอนั้น) — ไม่มี shell = ทั้งเอกสาร */
@@ -666,6 +695,7 @@ var LiffApp = (function () {
     isDenied: isDenied, isAuthFail: isAuthFail, showDenied: showDenied, accessRequestText: accessRequestText,
     inClient: inClient, relogin: relogin, toast: toast, uuid: uuid, docNoText: docNoText, sheet: sheet, closeSheets: closeSheets, esc: esc, el: el, loading: loading,
     MODE: MODE, MODE_LABEL: MODE_LABEL, isCash: isCash, docParam: docParam, sameNo: sameNo,
+    sameDoc: sameDoc, dtCode: dtCode, dtType: dtType, viewHref: viewHref, docLabel: docLabel, // รอบ 24
     syncing: syncing, setScope: setScope, find: find, hooks: hooks,
     openExternal: openExternal, remember: remember, keep: keep, forget: forget, drop: drop,
     MSG: MSG, SETUP: SETUP, splitSetup: splitSetup, errorHtml: errorHtml,

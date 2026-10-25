@@ -82,9 +82,20 @@
     return n <= DOC_NO_MAX ? n : -1;
   }
   var DOC_NO_ERROR = 'กรุณาใส่เลขที่บิล (ตัวเลข 1–9999)';
-  /** เลขที่ซ้ำกับเอกสารที่แอปรู้จัก (รวมใบที่ยกเลิก — เซิร์ฟเวอร์ตรวจจริงอีกครั้งใน lock) */
+  /**
+   * เลขที่ซ้ำกับเอกสารที่แอปรู้จัก (รวมใบที่ยกเลิก — เซิร์ฟเวอร์ตรวจจริงอีกครั้งใน lock)
+   * รอบ 24: ซ้ำเฉพาะประเภทเดียวกัน (ใบกำกับภาษี 25 กับใบเสร็จรับเงิน 25 อยู่ด้วยกันได้)
+   */
   function docNoTaken(n) {
-    return S.init.docNos.indexOf(n) >= 0 || AppData.recentDocs().some(function (d) { return Number(d.doc_no) === n; });
+    var type = S.doc ? S.doc.doc_type : '';
+    return takenNos(type).indexOf(n) >= 0 || AppData.recentDocs().some(function (d) { return Number(d.doc_no) === n && (!d.doc_type || d.doc_type === type); });
+  }
+
+  /** เลขที่ที่ใช้แล้วของประเภทนี้ (เซิร์ฟเวอร์รุ่นเก่า ไม่มีแยกประเภท → ทุกเลข) */
+  function takenNos(type) {
+    var by = S.init.docNosByType;
+    if (!by) return S.init.docNos;
+    return (by[type] || []).concat(by[''] || []); // ประเภทว่าง (แถวที่เพิ่มในชีตเอง) ชนทุกประเภท
   }
 
   /** ข้อมูลในแอปเปลี่ยน (ดึงใหม่เสร็จ / ออกบิล / แก้ร้านหรือสินค้าในหน้าจัดการข้อมูล) — ฟอร์มที่กรอกไว้ไม่หาย */
@@ -110,9 +121,9 @@
     if (S.screen === 'form') { setSubtitle(); updateDocDateHint(); }
   }
 
-  /** ใบกำกับ: เลขที่บิลจริงสูงสุดที่ใช้แล้ว (0 = ยังไม่มี) — ช่วยผู้ใช้พิมพ์เลขถัดไป */
+  /** ใบกำกับ: เลขที่บิลจริงสูงสุดที่ใช้แล้วของประเภทที่เลือก (0 = ยังไม่มี) — ช่วยผู้ใช้พิมพ์เลขถัดไป (รอบ 24: แยกตามประเภท) */
   function lastTaxNo() {
-    return S.init.docNos.reduce(function (m, n) { return n > m ? n : m; }, 0);
+    return takenNos(S.doc ? S.doc.doc_type : '').reduce(function (m, n) { return n > m ? n : m; }, 0);
   }
 
   /** ใบเงินสด: เลขที่ใบจริงล่าสุด (เรียงตามเลขที่ — ไม่นับ 0000) หรือ '' */
@@ -136,6 +147,12 @@
       '</section>';
   }
 
+  /** รอบ 24: เปลี่ยนประเภทเอกสาร → ตัวอย่างในช่องเลขที่ = เลขล่าสุดของประเภทนั้น + 1 */
+  function updateDocNoHint() {
+    var input = $('first-doc-no');
+    if (input) input.placeholder = 'เช่น ' + (lastTaxNo() ? lastTaxNo() + 1 : 1701);
+  }
+
   /** ใบเงินสด: ตัวเลือกบิลทดสอบ 0000 (เฉพาะตอนยังไม่มีใบเงินสดจริง) */
   function cashTestField() {
     if (S.init.hasRealDoc) return '';
@@ -152,7 +169,7 @@
     view.innerHTML = CASH ? cashFormHtml() : taxFormHtml();
     if (!CASH) {
       view.querySelectorAll('input[name=doc_type]').forEach(function (i) {
-        i.addEventListener('change', function () { S.doc.doc_type = i.value; });
+        i.addEventListener('change', function () { S.doc.doc_type = i.value; setSubtitle(); updateDocNoHint(); }); // รอบ 24: เลขล่าสุดของประเภทนี้
       });
       var noInput = $('first-doc-no');
       noInput.addEventListener('input', function () {
@@ -470,7 +487,7 @@
     if (!r.documents.length) { body.innerHTML = '<div class="empty" id="copy-empty">ร้านนี้ยังไม่มีบิลเก่า</div>'; return; }
     body.innerHTML = '<p class="small muted" style="margin-top:0">เลือกบิลที่จะคัดลอกรายการสินค้า</p><ul class="list pick-list" id="copy-list">' +
       r.documents.map(function (d) {
-        return '<li role="button" tabindex="0" class="tap" data-no="' + esc(d.doc_no) + '"><div class="t"><div class="n">#' + esc(LiffApp.docNoText(d.doc_no)) + ' · ' + formatThaiDate(d.doc_date) + '</div>' +
+        return '<li role="button" tabindex="0" class="tap" data-no="' + esc(d.doc_no) + '" data-dt="' + esc(CASH ? '' : d.doc_type || '') + '"><div class="t"><div class="n">#' + esc(LiffApp.docNoText(d.doc_no)) + ' · ' + formatThaiDate(d.doc_date) + '</div>' +
           '<div class="s">' + esc(CASH ? LiffApp.MODE_LABEL : d.doc_type) + '</div></div><div class="right"><b class="num">' + money(d.total) + '</b><br>' +
           (d.status === 'cancelled' ? '<span class="badge red">ยกเลิก</span>' : '') + '</div></li>';
       }).join('') + '</ul>';
@@ -479,7 +496,7 @@
       if (!li) return;
       var shown = LiffApp.docNoText(li.dataset.no);
       if (S.lines.length && !confirm('แทนที่รายการสินค้า ' + S.lines.length + ' บรรทัดที่มีอยู่ด้วยรายการจากบิล #' + shown + '?')) return;
-      var g = await AppData.docItems(LiffApp.docParam(li.dataset.no)); // จำรายการของใบนี้ไว้ (เอกสารที่ออกแล้วไม่เปลี่ยน)
+      var g = await AppData.docItems(LiffApp.docParam(li.dataset.no), li.dataset.dt || ''); // จำรายการของใบนี้ไว้ (รอบ 24: เลขที่ + ประเภท) (เอกสารที่ออกแล้วไม่เปลี่ยน)
       if (!g.ok) { LiffApp.toast(g.error, true); return; }
       S.lines = [];
       var skipped = [];
@@ -571,7 +588,7 @@
       S.reviewNo = docNoOf(S.docNoInput);
       if (S.reviewNo < 0) r.errors.unshift(DOC_NO_ERROR);
       else if (S.reviewNo === TEST_DOC_NO && S.init.hasRealDoc) r.errors.unshift('มีบิลจริงแล้ว ใช้เลขที่ 0000 (บิลทดสอบ) ไม่ได้');
-      else if (S.reviewNo > 0 && docNoTaken(S.reviewNo)) r.errors.unshift('เลขที่ ' + S.reviewNo + ' มีอยู่แล้วในระบบ กรุณาใช้เลขอื่น');
+      else if (S.reviewNo > 0 && docNoTaken(S.reviewNo)) r.errors.unshift('เลขที่ ' + S.reviewNo + ' ของ' + S.doc.doc_type + ' มีอยู่แล้วในระบบ กรุณาใช้เลขอื่น');
     }
     S.requestId = LiffApp.uuid(); // รหัสคำขอของรอบยืนยันนี้
     S.expected = r.totals;
@@ -831,7 +848,7 @@
       '<div class="card stack">' +
       (r.pdfUrl
         // รอบ 21: ดู PDF ในแอป (นอก LINE ไม่มีการ์ดในแชทให้กด) + ส่งต่อ (ผู้ใช้เลือกปลายทางเอง ไม่ใช้ push message)
-        ? '<a class="btn block" id="btn-pdf" href="view?no=' + encodeURIComponent(LiffApp.docNoText(r.docNo)) + '">' + iconSvg('file') + '<span>ดู PDF</span></a>' +
+        ? '<a class="btn block" id="btn-pdf" href="' + esc(LiffApp.viewHref(LiffApp.docNoText(r.docNo), r.document ? r.document.doc_type : '')) + '">' + iconSvg('file') + '<span>ดู PDF</span></a>' +
           '<button type="button" class="btn block" id="btn-share">' + iconSvg('send') + '<span>ส่งต่อ</span></button>'
         : '<div class="small muted" id="no-pdf">ยังไม่มี PDF สร้างได้ที่เมนู "ประวัติเอกสาร"</div>') +
       '<button type="button" class="btn primary block" id="btn-new">ออกบิลใหม่</button>' +

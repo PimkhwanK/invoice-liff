@@ -336,9 +336,10 @@
       '<ul class="list">' + (list.length ? list.map(function (r) {
         var kind = r[0], no = r[1], date = r[2], at = String(r[3] || ''), cancelled = !!r[6];
         var when = (date === today ? 'วันนี้' : formatThaiDateShort(date)) + (at.length > 15 && date === today ? ' ' + at.slice(11, 16) : '');
-        var href = 'view?type=' + (kind === 'c' ? 'cash' : 'tax') + '&no=' + encodeURIComponent(String(no));
+        var href = 'view?type=' + (kind === 'c' ? 'cash' : 'tax') + '&no=' + encodeURIComponent(String(no)) +
+          (kind === 't' && r[7] === TAX_RECEIPT_TYPE ? '&dt=rc' : kind === 't' && r[7] && r[7] !== DEFAULT_DOC_TYPES[0] ? '&dt=' + encodeURIComponent(r[7]) : ''); // รอบ 24
         return '<li class="sum-lost tap recent" data-href="' + esc(href) + '" role="link" tabindex="0"><div class="nm"><div class="n">' +
-          (kind === 'c' ? '' : '#') + esc(no) + ' · ' + esc(r[4] || '-') + ' ' + kindBadge(kind) + (cancelled ? ' <span class="badge red">ยกเลิก</span>' : '') + '</div>' +
+          (kind === 'c' ? '' : '#') + esc(no) + (kind === 't' && r[7] === TAX_RECEIPT_TYPE ? ' ' + esc(TAX_RECEIPT_TYPE) : '') + ' · ' + esc(r[4] || '-') + ' ' + kindBadge(kind) + (cancelled ? ' <span class="badge red">ยกเลิก</span>' : '') + '</div>' +
           '<div class="small muted">' + esc(when) + ' · แตะเพื่อดู PDF</div></div>' +
           '<div class="amt"><b class="num">' + money(r[5]) + '</b></div></li>';
       }).join('') : '<li class="empty">ยังไม่มีบิล</li>') + '</ul></section>';

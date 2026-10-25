@@ -78,6 +78,65 @@ function nextDocNo(documents, config) {
   return max > 0 ? max + 1 : start;
 }
 
+// ---------- รอบ 24: ใบกำกับ — เลขที่ซ้ำได้ถ้าคนละประเภทเอกสาร (ตัวระบุบิล = เลขที่ + ประเภท / บิลทดสอบ 0 = ใบเดียวไม่สนประเภท)
+//   ระบบจำลองไม่ใช้ส่วนนี้ (เลขที่ยังรันต่อกันทุกประเภท)
+
+/** เลขที่ในแถว → จำนวนเต็ม ≥ 0 หรือ -1 (ว่าง / ช่องว่างล้วน / ไม่ใช่เลข) */
+function taxDocNoOf(v) {
+  if (v === null || v === undefined || String(v).trim() === '' || isNaN(v)) return -1;
+  var n = Number(v);
+  return n >= 0 && Math.floor(n) === n ? n : -1;
+}
+
+function taxDocTypeOf(v) {
+  return v === null || v === undefined ? '' : String(v).trim();
+}
+
+/** ประเภทที่เป็นใบคู่ของการขายเดียวกัน (ใช้เลขที่เดียวกับใบกำกับได้) — ลิงก์/คำสั่งที่ไม่ระบุประเภทหมายถึงใบที่ไม่ใช่ใบนี้ */
+var TAX_RECEIPT_TYPE = 'ใบเสร็จรับเงิน';
+
+/**
+ * แถวเอกสารนี้คือบิล (เลขที่, ประเภท) ไหม — type '' = ไม่ระบุ (ตรงทุกประเภท) / เลข 0 ไม่สนประเภท
+ * แถวที่ช่องประเภทว่าง (แก้ในชีตเอง / ช่องผสาน) ตรงทุกประเภท
+ */
+function taxDocIs(d, no, type) {
+  if (taxDocNoOf(d.doc_no) !== no || no < 0) return false;
+  return no === 0 || !type || !taxDocTypeOf(d.doc_type) || taxDocTypeOf(d.doc_type) === type;
+}
+
+/**
+ * เจ้าของของแต่ละรายการ (index ของ docs หรือ -1) — รายการมีประเภท → บิลเลขที่เดียวกันประเภทเดียวกัน
+ * รายการไม่มีประเภท (แถวก่อนรอบ 24) → บิลเลขที่นั้นใบเดียว / มีหลายใบ → ใบที่ออกก่อนสุด (บิลเก่าก่อนมีเลขซ้ำ) / เลข 0 → ใบเดียวไม่สนประเภท
+ */
+function taxItemOwners(docs, items) {
+  var byNo = {};
+  (docs || []).forEach(function (d, i) {
+    var no = taxDocNoOf(d.doc_no);
+    if (no < 0) return;
+    (byNo[no] = byNo[no] || []).push(i);
+  });
+  return (items || []).map(function (it) {
+    var list = byNo[taxDocNoOf(it.doc_no)];
+    if (!list) return -1;
+    if (taxDocNoOf(it.doc_no) === 0) return list[0];
+    var type = taxDocTypeOf(it.doc_type);
+    if (type) {
+      for (var k = 0; k < list.length; k++) if (taxDocTypeOf(docs[list[k]].doc_type) === type) return list[k];
+      return -1;
+    }
+    var best = list[0];
+    list.forEach(function (i) { if (String(docs[i].created_at || '') < String(docs[best].created_at || '')) best = i; });
+    return best;
+  });
+}
+
+/** รายการของบิล docs[index] เรียงตามบรรทัด */
+function taxItemsOfDoc(docs, items, index) {
+  var owners = taxItemOwners(docs, items);
+  return (items || []).filter(function (it, i) { return owners[i] === index; })
+    .sort(function (a, b) { return Number(a.line_no) - Number(b.line_no); });
+}
+
 /** ลำดับร้านถัดไป = สูงสุด + 1 (ไม่นำเลขกลับมาใช้ใหม่) */
 function nextShopId(shops) {
   var max = 0;
@@ -540,6 +599,12 @@ function pdfFileName(doc) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    taxDocNoOf: taxDocNoOf,
+    taxDocTypeOf: taxDocTypeOf,
+    taxDocIs: taxDocIs,
+    TAX_RECEIPT_TYPE: TAX_RECEIPT_TYPE,
+    taxItemOwners: taxItemOwners,
+    taxItemsOfDoc: taxItemsOfDoc,
     DEFAULT_DOC_TYPES: DEFAULT_DOC_TYPES,
     isTrue: isTrue,
     saleTypeLabels: saleTypeLabels,

@@ -154,7 +154,21 @@ var AppData = (function () {
     out.shopStats = statsOf(docs);
     out.documents = docs.slice(0, KEEP_DOCS);
     out.docNos = docs.map(function (d) { return Number(d.doc_no); }).filter(function (n) { return n >= 1; });
+    out.docNosByType = byType(docs);
     out.hasRealDoc = out.docNos.length > 0;
+    return out;
+  }
+
+  /** รอบ 24: { ประเภท: [เลขที่] } ของบิลจริง (เซิร์ฟเวอร์รุ่นเก่าไม่ส่ง docNosByType → คำนวณจากเอกสารที่มี) */
+  function byType(docs) {
+    var out = {};
+    (docs || []).forEach(function (d) {
+      var n = Number(d.doc_no);
+      if (!(n >= 1)) return;
+      var t = String(d.doc_type || '').trim();
+      out[t] = out[t] || [];
+      if (out[t].indexOf(n) < 0) out[t].push(n);
+    });
     return out;
   }
 
@@ -195,6 +209,7 @@ var AppData = (function () {
       needFirstDocNo: !!d.needFirstDocNo,
       hasRealDoc: !!d.hasRealDoc,                  // รอบ 10: มีบิลจริงแล้ว → ออกบิลทดสอบไม่ได้
       docNos: Array.isArray(d.docNos) ? d.docNos : [], // ใบกำกับ: เลขที่ที่ใช้แล้ว
+      docNosByType: d.docNosByType && typeof d.docNosByType === 'object' ? d.docNosByType : byType(d.documents), // รอบ 24: แยกตามประเภท
       monthMax: d.monthMax || {},                  // ใบเงินสด: ลำดับสูงสุดของแต่ละเดือน
       shops: d.shops.filter(function (s) { return s.active; }),
       allShops: d.shops,
@@ -235,10 +250,10 @@ var AppData = (function () {
   }
 
   /** รายการสินค้าในเอกสาร (getDocument ครั้งเดียวต่อใบ — เอกสารที่ออกแล้วรายการไม่เปลี่ยน) */
-  async function docItems(no) {
-    var key = String(no);
+  async function docItems(no, type) {
+    var key = String(no) + '|' + (type || ''); // รอบ 24: เลขที่ + ประเภท
     if (S.items[key]) return { ok: true, items: S.items[key] };
-    var r = await LiffApp.api('getDocument', { docNo: LiffApp.docParam(no) });
+    var r = await LiffApp.api('getDocument', { docNo: LiffApp.docParam(no), docType: type || '' });
     if (r.ok) S.items[key] = r.items;
     return r;
   }
@@ -252,7 +267,9 @@ var AppData = (function () {
 
   /** เรียงใหม่ → เก่า แบบเดียวกับเซิร์ฟเวอร์ (ใบกำกับ: เลขที่มากก่อน / ใบเงินสด: ปี เดือน ลำดับ) */
   function sortDocs(list) {
-    list.sort(CASH ? cashDocCompareDesc : function (a, b) { return Number(b.doc_no) - Number(a.doc_no); });
+    list.sort(CASH ? cashDocCompareDesc : function (a, b) {
+      return Number(b.doc_no) - Number(a.doc_no) || (String(b.created_at || '') > String(a.created_at || '') ? 1 : String(b.created_at || '') < String(a.created_at || '') ? -1 : 0);
+    });
   }
 
   function isTestNo(no) { return CASH ? cashDocIsTest(no) : Number(no) === 0 && String(no).trim() !== ''; }
@@ -264,7 +281,7 @@ var AppData = (function () {
     var test = isTestNo(doc.doc_no);
     // บิลจริงใบแรก → บิลทดสอบ 0000 ถูกลบที่เซิร์ฟเวอร์แล้ว เอาออกจากรายการในแอปด้วย
     if (!d.hasRealDoc && !test) dropDoc(TEST_NO);
-    var exists = d.documents.some(function (x) { return LiffApp.sameNo(x.doc_no, doc.doc_no); });
+    var exists = d.documents.some(function (x) { return LiffApp.sameDoc(x, doc.doc_no, doc.doc_type); }); // รอบ 24: เลขที่ + ประเภท
     if (exists && test) {
       // บิลทดสอบ 0000 ออกซ้ำ = เขียนทับใบเดิม → แทนที่ในรายการ (ไม่เพิ่มแถว)
       eachDocList(function (list) { list.forEach(function (x, i) { if (LiffApp.sameNo(x.doc_no, doc.doc_no)) list[i] = doc; }); });
@@ -291,6 +308,10 @@ var AppData = (function () {
       } else {
         d.docNos = Array.isArray(d.docNos) ? d.docNos : [];
         if (d.docNos.indexOf(Number(doc.doc_no)) < 0) d.docNos.push(Number(doc.doc_no));
+        var t = String(doc.doc_type || '').trim();
+        d.docNosByType = d.docNosByType && typeof d.docNosByType === 'object' ? d.docNosByType : {};
+        d.docNosByType[t] = Array.isArray(d.docNosByType[t]) ? d.docNosByType[t] : [];
+        if (d.docNosByType[t].indexOf(Number(doc.doc_no)) < 0) d.docNosByType[t].push(Number(doc.doc_no));
       }
     }
     if (!CASH && doc.status !== 'cancelled' && (!d.lastDoc || Number(doc.doc_no) >= Number(d.lastDoc.doc_no))) {
@@ -315,12 +336,12 @@ var AppData = (function () {
     delete S.items[String(no)];
   }
 
-  /** แก้เอกสาร (ยกเลิก / มี PDF แล้ว) ทุกที่ที่มีใบนี้ */
-  function patchDoc(no, patch) {
+  /** แก้เอกสาร (ยกเลิก / มี PDF แล้ว) ทุกที่ที่มีใบนี้ — รอบ 24: type = ประเภท (ใบกำกับเลขที่ซ้ำได้ถ้าคนละประเภท) */
+  function patchDoc(no, patch, type) {
     if (!S.data) return;
     eachDocList(function (list) {
       list.forEach(function (d) {
-        if (!LiffApp.sameNo(d.doc_no, no)) return;
+        if (!LiffApp.sameDoc(d, no, type)) return;
         for (var k in patch) d[k] = patch[k];
       });
     });

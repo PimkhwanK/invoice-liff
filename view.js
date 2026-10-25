@@ -50,9 +50,10 @@
     return /^[0-9]{1,12}$/.test(v) ? Number(v) : null;
   }
 
-  async function load(no) {
+  async function load(no, dt) {
     var id = ++S.loadId;
     S.no = no;
+    S.dt = dt || ''; // รอบ 24: ประเภท ('' = ไม่ระบุ → เซิร์ฟเวอร์เลือกใบที่ไม่ใช่ใบเสร็จ)
     S.pdf = null;
     S.state = 'loading';
     S.stale = false;
@@ -60,14 +61,23 @@
       S.state = 'error';
       return LiffApp.showError({ title: 'ไม่ได้ระบุเลขที่บิล', text: 'กรุณาเปิดจากปุ่ม "ดู PDF" ในแชท หรือจากหน้าประวัติเอกสาร' }, null, 'no_doc', scr);
     }
-    $('title').textContent = 'บิล #' + LiffApp.docNoText(S.no);
+    $('title').textContent = 'บิล ' + LiffApp.docLabel(S.no, S.dt);
     $('subtitle').textContent = LiffApp.MODE_LABEL;
     LiffApp.loading('กำลังโหลด PDF เลขที่ ' + LiffApp.docNoText(S.no) + '…', view);
     var lib = loadPdfJs(); // โหลดพร้อมกับรอเซิร์ฟเวอร์
-    var r = await LiffApp.api('getPdf', { docNo: S.no });
+    var r = await LiffApp.api('getPdf', { docNo: S.no, docType: S.dt });
     if (id !== S.loadId) return; // เปิดใบอื่นไปแล้ว
+    if (!r.ok && r.code === 'ambiguous' && Array.isArray(r.types)) { S.state = 'error'; return pickType(r.types); }
     if (!r.ok) { S.state = 'error'; return LiffApp.showApiError(r, scr); }
+    S.dt = r.document && r.document.doc_type ? r.document.doc_type : S.dt;
+    $('title').textContent = 'บิล ' + LiffApp.docLabel(S.no, S.dt);
     show(r, lib);
+  }
+
+  /** รอบ 24: เลขนี้มีหลายประเภท (ลิงก์ไม่ได้ระบุ) → ให้เลือก */
+  function pickType(types) {
+    view.innerHTML = '<section class="card" id="pick-type"><h2>เลขที่ ' + LiffApp.esc(LiffApp.docNoText(S.no)) + ' มีหลายประเภท</h2><p class="small muted">เลือกบิลที่ต้องการดู</p><div class="stack">' +
+      types.map(function (t) { return '<a class="btn block" href="' + LiffApp.esc(LiffApp.viewHref(S.no, t)) + '">' + LiffApp.esc(t) + '</a>'; }).join('') + '</div></section>';
   }
 
   function head(d) {
@@ -190,7 +200,7 @@
     btn.disabled = true;
     btn.textContent = 'กำลังสร้าง PDF…';
     msg.innerHTML = '';
-    var r = await LiffApp.api('regeneratePdf', { docNo: no, withPdf: true });
+    var r = await LiffApp.api('regeneratePdf', { docNo: no, docType: S.dt, withPdf: true });
     if (no !== S.no) return;
     if (!r.ok) {
       if (LiffApp.isDenied(r.code) || r.code === 'token_expired' || r.code === 'no_token' || r.code === 'token_invalid') return LiffApp.showApiError(r, scr);
@@ -199,11 +209,11 @@
       msg.innerHTML = '<div class="alert err" id="regen-error" style="margin-top:10px">' + LiffApp.errorHtml(r.error || 'สร้าง PDF ไม่สำเร็จ') + '</div>';
       return;
     }
-    LiffApp.toast('สร้าง PDF ของบิล #' + LiffApp.docNoText(no) + ' แล้ว');
-    if (AppData.has()) AppData.patchDoc(no, { hasPdf: true, pdfUrl: r.pdfUrl });
+    LiffApp.toast('สร้าง PDF ของบิล ' + LiffApp.docLabel(no, S.dt) + ' แล้ว');
+    if (AppData.has()) AppData.patchDoc(no, { hasPdf: true, pdfUrl: r.pdfUrl }, S.dt);
     S.stale = false; // ไฟล์ที่ได้มาคือไฟล์ล่าสุดแล้ว
     if (r.pdfBase64) return show({ document: S.doc, hasPdf: true, pdfUrl: r.pdfUrl, pdfBase64: r.pdfBase64 });
-    load(no); // ได้ลิงก์แต่ไม่ได้ไฟล์มาด้วย → โหลดใหม่
+    load(no, S.dt); // ได้ลิงก์แต่ไม่ได้ไฟล์มาด้วย → โหลดใหม่
   }
 
   // เอกสารใบที่เปิดอยู่ถูกยกเลิก / สร้าง PDF ใหม่จากหน้าจออื่นในแอป → กลับมาหน้าจอนี้แล้วโหลดใหม่
@@ -229,13 +239,14 @@
     show: function (s, params) {
       drawBack();
       var no = docNoParam(params.no);
-      if (no !== null && no === S.no && S.state === 'shown' && !S.stale) {
+      var dt = LiffApp.isCash() ? '' : LiffApp.dtType(params.dt);
+      if (no !== null && no === S.no && dt === (params.dt ? S.dt : dt) && S.state === 'shown' && !S.stale) {
         // ใบเดิมที่แสดงอยู่แล้ว: ไม่ถามเซิร์ฟเวอร์ใหม่ — ขนาดจอเปลี่ยนระหว่างไปหน้าอื่น → วาดใหม่
         var pages = $('pages');
         if (S.pdf && pages && pages.clientWidth !== S.width) render();
         return;
       }
-      return load(no);
+      return load(no, dt);
     }
   });
 })();

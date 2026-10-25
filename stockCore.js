@@ -15,6 +15,7 @@
 
 if (typeof require === 'function' && typeof module !== 'undefined') {
   var cashDocParse = require('./cashDoc').cashDocParse;
+  var taxItemOwners = require('./invoice').taxItemOwners;
 }
 
 /** ประเภทของรายการ (ค่าในคอลัมน์ "ประเภท") */
@@ -71,12 +72,17 @@ function stockTracked(p) {
 }
 
 /** ค่าในช่อง "อ้างอิง": ประเภทบิล + เลขที่ เช่น "ใบกำกับภาษี 1705" / "ใบเงินสด 1069-15" ('cash' / อื่น ๆ = ใบกำกับ) */
-function stockRef(kind, docNo) {
+/**
+ * อ้างอิงของบิลในแท็บความเคลื่อนไหว
+ * รอบ 24: ใบกำกับเลขที่ซ้ำได้ถ้าคนละประเภท → ใบเสร็จรับเงิน = "ใบเสร็จรับเงิน N" (ไม่หักสต็อกอยู่แล้ว) / ประเภทอื่น = "ใบกำกับภาษี N" เหมือนเดิม
+ * (แถวเดิมในชีตไม่ต้องแก้ — ประเภทที่หักสต็อกได้มีประเภทเดียวตามค่าเริ่มต้น จึงไม่ชนกัน)
+ */
+function stockRef(kind, docNo, docType) {
   if (kind === 'cash') {
     var p = cashDocParse(docNo);
     return 'ใบเงินสด ' + (p ? p.text : stockText(docNo));
   }
-  return 'ใบกำกับภาษี ' + Number(docNo);
+  return (stockText(docType) === STOCK_NO_DEDUCT_DOC_TYPE ? STOCK_NO_DEDUCT_DOC_TYPE : 'ใบกำกับภาษี') + ' ' + Number(docNo);
 }
 
 /** ค่าเกณฑ์ใกล้หมดจากแท็บตั้งค่า (ไม่มี / ไม่ใช่ตัวเลข ≥ 0 → 10) */
@@ -317,14 +323,16 @@ function stockSyncPlan(o) {
   }
   (o.books || []).forEach(function (book) {
     var itemsOf = {};
-    (book.items || []).forEach(function (it) {
-      var key = stockSyncDocKey(book.kind, it.doc_no);
+    // รอบ 24: ใบกำกับ — รายการเป็นของบิล (เลขที่ + ประเภท) / ใบเงินสด — เลขที่อย่างเดียว
+    var owners = book.kind === 'tax' ? taxItemOwners(book.docs, book.items) : null;
+    (book.items || []).forEach(function (it, i) {
+      var key = owners ? (owners[i] >= 0 ? 'd' + owners[i] : '') : stockSyncDocKey(book.kind, it.doc_no);
       if (key) (itemsOf[key] = itemsOf[key] || []).push(it);
     });
-    (book.docs || []).forEach(function (d) {
-      var key = stockSyncDocKey(book.kind, d.doc_no);
-      if (!key) return;
-      var ref = stockRef(book.kind, d.doc_no);
+    (book.docs || []).forEach(function (d, di) {
+      if (!stockSyncDocKey(book.kind, d.doc_no)) return;
+      var key = owners ? 'd' + di : stockSyncDocKey(book.kind, d.doc_no);
+      var ref = stockRef(book.kind, d.doc_no, d.doc_type);
       var cancelled = stockText(d.status) === 'cancelled';
       var deduct = stockDeducts(book.kind, d.doc_type); // รอบ 21: ใบเสร็จรับเงินไม่หัก (ยกเลิก = คืนเฉพาะที่เคยหักจริง)
       stockSaleLines(itemsOf[key]).forEach(function (l) {

@@ -136,9 +136,10 @@
   /** ปุ่ม "สร้าง PDF ใหม่" สำหรับใบที่ไม่มี PDF (เซิร์ฟเวอร์ตรวจ idToken + แท็บผู้ใช้) */
   async function regenerate(btn) {
     var no = btn.getAttribute('data-regen');
+    var type = btn.getAttribute('data-dt') || ''; // รอบ 24: ประเภท
     btn.disabled = true;
     btn.textContent = 'กำลังสร้าง PDF…';
-    var r = await LiffApp.api('regeneratePdf', { docNo: LiffApp.docParam(no) });
+    var r = await LiffApp.api('regeneratePdf', { docNo: LiffApp.docParam(no), docType: type });
     if (!r.ok) {
       if (LiffApp.isDenied(r.code) || r.code === 'token_expired') return LiffApp.showApiError(r, scr);
       btn.disabled = false;
@@ -146,27 +147,27 @@
       LiffApp.toast(r.error || 'สร้าง PDF ไม่สำเร็จ', true);
       return;
     }
-    AppData.patchDoc(LiffApp.docParam(no), { hasPdf: true, pdfUrl: r.pdfUrl }); // วาดรายการใหม่ (มีปุ่ม "ดู PDF")
-    LiffApp.toast('สร้าง PDF ของบิล #' + LiffApp.docNoText(no) + ' แล้ว');
+    AppData.patchDoc(LiffApp.docParam(no), { hasPdf: true, pdfUrl: r.pdfUrl }, type); // วาดรายการใหม่ (มีปุ่ม "ดู PDF")
+    LiffApp.toast('สร้าง PDF ของบิล ' + LiffApp.docLabel(no, type) + ' แล้ว');
   }
 
   /** ปุ่ม "ดู PDF" → หน้าจอ view (ดูในแอป LINE ก่อน มีปุ่มดาวน์โหลด / ส่งต่อในหน้านั้น) */
-  function pdfActs(no) {
-    return '<div class="acts"><a class="btn sm" data-pdf href="view?no=' + encodeURIComponent(no) + '">' + iconSvg('file') + '<span>ดู PDF</span></a></div>';
+  function pdfActs(no, type) {
+    return '<div class="acts"><a class="btn sm" data-pdf href="' + esc(LiffApp.viewHref(no, type)) + '">' + iconSvg('file') + '<span>ดู PDF</span></a></div>';
   }
 
   function docRow(d) {
     var c = d.status === 'cancelled';
-    return '<li class="doc" data-no="' + esc(d.doc_no) + '">' +
+    return '<li class="doc" data-no="' + esc(d.doc_no) + '" data-dt="' + esc(d.doc_type || '') + '">' +
       '<div class="no' + (c ? ' cancel' : '') + '">#' + LiffApp.docNoText(d.doc_no) + ' ' + (c ? '<span class="badge red">ยกเลิก</span>' : '<span class="badge">ออกแล้ว</span>') + '</div>' +
       '<div class="amt num">' + formatMoney(d.total) + '</div>' +
       '<div class="meta">' + formatThaiDate(d.doc_date) + ' · ' + (LiffApp.isCash() ? esc(CASH_DOC_TITLE) + ' · ' + esc(d.sale_type || CASH_DOC_SALE_TYPE) : esc(d.doc_type) + ' · ' + esc(d.sale_type)) +
       (d.issued_by ? '<br>ออกโดย ' + esc(d.issued_by) : '') +
       (c ? '<br>เหตุผล: ' + esc(d.cancelled_reason) + (d.cancelled_by ? ' · ยกเลิกโดย ' + esc(d.cancelled_by) : '') : '') + '</div>' +
       (d.hasPdf
-        ? pdfActs(d.doc_no)
+        ? pdfActs(d.doc_no, d.doc_type)
         : '<div class="acts"><span class="badge amber no-pdf">ไม่มี PDF</span>' +
-          '<button type="button" class="btn sm" data-regen="' + esc(d.doc_no) + '">สร้าง PDF ใหม่</button></div>') +
+          '<button type="button" class="btn sm" data-regen="' + esc(d.doc_no) + '" data-dt="' + esc(LiffApp.isCash() ? '' : d.doc_type || '') + '">สร้าง PDF ใหม่</button></div>') +
       '</li>';
   }
 
