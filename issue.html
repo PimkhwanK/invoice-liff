@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-nqqAR+vB7Q7TxlDHKAnLPaYfPF4stD8bLkoUPzwsVhU=' https://static.line-scdn.net https://*.line-scdn.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://*.line.me https://*.line-scdn.net https://*.line-apps.com https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; frame-src https://*.line.me; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-4KDu94+Adp3PZUtTDNiIO4u/b4Y9urVnZI7Jsxcqczc=' https://static.line-scdn.net https://*.line-scdn.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://*.line.me https://*.line-scdn.net https://*.line-apps.com https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; frame-src https://*.line.me; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>ออกบิล</title>
 <link rel="stylesheet" href="form.css">
 <link rel="stylesheet" href="theme.css">
@@ -49,6 +49,7 @@
 <script src="manage.js"></script>
 <script src="view.js"></script>
 <script src="summary.js"></script>
+<script src="xlsx.js"></script>
 <script src="stock.js"></script>
 <script src="menu.js"></script>
 <script src="pwa.js"></script>
@@ -103,6 +104,7 @@
     ['manage.js', function () { return Shell.has('manage'); }],
     ['view.js', function () { return Shell.has('view'); }],
     ['summary.js', function () { return Shell.has('summary'); }],
+    ['xlsx.js', function () { return typeof Xlsx === 'object'; }],
     ['stock.js', function () { return Shell.has('stock'); }],
     ['menu.js', function () { return Shell.has('menu'); }],
     ['pwa.js', function () { return typeof Pwa === 'object'; }]

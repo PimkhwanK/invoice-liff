@@ -91,14 +91,16 @@
     if (!$('stock-q')) {
       view.innerHTML =
         '<nav class="tabs stock-tabs" id="stock-tabs"><button type="button" data-tab="all">สินค้าทั้งหมด</button>' +
-        '<button type="button" data-tab="low">ของใกล้หมด <span id="low-count"></span></button></nav>' +
+        '<button type="button" data-tab="low">ของใกล้หมด <span id="low-count"></span></button>' +
+        '<button type="button" data-tab="report">รายงาน</button></nav>' +
         '<div id="stock-pending-box"></div>' +
         '<div id="tab-all"><section class="card"><input type="search" id="stock-q" placeholder="ค้นหาชื่อสินค้า หรือบาร์โค้ด" autocomplete="off">' +
         '<div class="sum-pick"><select id="stock-sort" aria-label="เรียงตาม">' + Object.keys(SORTS).map(function (k) {
           return '<option value="' + k + '">เรียง: ' + esc(SORTS[k]) + '</option>';
         }).join('') + '</select></div></section>' +
         '<div id="stock-lists"></div></div>' +
-        '<div id="tab-low" class="hidden"><div id="low-box"></div></div>';
+        '<div id="tab-low" class="hidden"><div id="low-box"></div></div>' +
+        '<div id="tab-report" class="hidden"></div>';
       $('stock-tabs').addEventListener('click', function (e) {
         var b = e.target.closest('button[data-tab]');
         if (b) setTab(b.dataset.tab);
@@ -111,19 +113,26 @@
     $('stock-pending-box').innerHTML = data.pending
       ? '<section class="card alert warn" id="stock-pending">มีบิลที่ยังตัดสต็อกไม่ครบ ระบบกำลังตัดให้อัตโนมัติ ยอดอาจยังไม่ตรง</section>' : '';
     drawLists();
-    setTab(scr.params.tab === 'low' ? 'low' : 'all', true);
+    setTab(scr.params.tab === 'low' || scr.params.tab === 'report' ? scr.params.tab : 'all', true);
   }
 
-  /** รอบ 21: แท็บ สินค้าทั้งหมด / ของใกล้หมด (จำใน URL stock?tab=low) */
+  /** รอบ 21: แท็บ สินค้าทั้งหมด / ของใกล้หมด (จำใน URL stock?tab=low) / รอบ 24: รายงาน (stock?tab=report&period=…) */
   function setTab(t, keepUrl) {
-    $('tab-all').classList.toggle('hidden', t === 'low');
+    $('tab-all').classList.toggle('hidden', t !== 'all');
     $('tab-low').classList.toggle('hidden', t !== 'low');
+    $('tab-report').classList.toggle('hidden', t !== 'report');
+    acts.classList.toggle('hidden', t === 'report');
+    $('sub').textContent = t === 'report' ? 'ยอดเข้า-ออกตามช่วงวันที่ พิมพ์หรือดาวน์โหลดได้' : 'แตะสินค้าเพื่อตั้งการเตือนของใกล้หมด';
+    if (t === 'report') {
+      showReport();
+      if (!keepUrl) Shell.setParams(scr, repParams());
+    }
     $('stock-tabs').querySelectorAll('button[data-tab]').forEach(function (b) {
       var on = b.dataset.tab === t;
       b.classList.toggle('on', on);
       if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     });
-    if (!keepUrl) Shell.setParams(scr, t === 'low' ? { tab: 'low' } : {});
+    if (!keepUrl && t !== 'report') Shell.setParams(scr, t === 'low' ? { tab: 'low' } : {});
   }
 
   /** ของใกล้หมด: ≤ "เตือนเมื่อเหลือ" ของสินค้านั้น หรือติดลบ (เฉพาะสินค้าที่นับแล้ว) เรียงน้อยสุดก่อน (ไม่ขึ้นกับช่องค้นหา) */
@@ -343,6 +352,168 @@
     if (q && q.parentNode) q.parentNode.className = 'st-big ' + np.level;
     drawAlert(p);
     LiffApp.toast('บันทึกแล้ว เตือนเมื่อเหลือ ' + alertText(p));
+  }
+
+  // ---------- รอบ 24: รายงานสต็อก (แท็บ "รายงาน") — ตัวเลขคำนวณที่เซิร์ฟเวอร์ (stockReport → stockCore.js stockReportRows)
+  //   พิมพ์ / PDF = window.print() + @media print ใน form.css (A4) / Excel = xlsx.js บนเครื่อง
+  //   ในแอป LINE ดาวน์โหลด/พิมพ์มักไม่ได้ → เปิดหน้ารายงานช่วงเดียวกันในเบราว์เซอร์แทน (ล็อกอินนอก LINE แบบรอบ 21)
+
+  var REP_PERIODS = [['week', 'สัปดาห์นี้'], ['lastweek', 'สัปดาห์ก่อน'], ['month', 'เดือนนี้'], ['pick', 'เลือกเดือน'], ['custom', 'เลือกวันเอง']];
+  var REP_COLS = ['สินค้า', 'หน่วย', 'ยอดต้นช่วง', 'ของเข้า', 'ขายตามบิล', 'ของออก (ไม่มีบิล)', 'แก้ยอด (+/-)', 'คงเหลือปลายช่วง'];
+  var rep = null;     // ช่วงที่เลือก { period, month, from, to }
+  var repData = null; // คำตอบ stockReport ล่าสุด
+  var repSeq = 0;
+
+  function deviceToday() { return new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10); }
+  function repToday() { return (repData && repData.today) || deviceToday(); }
+  function thDate(iso) { return formatThaiDateShort(String(iso).slice(0, 10)); }
+
+  function repInit() {
+    if (rep) return;
+    var p = scr.params;
+    rep = { period: REP_PERIODS.some(function (k) { return k[0] === p.period; }) ? p.period : 'month', month: p.month || '', from: p.from || '', to: p.to || '' };
+    if (!rep.month) rep.month = deviceToday().slice(0, 7);
+  }
+
+  function repParams() {
+    var q = { tab: 'report', period: rep.period };
+    if (rep.period === 'pick') q.month = rep.month;
+    if (rep.period === 'custom') { q.from = rep.from; q.to = rep.to; }
+    return q;
+  }
+
+  function showReport() {
+    repInit();
+    var box = $('tab-report');
+    if (!$('rep-period')) {
+      box.innerHTML = '<section class="card no-print" id="rep-period"></section><div id="rep-body"></div>';
+      $('rep-period').addEventListener('change', onRepPeriod);
+      $('rep-period').addEventListener('click', function (e) {
+        var input = e.target.closest && e.target.closest('input[type=date]');
+        try { if (input && typeof input.showPicker === 'function') input.showPicker(); } catch (err) { /* ไม่เป็นไร */ }
+      });
+    }
+    drawRepPeriod();
+    loadReport();
+  }
+
+  /** เดือนให้เลือก: 24 เดือนล่าสุดถึงเดือนนี้ */
+  function repMonths() {
+    var t = repToday();
+    var y = Number(t.slice(0, 4));
+    var m = Number(t.slice(5, 7));
+    var out = [];
+    for (var i = 0; i < 24; i++) {
+      out.push([y + '-' + (m < 10 ? '0' : '') + m, THAI_MONTHS_SHORT[m - 1] + ' ' + (y + 543)]);
+      if (--m === 0) { m = 12; y--; }
+    }
+    return out;
+  }
+
+  function repDateBox(id, value) {
+    return '<div class="date-box" id="' + id + '-box"><span class="date-text" id="' + id + '-th">' + esc(value ? thDate(value) : 'เลือกวันที่') + '</span>' +
+      iconSvg('calendar') + '<input type="date" id="' + id + '" value="' + esc(value) + '" max="' + esc(repToday()) + '"></div>';
+  }
+
+  function drawRepPeriod() {
+    var box = $('rep-period');
+    box.innerHTML = '<div class="seg-choice rep-kinds" id="rep-kinds" role="radiogroup" aria-label="ช่วงเวลา">' + REP_PERIODS.map(function (k) {
+      return '<label><input type="radio" name="rep-kind" value="' + k[0] + '"' + (rep.period === k[0] ? ' checked' : '') + '>' + k[1] + '</label>';
+    }).join('') + '</div>' +
+      (rep.period === 'pick' ? '<div class="sum-pick"><select id="rep-month" aria-label="เดือน">' + repMonths().map(function (m) {
+        return '<option value="' + m[0] + '"' + (m[0] === rep.month ? ' selected' : '') + '>' + esc(m[1]) + '</option>';
+      }).join('') + '</select></div>' : '') +
+      (rep.period === 'custom' ? '<div class="two rep-dates"><div><label class="f" for="rep-from">วันเริ่ม</label>' + repDateBox('rep-from', rep.from) + '</div>' +
+        '<div><label class="f" for="rep-to">วันจบ</label>' + repDateBox('rep-to', rep.to) + '</div></div>' : '');
+  }
+
+  function onRepPeriod(e) {
+    var t = e.target;
+    if (t.name === 'rep-kind') {
+      rep.period = t.value;
+      if (rep.period === 'custom' && !rep.from) { rep.from = repToday().slice(0, 8) + '01'; rep.to = repToday(); }
+      drawRepPeriod();
+    } else if (t.id === 'rep-month') rep.month = t.value;
+    else if (t.id === 'rep-from' || t.id === 'rep-to') {
+      rep[t.id === 'rep-from' ? 'from' : 'to'] = t.value;
+      $(t.id + '-th').textContent = t.value ? thDate(t.value) : 'เลือกวันที่';
+    } else return;
+    Shell.setParams(scr, repParams());
+    loadReport();
+  }
+
+  async function loadReport() {
+    var seq = ++repSeq;
+    var body = $('rep-body');
+    LiffApp.loading('กำลังทำรายงาน…', body);
+    var r = await LiffApp.api('stockReport', { period: rep.period, month: rep.month, from: rep.from, to: rep.to });
+    if (seq !== repSeq || !Shell.isCurrent(scr) || !$('rep-body')) return;
+    if (!r.ok) {
+      if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
+      body.innerHTML = '<section class="card alert err" id="rep-error">' + LiffApp.errorHtml(r.error || 'ทำรายงานไม่สำเร็จ ลองอีกครั้ง') + '</section>';
+      return;
+    }
+    repData = r;
+    drawReport();
+  }
+
+  function repRangeText(r) { return thDate(r.from) + ' – ' + thDate(r.to); }
+  function repPrintedText(r) { return thDate(r.printedAt) + (String(r.printedAt).length > 15 ? ' ' + String(r.printedAt).slice(11, 16) + ' น.' : ''); }
+  function repNum(n, signed) {
+    if (!n) return '<span class="muted">0</span>';
+    return esc((signed && n > 0 ? '+' : '') + qtyText(n));
+  }
+
+  function drawReport() {
+    var r = repData;
+    var rows = r.rows || [];
+    $('rep-body').innerHTML =
+      '<section class="card rep-sheet" id="rep-sheet">' +
+      '<div class="rep-head"><div class="rep-co" id="rep-company">' + esc(r.company || '') + '</div><h2>รายงานสต็อก</h2>' +
+      '<div id="rep-range">ช่วงวันที่ ' + esc(repRangeText(r)) + '</div>' +
+      '<div class="small muted" id="rep-printed">พิมพ์เมื่อ ' + esc(repPrintedText(r)) + '</div></div>' +
+      (rows.length ? '<div class="rep-scroll"><table class="rep-table" id="rep-table"><thead><tr>' + REP_COLS.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') +
+        '</tr></thead><tbody>' + rows.map(function (x) {
+          return '<tr data-bc="' + esc(x.barcode) + '"><td class="nm">' + esc(x.name) + (x.startedIn ? '<div class="small muted">เริ่มนับ ' + esc(thDate(x.since)) + '</div>' : '') + '</td>' +
+            '<td>' + esc(x.unit) + '</td><td class="num">' + repNum(x.open) + '</td><td class="num">' + repNum(x.inQty) + '</td>' +
+            '<td class="num">' + repNum(x.sale) + '</td><td class="num">' + repNum(x.out) + '</td><td class="num">' + repNum(x.adjust, true) + '</td>' +
+            '<td class="num"><b>' + repNum(x.close) + '</b></td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="empty" id="rep-empty">ยังไม่มีสินค้าที่นับสต็อกในช่วงนี้</div>') +
+      '<div class="small muted rep-note">' + rows.length + ' รายการ · ไม่นับบิลที่ยกเลิกและบิลทดสอบ 0000 · แสดงเฉพาะสินค้าที่เริ่มนับสต็อกแล้ว</div></section>' +
+      (rows.length ? '<div class="rep-acts no-print"><button type="button" class="btn primary" id="rep-print">พิมพ์ / PDF</button>' +
+        '<button type="button" class="btn" id="rep-xlsx">ดาวน์โหลด Excel</button></div>' : '');
+    if (!rows.length) return;
+    $('rep-print').addEventListener('click', function () { if (!toBrowser()) window.print(); });
+    $('rep-xlsx').addEventListener('click', function () { if (!toBrowser()) saveXlsx(); });
+  }
+
+  /** ในแอป LINE → เปิดหน้ารายงานช่วงเดียวกันในเบราว์เซอร์ (คืน true) */
+  function toBrowser() {
+    if (!LiffApp.inClient()) return false;
+    var url = LiffApp.appUrl('stock') + '?' + new URLSearchParams(repParams()).toString();
+    if (!LiffApp.openExternal(url)) { LiffApp.toast('เปิดเบราว์เซอร์ไม่สำเร็จ ลองอีกครั้ง', true); return true; }
+    LiffApp.toast('เปิดในเบราว์เซอร์แล้ว กดพิมพ์หรือดาวน์โหลดที่นั่น');
+    return true;
+  }
+
+  function saveXlsx() {
+    var r = repData;
+    var head = REP_COLS.map(function (c) { return { v: c, s: 'head' }; });
+    var rows = [
+      [{ v: r.company || '', s: 'title' }],
+      [{ v: 'รายงานสต็อก', s: 'bold' }],
+      ['ช่วงวันที่ ' + repRangeText(r)],
+      ['พิมพ์เมื่อ ' + repPrintedText(r)],
+      [],
+      head
+    ].concat(r.rows.map(function (x) {
+      return [{ v: x.name + (x.startedIn ? ' (เริ่มนับ ' + thDate(x.since) + ')' : ''), s: 'text' }, { v: x.unit, s: 'text' },
+        x.open, x.inQty, x.sale, x.out, { v: x.adjust, s: 'signed' }, { v: x.close, s: 'bold' }];
+    }), [[], [{ v: 'ไม่นับบิลที่ยกเลิกและบิลทดสอบ 0000 · แสดงเฉพาะสินค้าที่เริ่มนับสต็อกแล้ว', s: 'small' }]]);
+    var be = function (iso) { return (Number(iso.slice(0, 4)) + 543) + iso.slice(4); };
+    var name = 'รายงานสต็อก ' + be(r.from) + (r.from === r.to ? '' : ' ถึง ' + be(r.to)) + '.xlsx';
+    Xlsx.save(name, Xlsx.build({ sheet: 'รายงานสต็อก', cols: [34, 8, 11, 10, 11, 13, 12, 14], rows: rows, merges: ['A1:H1', 'A2:H2', 'A3:H3', 'A4:H4'] }));
+    LiffApp.toast('ดาวน์โหลดแล้ว');
   }
 
   function tap(e) {

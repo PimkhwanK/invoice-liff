@@ -378,8 +378,114 @@ function stockSyncDocKey(kind, v) {
   return s !== '' && isFinite(n) && n >= 1 && Math.floor(n) === n ? String(n) : '';
 }
 
+// ---------- รอบ 24: รายงานสต็อก (ช่วงวันที่ → 1 แถวต่อสินค้า)
+
+var STOCK_REPORT_MAX_DAYS = 400; // เลือกวันเองได้ยาวไม่เกินเท่านี้
+var STOCK_REPORT_PERIODS = ['week', 'lastweek', 'month', 'pick', 'custom'];
+
+function stockIsoOk(s) {
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(String(s))) return false;
+  var p = String(s).split('-').map(Number);
+  var d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+  return d.getUTCFullYear() === p[0] && d.getUTCMonth() === p[1] - 1 && d.getUTCDate() === p[2];
+}
+
+function stockIsoAdd(iso, days) {
+  var p = iso.split('-').map(Number);
+  return new Date(Date.UTC(p[0], p[1] - 1, p[2] + days)).toISOString().slice(0, 10);
+}
+
+function stockIsoDays(from, to) {
+  var a = from.split('-').map(Number);
+  var b = to.split('-').map(Number);
+  return Math.round((Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / 86400000);
+}
+
+/**
+ * ช่วงเวลาของรายงาน (สัปดาห์เริ่มวันจันทร์)
+ * @param {object} o { period: 'week'|'lastweek'|'month'|'pick'|'custom', month: 'YYYY-MM' (pick), from, to (custom) }
+ * @param {string} today YYYY-MM-DD (เวลาไทย)
+ * @returns {{from, to, period} | {error}} สัปดาห์นี้ / เดือนนี้ = ถึงวันนี้ / เลือกเดือน = ทั้งเดือน (เดือนนี้ = ถึงวันนี้)
+ */
+function stockReportRange(o, today) {
+  o = o || {};
+  var period = STOCK_REPORT_PERIODS.indexOf(o.period) >= 0 ? o.period : 'month';
+  var p = today.split('-').map(Number);
+  var dow = (new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay() + 6) % 7; // จันทร์ = 0
+  var monday = stockIsoAdd(today, -dow);
+  if (period === 'week') return { period: period, from: monday, to: today };
+  if (period === 'lastweek') return { period: period, from: stockIsoAdd(monday, -7), to: stockIsoAdd(monday, -1) };
+  if (period === 'month') return { period: period, from: today.slice(0, 8) + '01', to: today };
+  if (period === 'pick') {
+    var m = stockText(o.month);
+    if (!/^[0-9]{4}-[0-9]{2}$/.test(m) || !stockIsoOk(m + '-01')) return { error: 'กรุณาเลือกเดือน' };
+    var from = m + '-01';
+    if (from > today) return { error: 'เลือกเดือนที่ยังไม่ถึงไม่ได้' };
+    var last = stockIsoAdd(stockIsoAdd(from, 32).slice(0, 8) + '01', -1);
+    return { period: period, month: m, from: from, to: last < today ? last : today };
+  }
+  var f = stockText(o.from);
+  var t = stockText(o.to);
+  if (!stockIsoOk(f) || !stockIsoOk(t)) return { error: 'กรุณาเลือกวันเริ่มและวันจบ' };
+  if (f > t) return { error: 'วันเริ่มต้องไม่หลังวันจบ' };
+  if (f > today) return { error: 'วันเริ่มต้องไม่เกินวันนี้' };
+  if (stockIsoDays(f, t) + 1 > STOCK_REPORT_MAX_DAYS) return { error: 'เลือกได้ไม่เกิน ' + STOCK_REPORT_MAX_DAYS + ' วัน' };
+  return { period: period, from: f, to: t };
+}
+
+/**
+ * รายงานสต็อกจากแท็บความเคลื่อนไหว (ยอดจริง) — เทียบวันที่ของ "เวลา" (at) ของรายการ
+ *   ยอดต้นช่วง = รวมทุกรายการก่อนวันเริ่ม / เริ่มนับกลางช่วง → ยอดต้นช่วง = ยอดเริ่มต้นที่นับได้ (startedIn = true)
+ *   ขายตามบิล = ขาย − คืนจากยกเลิก (บิลที่ออกและยกเลิกในช่วงเดียวกัน = 0) / 0000 ไม่มีรายการอยู่แล้ว
+ *   แก้ยอด = แก้ยอดตามที่นับ (+/−) และรายการอื่นที่ไม่รู้จัก (ยอดปลายช่วงต้องตรงกับยอดจริง)
+ *   คงเหลือปลายช่วง = ต้นช่วง + ของเข้า − ขาย − ของออก + แก้ยอด = รวมทุกรายการถึงวันจบ
+ *   รายการก่อน "ยอดเริ่มต้น" แรกไม่นับ (เหมือน stockBalancesFromMoves) / เริ่มนับหลังวันจบ → ไม่อยู่ในรายงาน
+ * @param {object} o { moves, products: [{barcode, name, unit}], from, to }
+ * @returns {object[]} [{ barcode, name, unit, since, startedIn, open, inQty, sale, out, adjust, close }] เรียงตามชื่อ
+ */
+function stockReportRows(o) {
+  var acc = {};
+  var order = [];
+  (o.moves || []).forEach(function (m) {
+    var bc = stockText(m.barcode);
+    if (!bc) return;
+    var kind = stockKindText(m.kind);
+    var day = stockText(m.at).slice(0, 10);
+    var q = Number(m.qty) || 0;
+    var a = acc[bc];
+    if (!a) {
+      if (kind !== STOCK_KIND.open) return; // ก่อนเริ่มนับ
+      a = acc[bc] = { barcode: bc, name: stockText(m.name), since: stockText(m.at), startedIn: false, open: 0, inQty: 0, sale: 0, out: 0, adjust: 0, close: 0, first: true };
+      order.push(bc);
+    }
+    if (day > o.to) return;
+    var first = a.first;
+    a.first = false;
+    if (day < o.from) { a.open = stockRound(a.open + q); a.close = a.open; return; }
+    a.close = stockRound(a.close + q);
+    if (first) { a.startedIn = true; a.open = stockRound(a.open + q); return; }
+    if (kind === STOCK_KIND.sale || kind === STOCK_KIND.ret) a.sale = stockRound(a.sale - q);
+    else if (kind === STOCK_KIND.in) a.inQty = stockRound(a.inQty + q);
+    else if (kind === STOCK_KIND.out) a.out = stockRound(a.out - q);
+    else a.adjust = stockRound(a.adjust + q);
+  });
+  var info = {};
+  (o.products || []).forEach(function (p) { info[stockText(p.barcode)] = p; });
+  return order.filter(function (bc) { return stockText(acc[bc].since).slice(0, 10) <= o.to; }).map(function (bc) {
+    var a = acc[bc];
+    var p = info[bc] || {};
+    return {
+      barcode: bc, name: stockText(p.name) || a.name, unit: stockText(p.unit), since: a.since, startedIn: a.startedIn,
+      open: a.open, inQty: a.inQty, sale: a.sale, out: a.out, adjust: a.adjust, close: a.close
+    };
+  }).sort(function (x, y) { return String(x.name).localeCompare(String(y.name), 'th'); });
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    STOCK_REPORT_MAX_DAYS: STOCK_REPORT_MAX_DAYS,
+    stockReportRange: stockReportRange,
+    stockReportRows: stockReportRows,
     STOCK_KIND: STOCK_KIND,
     STOCK_KIND_OLD: STOCK_KIND_OLD,
     stockKindText: stockKindText,
