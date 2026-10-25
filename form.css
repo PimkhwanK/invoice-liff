@@ -439,6 +439,47 @@ body.has-tabbar .toast { bottom: 140px; }
 .stock-acts .btn { font-size: 14px; line-height: 1.25; white-space: normal; text-align: center; padding-left: 6px; padding-right: 6px; }
 .move-desc { margin: 0; padding: 6px 16px 8px; border-bottom: 1px solid var(--theme-line); }
 
+/* ---------- รอบ 21: เมนูหลัก (menu.js) / ปุ่มเมนูหลักบนหัวทุกหน้า / แผ่นสอนติดตั้ง (pwa.js) ---------- */
+.home-link { display: inline-flex; align-items: center; gap: 4px; margin: -4px 0 6px -2px; padding: 4px 6px; border-radius: 8px; font-size: 14px; font-weight: 700; text-decoration: none; color: var(--theme-primary); }
+.home-link svg.icon { width: 18px; height: 18px; }
+.home-link:active { background: var(--theme-pressed); }
+.home-link + .mode-pill { margin-left: 8px; }
+.menu-hello { display: flex; align-items: center; gap: 10px; }
+.menu-hello .t { flex: 1; min-width: 0; }
+.menu-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin: 12px; }
+.menu-tile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-height: 150px; padding: 16px;
+  border-radius: 16px; text-decoration: none; color: var(--theme-on-primary); box-shadow: var(--theme-shadow);
+}
+.menu-tile svg.icon { width: 40px; height: 40px; stroke-width: 1.7; margin-bottom: auto; }
+.menu-tile .n { font-size: 22px; font-weight: 700; line-height: 1.25; }
+.menu-tile .s { font-size: 13px; }
+.menu-tile.cash { background: var(--theme-cash); }
+.menu-tile.tax { background: var(--theme-tax); }
+.menu-tile.stock { background: var(--theme-stock); }
+.menu-tile.summary { background: var(--theme-summary); }
+.menu-tile:active { filter: brightness(.92); }
+.menu-tile:focus-visible { outline: 3px solid var(--theme-text); outline-offset: 2px; }
+.menu-more .btn { justify-content: flex-start; }
+.menu-more .btn + .btn { margin-top: 8px; }
+.menu-more:not(:has(.btn:not(.hidden))) { display: none; }
+.install-steps { margin: 8px 0 0; padding-left: 22px; }
+.install-steps li + li { margin-top: 6px; }
+.install-steps svg.icon { width: 18px; height: 18px; }
+/* รอบ 21: ยอดคงเหลือในแผ่นเลือกสินค้า / แท็บของใกล้หมด + จุดเตือน (หน้าสต็อก) / บิลที่ออกล่าสุด (หน้าสรุป) */
+.stock-left { font-size: 13px; font-weight: 400; white-space: nowrap; color: var(--theme-text-2); }
+.stock-left.low { color: var(--theme-warn-text); font-weight: 700; }
+.stock-left.neg { color: var(--theme-err-text); font-weight: 700; }
+.stock-tabs { margin: 0 0 4px; }
+.th-box { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.th-box input { width: 100px; flex: none; }
+@media (min-width: 768px) {
+  .menu-grid { gap: 16px; }
+  .menu-tile { min-height: 200px; padding: 22px; }
+  .menu-tile .n { font-size: 26px; }
+  .menu-tile svg.icon { width: 52px; height: 52px; }
+}
+
 /* ---------- รอบ 20: คีย์บอร์ด (Tab / Enter / Esc) ---------- */
 /* ปุ่มเลือกแบบแบ่งช่อง: ซ่อน radio แบบที่ยังกด Tab / ลูกศรได้ (display: none ทำให้คีย์บอร์ดเข้าไม่ถึง) */
 .seg-choice label { position: relative; }

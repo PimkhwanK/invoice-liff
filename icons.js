@@ -35,7 +35,11 @@ var ICONS = {
   stock: '<path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/>',
   summary: '<path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/>',
   up: '<path d="M12 19V6M6 11l6-6 6 6"/>',
-  down: '<path d="M12 5v13M6 13l6 6 6-6"/>'
+  down: '<path d="M12 5v13M6 13l6 6 6-6"/>',
+  // รอบ 21: เมนูหลัก (บ้าน) / ออกจากระบบ (ประตู + ลูกศร) / แชร์ (กล่อง + ลูกศรขึ้น แบบปุ่มแชร์ของ Safari)
+  home: '<path d="M4 11l8-7 8 7"/><path d="M6 9.5V20h12V9.5M10 20v-5h4v5"/>',
+  logout: '<path d="M14 4H5v16h9"/><path d="M10 12h10M16 8l4 4-4 4"/>',
+  share: '<path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5v10h14V11h-1"/>'
 };
 
 /** <svg> ของไอคอน (ตกแต่งเท่านั้น aria-hidden — ปุ่มต้องมีข้อความหรือ aria-label เอง) */

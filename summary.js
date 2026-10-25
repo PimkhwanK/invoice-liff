@@ -201,7 +201,7 @@
     if (v.missing.cash) miss.push('ใบเงินสด');
     body.innerHTML =
       (miss.length ? '<div class="alert warn" id="sum-missing" style="margin:12px">ยังไม่รวม' + miss.join(' และ ') + ' กรุณาแจ้งผู้ดูแลระบบ</div>' : '') +
-      totalCard(v) + chartCard(v) + vatCard(v) + shopsCard(v) + productsCard(v) + lostCard(v) + lowCard();
+      totalCard(v) + chartCard(v) + vatCard(v) + shopsCard(v) + productsCard(v) + recentCard(d) + lowCard(); // รอบ 21: บิลที่ออกล่าสุด แทนร้านที่ไม่ได้ซื้อ
   }
 
   function tile(kind, label, p) {
@@ -325,6 +325,25 @@
       }, function (x) { return qty ? x.qty : x.sat; }) + '</ul></section>';
   }
 
+/**
+   * รอบ 21: บิลที่ออกล่าสุด 10 ใบ ทั้งสองประเภท (รวมใบที่ยกเลิก ไม่รวม 0000) แตะ → ดู PDF (view?type=…&no=…) — ไม่ขึ้นกับช่วงเวลาที่เลือก
+   * (แทน "ร้านที่ไม่ได้ซื้อเกิน 30 วัน" — lostCard ยังอยู่ ไม่ได้ใช้)
+   */
+  function recentCard(d) {
+    var list = Array.isArray(d.recent) ? d.recent : [];
+    var today = d.today;
+    return '<section class="card" id="sum-recent"><h2>บิลที่ออกล่าสุด <span class="count">' + SALES_RECENT + ' ใบล่าสุด · ทั้ง 2 ประเภท</span></h2>' +
+      '<ul class="list">' + (list.length ? list.map(function (r) {
+        var kind = r[0], no = r[1], date = r[2], at = String(r[3] || ''), cancelled = !!r[6];
+        var when = (date === today ? 'วันนี้' : formatThaiDateShort(date)) + (at.length > 15 && date === today ? ' ' + at.slice(11, 16) : '');
+        var href = 'view?type=' + (kind === 'c' ? 'cash' : 'tax') + '&no=' + encodeURIComponent(String(no));
+        return '<li class="sum-lost tap recent" data-href="' + esc(href) + '" role="link" tabindex="0"><div class="nm"><div class="n">' +
+          (kind === 'c' ? '' : '#') + esc(no) + ' · ' + esc(r[4] || '-') + ' ' + kindBadge(kind) + (cancelled ? ' <span class="badge red">ยกเลิก</span>' : '') + '</div>' +
+          '<div class="small muted">' + esc(when) + ' · แตะเพื่อดู PDF</div></div>' +
+          '<div class="amt"><b class="num">' + money(r[5]) + '</b></div></li>';
+      }).join('') : '<li class="empty">ยังไม่มีบิล</li>') + '</ul></section>';
+  }
+
   /** ข้อ ค: ร้านที่เคยซื้อประจำแต่ไม่ได้ซื้อเกิน 30 วัน (ไม่ขึ้นกับช่วงเวลาที่เลือก) */
   function lostCard(v) {
     return '<section class="card" id="sum-lost"><h2>ร้านที่ไม่ได้ซื้อเกิน ' + SALES_LOST_DAYS + ' วัน</h2>' +
@@ -349,7 +368,7 @@
         return '<li class="st-row"><div class="nm"><div class="n">' + esc(p.name) + '</div></div>' +
           '<div class="q ' + esc(p.level) + '"><b class="num">' + esc(formatQty(p.qty)) + '</b> ' + esc(p.unit) + '</div></li>';
       }).join('') : '<li class="empty">ไม่มีสินค้าใกล้หมด</li>') + '</ul>' +
-      '<a class="btn block" id="sum-to-stock" href="stock" style="margin-top:8px">ไปหน้าสต็อก</a></section>';
+      '<a class="btn block" id="sum-to-stock" href="stock?tab=low" style="margin-top:8px">ไปหน้าสต็อก</a></section>'; // รอบ 21: แท็บของใกล้หมด
   }
 
   function go(el) {

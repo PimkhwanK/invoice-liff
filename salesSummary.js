@@ -21,7 +21,8 @@ if (typeof require === 'function' && typeof module !== 'undefined') {
   var cashDocParse = require('./cashDoc').cashDocParse;
 }
 
-var SALES_VERSION = 1;        // รูปแบบข้อมูลสรุป (เปลี่ยนเมื่อรูปแบบเปลี่ยน → cache / ข้อมูลที่มือถือจำไว้รุ่นเก่าไม่ถูกใช้)
+var SALES_VERSION = 2;        // รูปแบบข้อมูลสรุป (เปลี่ยนเมื่อรูปแบบเปลี่ยน → cache / ข้อมูลที่มือถือจำไว้รุ่นเก่าไม่ถูกใช้) — รอบ 21: + recent
+var SALES_RECENT = 10;        // รอบ 21: บิลที่ออกล่าสุด (ทั้งสองประเภท รวมใบที่ยกเลิก ไม่รวม 0000)
 var SALES_TOP = 10;           // อันดับร้าน / สินค้า
 var SALES_LOST_DAYS = 30;     // ร้านที่หายไป: ไม่ได้ซื้อเกินกี่วัน
 var SALES_LOST_LOOKBACK = 365; // ดูประวัติย้อนหลังกี่วัน
@@ -68,6 +69,7 @@ function salesQty(n) {
  *   shops [[เดือน, ร้าน, สตางค์, ใบ]] / shopsToday [[ร้าน, สตางค์, ใบ]]
  *   products [[เดือน, บาร์โค้ด, จำนวน, สตางค์]] / productsToday [[บาร์โค้ด, จำนวน, สตางค์]]
  *   names {ร้าน: ชื่อย่อล่าสุด} / pnames {บาร์โค้ด: [ชื่อ, หน่วย]} / lost [[ร้าน, วันที่ซื้อล่าสุด, ใบ, สตางค์]]
+ *   recent [[ประเภท 't'|'c', เลขที่, วันที่บิล, เวลาที่ออก (created_at), ชื่อร้าน, สตางค์, ยกเลิก 0|1]] — รอบ 21: 10 ใบล่าสุดตามเวลาที่ออก (ไม่ขึ้นกับปีที่ขอ)
  */
 function salesBuild(input) {
   var year = Number(input.year);
@@ -84,6 +86,7 @@ function salesBuild(input) {
   var names = {};    // ร้าน → {name, date}
   var pnames = {};   // บาร์โค้ด → {name, unit, date}
   var buys = {};     // ร้าน → {last, n, sat} (ประวัติย้อนหลัง SALES_LOST_LOOKBACK วัน)
+  var recent = [];   // รอบ 21: บิลจริงทุกใบ (รวมใบที่ยกเลิก) → 10 ใบล่าสุด
 
   function bump(map, key, init, add) {
     var r = map[key] || (map[key] = init.slice());
@@ -98,9 +101,12 @@ function salesBuild(input) {
     var inYear = {}; // เลขที่ → วันที่ (บิลของปีที่ขอ)
     (book.docs || []).forEach(function (d) {
       var no = salesDocKey(kind, d.doc_no);
-      if (!no || salesText(d.status) === 'cancelled') return;
+      if (!no) return;
       var date = salesIso(d.doc_date);
       if (!date) return;
+      var cancelled = salesText(d.status) === 'cancelled';
+      recent.push([kind, kind === 'c' ? no : Number(no), date, salesText(d.created_at), salesText(d.shop_short_name) || salesText(d.shop_legal_name), toSatang(d.total), cancelled ? 1 : 0]);
+      if (cancelled) return;
       var y = Number(date.slice(0, 4));
       years[y] = true;
       var sat = toSatang(d.total);
@@ -170,6 +176,7 @@ function salesBuild(input) {
     names: nameOut,
     pnames: pnameOut,
     lost: lost,
+    recent: recent.sort(function (a, b) { return (b[3] || b[2]) < (a[3] || a[2]) ? -1 : (b[3] || b[2]) > (a[3] || a[2]) ? 1 : 0; }).slice(0, SALES_RECENT),
     missing: { tax: !input.tax, cash: !input.cash }
   };
 }
@@ -361,6 +368,7 @@ if (typeof module !== 'undefined' && module.exports) {
     SALES_VERSION: SALES_VERSION,
     SALES_TOP: SALES_TOP,
     SALES_LOST_DAYS: SALES_LOST_DAYS,
+    SALES_RECENT: SALES_RECENT,
     salesBuild: salesBuild,
     salesView: salesView,
     salesRange: salesRange,

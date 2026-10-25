@@ -4,13 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-nqqAR+vB7Q7TxlDHKAnLPaYfPF4stD8bLkoUPzwsVhU=' https://static.line-scdn.net https://*.line-scdn.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://*.line.me https://*.line-scdn.net https://*.line-apps.com https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; frame-src https://*.line.me; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>ออกบิล</title>
 <link rel="stylesheet" href="form.css">
 <link rel="stylesheet" href="theme.css">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/app-180.png">
+<link rel="icon" href="icons/app-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ออกบิล">
 </head>
 <body>
-<!-- แอป LIFF หน้าเดียว (รอบ 6 ข้อ 3.5): issue.html / history.html / manage.html / view.html / summary.html / stock.html เป็นไฟล์เดียวกันทุกตัวอักษร
-     หน้าจอที่แสดงเลือกจาก path (shell.js) แล้วสลับหน้าจอในแอปโดยไม่โหลดหน้าใหม่ — แก้ไฟล์นี้แล้วต้องคัดลอกทับอีก 5 ไฟล์ -->
+<!-- แอป LIFF หน้าเดียว (รอบ 6 ข้อ 3.5): issue.html / history.html / manage.html / view.html / summary.html / stock.html / menu.html เป็นไฟล์เดียวกันทุกตัวอักษร
+     หน้าจอที่แสดงเลือกจาก path (shell.js) แล้วสลับหน้าจอในแอปโดยไม่โหลดหน้าใหม่ — แก้ไฟล์นี้แล้วต้องคัดลอกทับอีก 6 ไฟล์ / รอบ 21: แก้สคริปต์ในหน้า (inline) ต้องแก้ค่า sha256 ใน Content-Security-Policy ด้วย (test ตรวจ) -->
 <div class="wrap" id="app">
   <div class="screen"><div class="topbar"><h1>กำลังเปิด…</h1></div>
   <div id="view"><div class="loading" role="status"><span class="spinner" aria-hidden="true"></span><div class="msg">กำลังเปิดหน้า…</div></div></div></div>
@@ -43,6 +50,8 @@
 <script src="view.js"></script>
 <script src="summary.js"></script>
 <script src="stock.js"></script>
+<script src="menu.js"></script>
+<script src="pwa.js"></script>
 <script>
   // ตรวจว่าไฟล์ทุกไฟล์โหลดครบก่อนเริ่มแอป (รอบ 6 ข้อ 4 ต่อ) — เน็ตช้า/หลุดจนไฟล์หนึ่งโหลดไม่สำเร็จ เบราว์เซอร์จะข้ามไฟล์นั้นแล้วรันไฟล์ถัดไป
   // (เดิม: หน้าวาดไม่ครบเงียบ ๆ เช่น "fromSatang is not defined" หรือค้างที่ "กำลังเปิด…")
@@ -94,7 +103,9 @@
     ['manage.js', function () { return Shell.has('manage'); }],
     ['view.js', function () { return Shell.has('view'); }],
     ['summary.js', function () { return Shell.has('summary'); }],
-    ['stock.js', function () { return Shell.has('stock'); }]
+    ['stock.js', function () { return Shell.has('stock'); }],
+    ['menu.js', function () { return Shell.has('menu'); }],
+    ['pwa.js', function () { return typeof Pwa === 'object'; }]
   ], function () { Shell.boot(); });
 </script>
 </body>

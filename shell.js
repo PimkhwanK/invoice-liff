@@ -12,11 +12,12 @@
  *   ลำดับโหลด: shell.js → หน้าจอ (Shell.define) → Shell.boot() ท้ายหน้า
  *   แถบเมนูล่าง 3 ปุ่ม: ออกบิล / ประวัติ / จัดการข้อมูล (หน้าดู PDF ไม่อยู่ในแถบ)
  *   รอบ 15: หน้าสรุป (summary) / สต็อก (stock) เปิดจาก Rich Menu ตรง ๆ — ไม่ผูกกับประเภทเอกสาร (ALONE): ไม่มีแถบเมนูล่าง ไม่มีป้ายประเภท ไม่มี ?type= ใน URL
+ *   รอบ 21: หน้าเมนูหลัก (menu) = หน้าแรก (ALONE) / ทุกหน้าจออื่นมีปุ่ม "เมนูหลัก" บนหัว / ลิงก์ไปโหมดอื่น (issue?type=…) → โหลดหน้าใหม่ (โหมดคงที่ต่อการเปิดแอป)
  *   ?debug=1 → แถบเวลาเล็ก ๆ บนจอ: liff.init, คำขอเซิร์ฟเวอร์แต่ละครั้ง, เวลาสลับหน้าจอ (จำไว้ในแท็บนี้จนปิด / ?debug=0 ปิด)
  */
 var Shell = (function () {
-  var ROUTES = { issue: [], history: ['shopId'], manage: ['tab'], view: ['no'], summary: [], stock: ['barcode'] };
-  var ALONE = { summary: true, stock: true }; // รอบ 15: หน้าที่ไม่ผูกกับประเภทเอกสาร
+  var ROUTES = { issue: [], history: ['shopId'], manage: ['tab'], view: ['no'], summary: [], stock: ['barcode', 'tab'], menu: [] };
+  var ALONE = { summary: true, stock: true, menu: true }; // รอบ 15: หน้าที่ไม่ผูกกับประเภทเอกสาร (รอบ 21: + เมนูหลัก)
   var TABS = ['issue', 'history', 'manage'];
   var defs = {};
   var screens = {};
@@ -40,7 +41,7 @@ var Shell = (function () {
   function parse(href) {
     var u = new URL(href, location.href);
     var name = u.pathname.split('/').pop().replace(/\.html$/, '');
-    if (!ROUTES[name]) name = 'issue';
+    if (!ROUTES[name]) name = name === 'index' || name === '' ? 'menu' : 'issue';
     var params = {};
     ROUTES[name].forEach(function (k) { if (u.searchParams.has(k)) params[k] = u.searchParams.get(k); });
     return { name: name, params: params };
@@ -73,6 +74,10 @@ var Shell = (function () {
         iconSvg(LiffApp.isCash() ? 'cash' : 'receipt') + '<span></span></div>');
       pill.querySelector('span').textContent = LiffApp.MODE_LABEL;
       bar.insertBefore(pill, bar.firstChild);
+    }
+    // รอบ 21: ปุ่ม "เมนูหลัก" บนหัวทุกหน้าจอ (ยกเว้นเมนูหลักเอง)
+    if (bar && name !== 'menu') {
+      bar.insertBefore(LiffApp.el('<a class="home-link" id="home-link" href="menu">' + iconSvg('home') + '<span>เมนูหลัก</span></a>'), bar.firstChild);
     }
     screens[name] = s;
     return s;
@@ -176,6 +181,9 @@ var Shell = (function () {
     if (/^[a-z]+:|^\/\/|^#/i.test(href)) return;
     var name = href.split(/[?#]/)[0].replace(/\.html$/, '');
     if (!ROUTES[name] || !ready) return;
+    // รอบ 21: ลิงก์ไปอีกโหมด (เช่น เมนูหลัก → issue?type=cash ขณะแอปเปิดเป็นใบกำกับ) → โหลดหน้าใหม่ในโหมดนั้น
+    var type = new URL(href, location.href).searchParams.get('type');
+    if (type && type !== LiffApp.MODE) return;
     e.preventDefault();
     var r = parse(href);
     go(r.name, r.params);

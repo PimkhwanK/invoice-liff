@@ -4,6 +4,8 @@
  *   ปุ่มล่าง: ของเข้า / ของออก (ไม่มีบิล) / แก้ยอดตามที่นับ (ทีละหลายสินค้า — รอบ 18 เปลี่ยนชื่อจาก รับเข้า / หักออก / นับสต็อก) → stockMove / แตะสินค้า → stock?barcode= ความเคลื่อนไหวย้อนหลัง (stockHistory)
  *   เรียง (รอบ 19): คงเหลือมาก→น้อย / น้อย→มาก / ชื่อ ก-ฮ ใช้กับรายการ "สินค้า" (ต้องดูอยู่บนสุดเสมอ) จำไว้ในเครื่อง (stock-sort)
  *   ข้อมูล: stockData (StockApi.gs) จำไว้ในเครื่อง ('stock') → เปิดครั้งถัดไปเห็นทันที แล้วอัปเดตเบื้องหลัง
+ *   รอบ 21: แท็บ "สินค้าทั้งหมด" | "ของใกล้หมด" (stock?tab=low — ≤ จุดเตือน หรือติดลบ เรียงน้อยสุดก่อน) + ตั้งจุดเตือน (setStockThreshold) ตัวเลขเดียวทุกสินค้า
+ *     เตือนในหน้าเว็บเท่านั้น ไม่ส่งข้อความ LINE
  *   กติกา (ตรวจซ้ำที่เซิร์ฟเวอร์): stockCore.js stockPlanManual — หน้าเว็บใช้ตัวเดียวกันแสดงยอดใหม่ระหว่างพิมพ์
  */
 (function () {
@@ -87,12 +89,26 @@
     $('sub').textContent = 'ใกล้หมดเมื่อเหลือไม่เกิน ' + qtyText(data.threshold);
     if (!$('stock-q')) {
       view.innerHTML =
+        '<nav class="tabs stock-tabs" id="stock-tabs"><button type="button" data-tab="all">สินค้าทั้งหมด</button>' +
+        '<button type="button" data-tab="low">ของใกล้หมด <span id="low-count"></span></button></nav>' +
         '<div id="stock-pending-box"></div>' +
-        '<section class="card"><input type="search" id="stock-q" placeholder="ค้นหาชื่อสินค้า หรือบาร์โค้ด" autocomplete="off">' +
+        '<div id="tab-all"><section class="card"><input type="search" id="stock-q" placeholder="ค้นหาชื่อสินค้า หรือบาร์โค้ด" autocomplete="off">' +
         '<div class="sum-pick"><select id="stock-sort" aria-label="เรียงตาม">' + Object.keys(SORTS).map(function (k) {
           return '<option value="' + k + '">เรียง: ' + esc(SORTS[k]) + '</option>';
         }).join('') + '</select></div></section>' +
-        '<div id="stock-lists"></div>';
+        '<div id="stock-lists"></div></div>' +
+        '<div id="tab-low" class="hidden"><section class="card" id="th-card"><h2>จุดเตือนของใกล้หมด</h2>' +
+        '<div class="th-box"><label for="th-input">เตือนเมื่อเหลือไม่เกิน</label><input type="number" class="num" id="th-input" min="0" step="any" inputmode="decimal">' +
+        '<button type="button" class="btn sm primary" id="th-save">บันทึก</button></div>' +
+        '<div class="hint">ตัวเลขเดียวใช้กับทุกสินค้า เตือนในหน้าเว็บเท่านั้น ไม่ส่งข้อความ LINE</div><div id="th-error"></div></section>' +
+        '<div id="low-box"></div></div>';
+      $('stock-tabs').addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-tab]');
+        if (b) setTab(b.dataset.tab);
+      });
+      $('th-save').addEventListener('click', saveThreshold);
+      $('th-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') saveThreshold(); });
+      $('th-input').value = String(data.threshold);
       $('stock-q').addEventListener('input', function (e) { term = e.target.value; drawLists(); });
       $('stock-q').value = term;
       $('stock-sort').value = currentSort();
@@ -101,6 +117,55 @@
     $('stock-pending-box').innerHTML = data.pending
       ? '<section class="card alert warn" id="stock-pending">มีบิลที่ยังตัดสต็อกไม่ครบ ระบบกำลังตัดให้อัตโนมัติ ยอดอาจยังไม่ตรง</section>' : '';
     drawLists();
+    setTab(scr.params.tab === 'low' ? 'low' : 'all', true);
+  }
+
+  /** รอบ 21: แท็บ สินค้าทั้งหมด / ของใกล้หมด (จำใน URL stock?tab=low) */
+  function setTab(t, keepUrl) {
+    $('tab-all').classList.toggle('hidden', t === 'low');
+    $('tab-low').classList.toggle('hidden', t !== 'low');
+    $('stock-tabs').querySelectorAll('button[data-tab]').forEach(function (b) {
+      var on = b.dataset.tab === t;
+      b.classList.toggle('on', on);
+      if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+    });
+    if (!keepUrl) Shell.setParams(scr, t === 'low' ? { tab: 'low' } : {});
+  }
+
+  /** ของใกล้หมด: ≤ จุดเตือน หรือติดลบ (เฉพาะสินค้าที่นับแล้ว) เรียงน้อยสุดก่อน (ไม่ขึ้นกับช่องค้นหา) */
+  function drawLow() {
+    var low = products().filter(function (p) { return p.level === 'neg' || p.level === 'low'; })
+      .sort(function (a, b) { return a.qty - b.qty || byName(a, b); });
+    $('low-count').textContent = '(' + low.length + ')';
+    $('low-box').innerHTML = '<section class="card" id="stock-low"><h2>ของใกล้หมด <span class="count">' + low.length + ' รายการ · น้อยสุดก่อน</span></h2>' +
+      (low.length ? '<ul class="list">' + low.map(row).join('') + '</ul>' : '<div class="empty">ไม่มีของใกล้หมด</div>') + '</section>';
+  }
+
+  /** รอบ 21: บันทึกจุดเตือน (ตัวเลข ≥ 0) → เซิร์ฟเวอร์ตอบรายการสินค้าใหม่ (ระดับคำนวณใหม่) */
+  async function saveThreshold() {
+    var input = $('th-input');
+    var btn = $('th-save');
+    var v = String(input.value).trim();
+    var n = Number(v);
+    if (v === '' || !isFinite(n) || n < 0) {
+      $('th-error').innerHTML = '<div class="alert err" id="th-errors" style="margin-top:8px">จุดเตือนต้องเป็นตัวเลข 0 ขึ้นไป</div>';
+      return;
+    }
+    $('th-error').innerHTML = '';
+    btn.disabled = true;
+    var r = await LiffApp.api('setStockThreshold', { threshold: n });
+    btn.disabled = false;
+    if (!r.ok) {
+      if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
+      $('th-error').innerHTML = '<div class="alert err" id="th-errors" style="margin-top:8px">' + LiffApp.errorHtml(r.error || 'บันทึกไม่สำเร็จ ลองอีกครั้ง') + '</div>';
+      return;
+    }
+    data = r;
+    LiffApp.keep('stock', r);
+    $('sub').textContent = 'ใกล้หมดเมื่อเหลือไม่เกิน ' + qtyText(r.threshold);
+    input.value = String(r.threshold);
+    drawLists();
+    LiffApp.toast('บันทึกจุดเตือนแล้ว เหลือไม่เกิน ' + qtyText(r.threshold));
   }
 
   function currentSort() {
@@ -133,6 +198,7 @@
       (ok.length ? '<ul class="list">' + ok.map(row).join('') + '</ul>' : '') +
       (off.length ? '<div class="st-grp">ยังไม่นับสต็อก (ไม่ตัดอัตโนมัติ) กด "แก้ยอดตามที่นับ" เพื่อเริ่ม</div><ul class="list" id="stock-off">' + off.map(row).join('') + '</ul>' : '') +
       (!list.length ? '<div class="empty">ไม่พบสินค้าที่ค้นหา</div>' : '') + '</section>';
+    drawLow();
   }
 
   // ---------- ของเข้า / ของออก / แก้ยอดตามที่นับ

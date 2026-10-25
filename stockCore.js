@@ -32,6 +32,13 @@ var STOCK_LOW_DEFAULT = 10;  // ใกล้หมดเมื่อเหลื
 var STOCK_MAX_LINES = 50;    // ของเข้า / ของออก / แก้ยอดตามที่นับ ได้ครั้งละไม่เกินกี่สินค้า
 var STOCK_MAX_QTY = 1000000; // จำนวนต่อบรรทัดไม่เกินเท่านี้ (กันพิมพ์เกิน)
 var STOCK_TEXT_MAX = 200;    // เหตุผล / หมายเหตุ
+/** รอบ 21: ใบกำกับประเภทนี้ไม่หัก/ไม่คืนสต็อก (ใบที่ 2 ของการขายเดียวกัน — ของออกไปแล้วตอนออกใบกำกับภาษี/ใบส่งสินค้า) */
+var STOCK_NO_DEDUCT_DOC_TYPE = 'ใบเสร็จรับเงิน';
+
+/** บิลนี้หักสต็อกไหม — ใบกำกับประเภท "ใบเสร็จรับเงิน" ไม่หัก / ใบกำกับภาษี/ใบส่งสินค้า และใบเงินสด หักตามปกติ */
+function stockDeducts(kind, docType) {
+  return !(kind === 'tax' && stockText(docType) === STOCK_NO_DEDUCT_DOC_TYPE);
+}
 
 function stockText(v) {
   return v === undefined || v === null ? '' : String(v).trim();
@@ -129,12 +136,14 @@ function stockShortages(items, stock) {
 
 /**
  * รายการหักสต็อกของบิลที่เพิ่งบันทึก (เฉพาะสินค้าที่ติดตาม และเริ่มนับก่อนเวลาที่ออกบิล)
- * @param {object} o { items, stock: {bc: {qty, since, tracked}}, ref, at (เวลาที่ออก = created_at), by }
+ * @param {object} o { items, stock: {bc: {qty, since, tracked}}, ref, at (เวลาที่ออก = created_at), by, kind?, docType? }
+ *   รอบ 21: kind 'tax' + docType "ใบเสร็จรับเงิน" → ไม่หัก (stockDeducts)
  * @returns {{moves: object[], balances: {bc: qty}}} moves พร้อม "คงเหลือหลังรายการ" (balance)
  */
 function stockPlanSale(o) {
   var moves = [];
   var balances = {};
+  if (o.kind && !stockDeducts(o.kind, o.docType)) return { moves: moves, balances: balances };
   stockSaleLines(o.items).forEach(function (l) {
     var s = o.stock && o.stock[l.barcode];
     if (!s || !s.tracked || !(stockText(s.since) <= stockText(o.at))) return;
@@ -301,6 +310,7 @@ function stockSyncPlan(o) {
       if (!key) return;
       var ref = stockRef(book.kind, d.doc_no);
       var cancelled = stockText(d.status) === 'cancelled';
+      var deduct = stockDeducts(book.kind, d.doc_type); // รอบ 21: ใบเสร็จรับเงินไม่หัก (ยกเลิก = คืนเฉพาะที่เคยหักจริง)
       stockSaleLines(itemsOf[key]).forEach(function (l) {
         var k = ref + '|' + l.barcode;
         var b = bal[l.barcode];
@@ -309,7 +319,7 @@ function stockSyncPlan(o) {
           if (b && need > 0) { add(l.barcode, need, STOCK_KIND.ret, ref); back[k] = stockRound((back[k] || 0) + need); counts.returns++; }
           return;
         }
-        if (!b || sold[k] || !(b.since <= stockText(d.created_at))) return;
+        if (!deduct || !b || sold[k] || !(b.since <= stockText(d.created_at))) return;
         add(l.barcode, -l.qty, STOCK_KIND.sale, ref);
         sold[k] = l.qty;
         counts.sales++;
@@ -317,6 +327,28 @@ function stockSyncPlan(o) {
     });
   });
   return { moves: out, balances: bal, sales: counts.sales, returns: counts.returns };
+}
+
+/**
+ * รอบ 21: ผลการคืนสต็อกของบิลที่ยกเลิก (ข้อความบนจอ)
+ * @param {object} o { ref, moves (ทั้งแท็บหลังคืน), items (รายการในบิล), stock: {bc: {tracked, since}}, createdAt, kind, docType }
+ * @returns {{returned: number, note: string}} returned = จำนวนสินค้าที่คืนแล้ว (นับรวมที่คืนไว้ก่อนหน้า)
+ *   คืนแล้ว → "คืนสต็อกแล้ว N รายการ" / ใบเสร็จรับเงิน → ไม่ได้หักตั้งแต่แรก / ออกก่อนเริ่มนับ → "บิลนี้ออกก่อนเริ่มนับสต็อก จึงไม่ได้คืน" / ไม่มีสินค้าที่นับสต็อก → ''
+ */
+function stockReturnNote(o) {
+  var back = {};
+  (o.moves || []).forEach(function (m) {
+    if (stockText(m.ref) === o.ref && stockText(m.kind) === STOCK_KIND.ret && Number(m.qty) > 0) back[stockText(m.barcode)] = true;
+  });
+  var n = Object.keys(back).length;
+  if (n) return { returned: n, note: 'คืนสต็อกแล้ว ' + n + ' รายการ' };
+  if (o.kind && !stockDeducts(o.kind, o.docType)) return { returned: 0, note: 'ใบเสร็จรับเงินไม่หักสต็อก จึงไม่ได้คืน' };
+  var at = stockText(o.createdAt);
+  var early = stockSaleLines(o.items).some(function (l) {
+    var s = o.stock && o.stock[l.barcode];
+    return s && s.tracked && at !== '' && !(stockText(s.since) <= at);
+  });
+  return { returned: 0, note: early ? 'บิลนี้ออกก่อนเริ่มนับสต็อก จึงไม่ได้คืน' : '' };
 }
 
 /** เลขที่ของบิลจริง ('tax' จำนวนเต็ม ≥ 1 / 'cash' MMYY-ลำดับ) → ข้อความ / บิลทดสอบ 0000 หรืออ่านไม่ได้ → '' */
@@ -337,6 +369,9 @@ if (typeof module !== 'undefined' && module.exports) {
     stockKindText: stockKindText,
     STOCK_LOW_DEFAULT: STOCK_LOW_DEFAULT,
     STOCK_MAX_LINES: STOCK_MAX_LINES,
+    STOCK_NO_DEDUCT_DOC_TYPE: STOCK_NO_DEDUCT_DOC_TYPE,
+    stockDeducts: stockDeducts,
+    stockReturnNote: stockReturnNote,
     stockTracked: stockTracked,
     stockRef: stockRef,
     stockLowThreshold: stockLowThreshold,

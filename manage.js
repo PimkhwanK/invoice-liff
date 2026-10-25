@@ -264,14 +264,16 @@
         return;
       }
       reason.disabled = true;
+      stockNote = r.stockMessage || r.stockReturnNote || ''; // รอบ 21: "คืนสต็อกแล้ว N รายการ" / ออกก่อนเริ่มนับ / ยังตัดไม่ครบ
       AppData.patchDoc(LiffApp.docParam(d.doc_no), r.document); // สถานะยกเลิก + เหตุผล + ยกเลิกโดย (ทุกหน้าจอในแอปเห็นทันที)
       ok.dataset.retry = '1'; // ยกเลิกแล้ว: ปุ่มนี้ต่อจากนี้ = ทำ PDF ใหม่ (ห้ามส่งยกเลิกซ้ำ)
       makePdf();
     });
+    var stockNote = '';
     async function makePdf() {
       ok.disabled = true;
       ok.textContent = 'กำลังทำ PDF…';
-      msg.innerHTML = '<div class="alert ok" id="c-wait">ยกเลิกแล้ว กำลังใส่ลายน้ำใน PDF…</div>';
+      msg.innerHTML = '<div class="alert ok" id="c-wait">ยกเลิกแล้ว กำลังใส่ลายน้ำใน PDF…' + (stockNote ? '<div id="c-stock">' + LiffApp.esc(stockNote) + '</div>' : '') + '</div>';
       var r = await LiffApp.api('regeneratePdf', { docNo: LiffApp.docParam(d.doc_no), replace: true });
       ok.disabled = false;
       if (!r.ok) {
@@ -283,7 +285,7 @@
         return;
       }
       sh.close();
-      LiffApp.toast('ยกเลิกบิล #' + LiffApp.docNoText(d.doc_no) + ' แล้ว');
+      LiffApp.toast('ยกเลิกบิล #' + LiffApp.docNoText(d.doc_no) + ' แล้ว' + (stockNote ? String.fromCharCode(10) + stockNote : ''));
       AppData.patchDoc(LiffApp.docParam(d.doc_no), { pdfUrl: r.pdfUrl, hasPdf: !!r.pdfUrl }); // PDF เปลี่ยน (ลายน้ำ) → หน้าจอดู PDF ของใบนี้โหลดใหม่
     }
     // เมื่อปิดแผ่น ให้รายการอัปเดตเสมอ (เผื่อยกเลิกไปแล้วแต่ PDF ล้มเหลว)

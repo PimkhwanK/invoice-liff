@@ -4,15 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-1Ioy5ZxjUmULwBFq4qV8OO9jKJc0uYSufR5fjvROOlI=' 'sha256-WtMb7d39Mc7peeY/1ofZD4ZHvx7mgrztPQcfKSZJeRY=' https://static.line-scdn.net https://*.line-scdn.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://*.line.me https://*.line-scdn.net https://*.line-apps.com https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; frame-src https://*.line.me; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>ออกบิล</title>
 <script>
-  // หน้าแรกของ LIFF (https://liff.line.me/<LIFF ID> ไม่มี path) → พาไปหน้าออกบิลทันที
+  // หน้าแรก (https://liff.line.me/<LIFF ID> ไม่มี path / เว็บนอก LINE) → พาไปหน้าเมนูหลักทันที (รอบ 21 — เดิมไปหน้าออกบิล)
   // หน้าตรวจระบบเดิมย้ายไปที่ /check (ผู้ดูแลเปิดเอง ไม่มีลิงก์จากหน้าอื่น)
   // มี ?... (เช่น liff.state ของ https://liff.line.me/<LIFF ID>/issue หรือผลการเข้าสู่ระบบ) → ให้ liff.init ด้านล่างจัดการก่อน
-  if (!location.search) location.replace('issue' + location.hash);
+  if (!location.search) location.replace('menu' + location.hash);
 </script>
 <link rel="stylesheet" href="form.css">
 <link rel="stylesheet" href="theme.css">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/app-180.png">
 </head>
 <body>
 <div class="wrap">
@@ -26,10 +29,10 @@
     var cfg = window.APP_CONFIG || {};
     // liff.state = LINE เปิดหน้านี้ก่อนแล้วให้ liff.init พาไปหน้าตาม path เอง (เช่น /issue, /view?no=…)
     var goingElsewhere = new URLSearchParams(location.search).has('liff.state');
-    // ?debug=1 (แถบเวลา) ติดไปหน้าออกบิลด้วย / ค่าอื่น (เช่น ?code= ของการเข้าสู่ระบบ) ไม่ต้องพาไป
+    // ?debug=1 (แถบเวลา) ติดไปหน้าเมนูหลักด้วย / ค่าอื่น (เช่น ?code= ของการเข้าสู่ระบบ) ไม่ต้องพาไป
     var debug = new URLSearchParams(location.search).get('debug') === '1' ? '?debug=1' : '';
-    function toIssue() { location.replace('issue' + debug + location.hash); }
-    if (typeof liff === 'undefined' || !cfg.LIFF_ID) return toIssue(); // หน้าออกบิลแสดงข้อผิดพลาดเอง
+    function toIssue() { location.replace('menu' + debug + location.hash); }
+    if (typeof liff === 'undefined' || !cfg.LIFF_ID) return toIssue(); // หน้าเมนูหลักแสดงข้อผิดพลาดเอง
     liff.init({ liffId: cfg.LIFF_ID }).then(function () {
       if (!goingElsewhere) toIssue();
     }, toIssue);

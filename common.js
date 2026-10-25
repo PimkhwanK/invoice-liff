@@ -35,7 +35,7 @@ var LiffApp = (function () {
     if (t === 'cash' || t === 'tax') return t;
     var page = location.pathname.split('/').pop().replace(/\.html$/, '');
     if (page === 'check') return 'tax'; // หน้าตรวจระบบ (ผู้ดูแล) เรียก action ของใบกำกับ
-    if (page === 'summary' || page === 'stock') return 'tax'; // รอบ 15: หน้าสรุป (ทั้งสองประเภท) เรียก summaryData ใน Api.gs
+    if (page === 'summary' || page === 'stock' || page === 'menu' || page === '' || page === 'index') return 'tax'; // รอบ 15: หน้าสรุป (ทั้งสองประเภท) เรียก summaryData ใน Api.gs / รอบ 21: เมนูหลัก
     return page === 'view' && q.has('no') ? 'tax' : 'cash';
   })();
   var MODE_LABEL = MODE === 'cash' ? 'ใบเงินสด' : 'ใบกำกับภาษี';
@@ -243,7 +243,7 @@ var LiffApp = (function () {
       var keys = [];
       for (var i = 0; i < localStorage.length; i++) {
         var k = localStorage.key(i);
-        if (k && k.indexOf(STORE_PREFIX) === 0) keys.push(k);
+        if (k && (k.indexOf(STORE_PREFIX) === 0 || k === 'invoice-liff:active')) keys.push(k); // รอบ 21: + เวลาที่ใช้งานล่าสุด
       }
       keys.forEach(function (k) { localStorage.removeItem(k); });
     } catch (e) { /* ไม่เป็นไร */ }
@@ -272,11 +272,94 @@ var LiffApp = (function () {
     }
   };
 
+  // ---------- รอบ 21: ใช้นอก LINE (เบราว์เซอร์ / แอปที่ติดตั้ง)
+  //   - การเข้าสู่ระบบหมดอายุ → เข้าสู่ระบบใหม่เองอัตโนมัติ 1 ครั้ง (กันวน: ไม่ทำซ้ำภายใน 2 นาที) แล้วกลับหน้าเดิม
+  //   - ไม่ได้ใช้งานเกิน IDLE_MS (8 ชั่วโมง) → ออกจากระบบ + ล้างข้อมูลที่จำไว้ ต้องเข้าสู่ระบบใหม่
+  //   - ปุ่มออกจากระบบ (เครื่องที่ใช้ร่วมกัน) → ล้างการเข้าสู่ระบบ + ข้อมูลที่จำไว้ทั้งหมด
+  //   ทุกคำขอยังตรวจ idToken + แท็บผู้ใช้ที่เซิร์ฟเวอร์เหมือนเดิม (ส่วนนี้ลดความเสี่ยงบนเครื่อง ไม่ได้แทนการตรวจที่เซิร์ฟเวอร์)
+  var IDLE_MS = 8 * 3600 * 1000;
+  var ACTIVE_KEY = 'invoice-liff:active';    // เวลาที่ใช้งานล่าสุด (ไม่ใช่ข้อมูลส่วนตัว)
+  var RELOGIN_KEY = 'invoice-liff:relogin';  // sessionStorage: เวลาที่พาไปเข้าสู่ระบบใหม่เองครั้งล่าสุด
+  var OUT_KEY = 'invoice-liff:out';          // sessionStorage: เหตุที่ออกจากระบบ ('logout' | 'idle') → หน้า "ออกจากระบบแล้ว"
+  function nowMs() { return Date.now(); }
+  function sget(store, k) { try { return store.getItem(k); } catch (e) { return null; } }
+  function sset(store, k, v) { try { if (v === null) store.removeItem(k); else store.setItem(k, v); } catch (e) { /* ไม่เป็นไร */ } }
+  var lastTouch = 0;
+  function touch() {
+    var t = nowMs();
+    if (t - lastTouch < 30000) return; // เขียนไม่เกินทุก 30 วินาที
+    lastTouch = t;
+    if (storeOk()) sset(localStorage, ACTIVE_KEY, String(t));
+  }
+  function idleTooLong() {
+    var t = storeOk() ? Number(sget(localStorage, ACTIVE_KEY)) : 0;
+    return !!t && nowMs() - t > IDLE_MS;
+  }
+  /** ออกจากระบบ: ล้างการเข้าสู่ระบบ + ข้อมูลที่จำไว้ทั้งหมด แล้วแสดงหน้า "ออกจากระบบแล้ว" (why: 'logout' | 'idle') */
+  function logout(why) {
+    forget();
+    if (storeOk()) sset(localStorage, ACTIVE_KEY, null);
+    if (window.AppData && AppData.clear) { try { AppData.clear(); } catch (e) { /* ไม่เป็นไร */ } }
+    try { liff.logout(); } catch (e) { /* ไม่เป็นไร */ }
+    sset(sessionStorage, OUT_KEY, why || 'logout');
+    location.replace(appUrl('menu'));
+  }
+  /** หน้า "ออกจากระบบแล้ว" — ไม่พาไปหน้าเข้าสู่ระบบเอง (คนถัดไปที่ใช้เครื่องกดเอง) */
+  function showLoggedOut(why) {
+    var card = el('<section class="card alert ok" id="logged-out"><h2></h2><p></p></section>');
+    card.querySelector('h2').textContent = why === 'idle' ? 'ไม่ได้ใช้งานนาน' : 'ออกจากระบบแล้ว';
+    card.querySelector('p').textContent = why === 'idle' ? 'กรุณาเข้าสู่ระบบอีกครั้ง' : 'ข้อมูลที่จำไว้ในเครื่องนี้ถูกลบแล้ว';
+    var b = el('<button type="button" class="btn primary block" id="btn-login">เข้าสู่ระบบด้วย LINE</button>');
+    b.addEventListener('click', function () { sset(sessionStorage, OUT_KEY, null); liff.login({ redirectUri: appUrl('menu') }); });
+    card.appendChild(b);
+    view().replaceChildren(card);
+  }
+  /** การเข้าสู่ระบบหมดอายุนอก LINE → เข้าใหม่เอง (คืน true = กำลังพาไป) / ทำไปแล้วภายใน 2 นาที → false (แสดงปุ่มแทน กันวน) */
+  function autoRelogin() {
+    if (inClient()) return false;
+    var last = Number(sget(sessionStorage, RELOGIN_KEY)) || 0;
+    if (nowMs() - last < 120000) return false;
+    sset(sessionStorage, RELOGIN_KEY, String(nowMs()));
+    try { liff.logout(); } catch (e) { /* ไม่เป็นไร */ }
+    liff.login({ redirectUri: location.href });
+    return true;
+  }
+  /** idToken บนเครื่องหมดอายุแล้ว (หรือเหลือไม่ถึง 1 นาที) */
+  function tokenExpired() {
+    var d = null;
+    try { d = liff.getDecodedIDToken(); } catch (e) { d = null; }
+    return !!(d && typeof d.exp === 'number' && d.exp * 1000 - nowMs() < 60000);
+  }
+  /** URL ของหน้าในแอป (โฟลเดอร์เดียวกับหน้านี้) เช่น appUrl('menu') */
+  function appUrl(name) { return new URL(name, location.href).href.split('?')[0].split('#')[0]; }
+  /** ใน LINE: เปิดเมนูหลักในเบราว์เซอร์ของเครื่อง (เต็มจอ) */
+  function openFullScreen() {
+    try { liff.openWindow({ url: appUrl('menu'), external: true }); } catch (e) { toast('เปิดไม่สำเร็จ ลองอีกครั้ง', true); }
+  }
+  /** ลิงก์กลับไปแชท LINE ของร้าน (APP_CONFIG.LINE_OA_ID เช่น @abc1234) — ไม่ได้ตั้ง → '' */
+  function lineChatUrl() {
+    var id = String(CFG.LINE_OA_ID || '').trim();
+    return /^@[A-Za-z0-9._-]{2,40}$/.test(id) ? 'https://line.me/R/ti/p/' + encodeURIComponent(id) : '';
+  }
+  /** ชื่อ LINE ของผู้ที่เข้าสู่ระบบ (จาก idToken บนเครื่อง) */
+  function profileName() { return lineIdentity().name; }
+  // ใช้งานอยู่ (แตะ / พิมพ์) → จดเวลา / กลับมาที่แอปหลังไม่ได้ใช้นาน → ออกจากระบบ / token ใกล้หมด → เข้าใหม่เองก่อนกรอกฟอร์ม
+  document.addEventListener('pointerdown', touch, true);
+  document.addEventListener('keydown', touch, true);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible' || inClient() || typeof liff === 'undefined') return;
+    var loggedIn = false;
+    try { loggedIn = liff.isLoggedIn(); } catch (e) { loggedIn = false; }
+    if (!loggedIn) return;
+    if (idleTooLong()) return logout('idle');
+    if (tokenExpired()) autoRelogin();
+  });
+
   /** เรียก API ของ Apps Script — คืน {ok:false, code:'network'|'http'|'bad_response'} ถ้าติดต่อไม่ได้ */
   async function api(action, payload) {
     var idToken = '';
     try { idToken = liff.getIDToken() || ''; } catch (e) { idToken = ''; }
-    var body = Object.assign({}, payload || {}, { action: action, idToken: idToken, type: MODE }); // รอบ 10: ประเภทเอกสาร
+    var body = Object.assign({}, payload || {}, { action: action, idToken: idToken, type: (payload && payload.type) || MODE }); // รอบ 10: ประเภทเอกสาร (รอบ 21: หน้าเลือกเองได้)
     var debug = !!(hooks.debugOn && hooks.debugOn());
     if (debug) body.debug = true; // แถบเวลา ?debug=1: ขอเวลาแยกขั้นของเซิร์ฟเวอร์ (serverTiming) มาด้วย
     var t0 = Date.now();
@@ -292,6 +375,8 @@ var LiffApp = (function () {
       if (r && r.code !== 'bad_response' && r.code !== 'network' && r.code !== 'http') markConnected();
       if (r && !r.ok && typeof r.error === 'string') r.error = cleanError(r.error);
       if (r && !r.ok && AUTH_FAIL[r.code]) forget(); // ไม่มีสิทธิ์ → ลืมทุกอย่างที่จำไว้บนเครื่องนี้
+      if (r && !r.ok && (r.code === 'token_expired' || r.code === 'token_invalid') && autoRelogin()) return new Promise(function () { /* กำลังไปหน้าเข้าสู่ระบบ */ });
+      if (r && r.ok) touch();
       if (r && r.serverTiming) {
         var st = r.serverTiming;
         delete r.serverTiming; // ไม่จำ / ไม่ใช้เทียบข้อมูล
@@ -461,10 +546,18 @@ var LiffApp = (function () {
       return false;
     }
     timing('liff.init', Date.now() - t0);
+    var out = sget(sessionStorage, OUT_KEY);
     if (!liff.isLoggedIn()) {
+      if (out) { showLoggedOut(out); return false; } // รอบ 21: เพิ่งออกจากระบบ → ไม่เข้าสู่ระบบเอง
       liff.login({ redirectUri: location.href });
       return false;
     }
+    sset(sessionStorage, OUT_KEY, null);
+    if (!inClient()) {
+      if (idleTooLong()) { logout('idle'); return false; } // รอบ 21: ไม่ได้ใช้งานเกิน 8 ชั่วโมง
+      if (tokenExpired() && autoRelogin()) return false;
+    }
+    touch();
     var idToken = null;
     try { idToken = liff.getIDToken(); } catch (e) { idToken = null; }
     if (!idToken) { showError(MSG.noToken, relogin, 'no_id_token'); return false; }
@@ -573,6 +666,7 @@ var LiffApp = (function () {
     MODE: MODE, MODE_LABEL: MODE_LABEL, isCash: isCash, docParam: docParam, sameNo: sameNo,
     syncing: syncing, setScope: setScope, find: find, hooks: hooks,
     openExternal: openExternal, remember: remember, keep: keep, forget: forget, drop: drop,
-    MSG: MSG, SETUP: SETUP, splitSetup: splitSetup, errorHtml: errorHtml
+    MSG: MSG, SETUP: SETUP, splitSetup: splitSetup, errorHtml: errorHtml,
+    logout: logout, openFullScreen: openFullScreen, lineChatUrl: lineChatUrl, profileName: profileName, appUrl: appUrl, IDLE_MS: IDLE_MS
   };
 })();

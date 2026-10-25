@@ -418,6 +418,13 @@
     return true;
   }
 
+  /** รอบ 21: ยอดคงเหลือต่อท้ายชื่อในแผ่นเลือกสินค้า (สินค้าที่ยังไม่นับสต็อก → ไม่แสดง) — ใกล้หมด/ติดลบ สีเตือน */
+  function stockLeft(s, low) {
+    if (!s || !s.tracked) return '';
+    var level = s.qty < 0 ? 'neg' : s.qty <= low ? 'low' : 'ok';
+    return ' <span class="stock-left ' + level + '">' + (level === 'neg' ? 'ติดลบ ' : 'เหลือ ') + esc(formatQty(s.qty)) + '</span>';
+  }
+
   function openProductPicker() {
     var s = LiffApp.sheet('เพิ่มสินค้า',
       '<input type="search" id="prod-q" placeholder="ค้นหาชื่อสินค้าหรือบาร์โค้ด" autocomplete="off">' +
@@ -429,8 +436,10 @@
       var list = S.init.products.filter(function (p) {
         return !term || (p.name + ' ' + printedBarcode(p.barcode)).toLowerCase().indexOf(term) >= 0;
       });
+      var stock = AppData.stockMap();
+      var low = AppData.stockThreshold();
       ul.innerHTML = list.length ? list.map(function (p) {
-        return '<li role="button" tabindex="0" class="tap" data-bc="' + esc(p.barcode) + '"><div class="t"><div class="n">' + esc(p.name) + '</div>' +
+        return '<li role="button" tabindex="0" class="tap" data-bc="' + esc(p.barcode) + '"><div class="t"><div class="n">' + esc(p.name) + stockLeft(stock[p.barcode], low) + '</div>' +
           '<div class="s">' + esc(barcodeText(p.barcode)) + '</div></div><div class="num right"><b>' + money(p.price) + '</b><div class="small muted">/' + esc(p.unit) + '</div></div></li>';
       }).join('') : '<li class="empty">ไม่พบสินค้า</li>';
     }
@@ -538,8 +547,8 @@
   function isTestIssue() { return CASH ? !!S.cashTest : S.reviewNo === TEST_DOC_NO; }
 
   /** รอบ 16: สต็อกไม่พอ (เตือนอย่างเดียว ออกบิลได้ ยอดติดลบได้) — ยอดจากข้อมูลที่โหลดตอนเปิดแอป */
-  function stockBox(items) {
-    if (isTestIssue()) return '';
+  function stockBox(items, docType) {
+    if (isTestIssue() || !stockDeducts(CASH ? 'cash' : 'tax', docType)) return ''; // รอบ 21: ใบเสร็จรับเงินไม่หักสต็อก → ไม่เตือน
     var list = stockShortages(items, AppData.stockMap());
     return list.length ? '<div class="card alert warn" id="review-stock"><b>สต็อกไม่พอ (ออกบิลได้)</b><ul>' +
       list.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>' : '';
@@ -606,7 +615,7 @@
       (!r.errors.length ? noBox(r) : '') +
       (r.dateConfirm && !r.errors.length ? dateConfirmBox(r.dateConfirm) : '') +
       (r.warnings.length ? '<div class="card alert warn" id="review-warnings"><b>โปรดตรวจสอบ</b><ul>' + r.warnings.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>' : '') +
-      stockBox(payload.items) +
+      stockBox(payload.items, payload.doc_type) +
       head +
       '<section class="card"><h2>ลูกค้า</h2>' + customer + '</section>' +
       '<section class="card"><h2>สินค้า <span class="count">' + payload.items.length + ' บรรทัด</span></h2><table class="review-items">' +
@@ -743,7 +752,7 @@
       cancelled_reason: '', cancelled_at: '', issued_by: S.init.name || '', cancelled_by: '', pdfUrl: r.pdfUrl || '', hasPdf: !!r.pdfUrl
     };
     AppData.addDoc(doc);
-    if (!r.isTest && !r.duplicate) AppData.takeStock(p.items); // รอบ 16
+    if (!r.isTest && !r.duplicate && stockDeducts(CASH ? 'cash' : 'tax', p.doc_type)) AppData.takeStock(p.items); // รอบ 16 (รอบ 21: ใบเสร็จรับเงินไม่หัก)
   }
 
   /** ข้อมูลที่จำไว้อาจเก่า (ยอดไม่ตรง / ข้อมูลไม่ผ่าน / เลขซ้ำ) → ดึงใหม่เบื้องหลัง ให้รอบตรวจถัดไปใช้ข้อมูลใหม่ */
@@ -822,12 +831,40 @@
       '<div class="card alert ok" id="success-note">' + esc(note) + '</div>' +
       '<div class="card stack">' +
       (r.pdfUrl
-        ? '<a class="btn block" id="btn-pdf" href="' + esc(r.pdfUrl) + '" target="_blank" rel="noopener">' + iconSvg('file') + '<span>เปิด PDF</span></a>'
+        // รอบ 21: ดู PDF ในแอป (นอก LINE ไม่มีการ์ดในแชทให้กด) + ส่งต่อ (ผู้ใช้เลือกปลายทางเอง ไม่ใช้ push message)
+        ? '<a class="btn block" id="btn-pdf" href="view?no=' + encodeURIComponent(LiffApp.docNoText(r.docNo)) + '">' + iconSvg('file') + '<span>ดู PDF</span></a>' +
+          '<button type="button" class="btn block" id="btn-share">' + iconSvg('send') + '<span>ส่งต่อ</span></button>'
         : '<div class="small muted" id="no-pdf">ยังไม่มี PDF สร้างได้ที่เมนู "ประวัติเอกสาร"</div>') +
       '<button type="button" class="btn primary block" id="btn-new">ออกบิลใหม่</button>' +
       '</div>';
     $('btn-new').addEventListener('click', load);
+    if ($('btn-share')) $('btn-share').addEventListener('click', function () { sharePdf(r); });
     scrollTop();
+  }
+
+  /**
+   * รอบ 21: ส่งต่อบิล — เลือกแชท LINE เอง (shareTargetPicker) → เมนูแชร์ของเครื่อง → คัดลอกลิงก์
+   * ข้อความ = ประเภท เลขที่ ร้าน ยอด + ลิงก์ PDF (ลิงก์ PDF เปิดได้โดยไม่ต้องเข้าสู่ระบบอยู่แล้ว — กฎข้อ 9)
+   */
+  async function sharePdf(r) {
+    var NL = String.fromCharCode(10);
+    var text = LiffApp.MODE_LABEL + ' เลขที่ ' + LiffApp.docNoText(r.docNo) + NL +
+      (r.legalName || (S.shop && (S.shop.legal_name || S.shop.short_name)) || '') + NL + 'ยอด ' + money(r.total) + ' บาท' + NL + r.pdfUrl;
+    var picker = false;
+    try { picker = typeof liff.isApiAvailable === 'function' && liff.isApiAvailable('shareTargetPicker'); } catch (e) { picker = false; }
+    if (picker) {
+      try {
+        var res = await liff.shareTargetPicker([{ type: 'text', text: text }], { isMultiple: true });
+        if (res) LiffApp.toast('ส่งแล้ว');
+        return;
+      } catch (e) { /* ใช้วิธีถัดไป */ }
+    }
+    if (navigator.share) {
+      try { await navigator.share({ title: LiffApp.MODE_LABEL + ' ' + LiffApp.docNoText(r.docNo), text: text }); return; } catch (e) {
+        if (e && e.name === 'AbortError') return; // ผู้ใช้ปิดเอง
+      }
+    }
+    try { await navigator.clipboard.writeText(text); LiffApp.toast('คัดลอกข้อความและลิงก์ PDF แล้ว'); } catch (e) { LiffApp.toast('ส่งต่อไม่สำเร็จ ลองอีกครั้ง', true); }
   }
 
   // ---------- หน้าจอของแอป
