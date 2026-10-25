@@ -17,7 +17,7 @@
   var pick = { year: 0, month: 0 };  // ช่วง "เลือกเดือน"
   var yearPick = 0;                  // ช่วง "ทั้งปี"
   var prodBy = 'qty';                // สินค้าขายดี: ตามจำนวน / ตามยอดเงิน
-  var stockLow;                      // รอบ 16: สินค้าใกล้หมด { threshold, products } / null = ยังไม่ได้ตั้งค่าสต็อก / undefined = ยังไม่รู้
+  var stockLow;                      // รอบ 16: สินค้าใกล้หมด { products } (รอบ 23: ไม่มี threshold) / null = ยังไม่ได้ตั้งค่าสต็อก / undefined = ยังไม่รู้
   var KINDS = [['today', 'วันนี้'], ['month', 'เดือนนี้'], ['pick', 'เลือกเดือน'], ['year', 'ทั้งปี']];
   var MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
   function $(id) { return scr.$(id); }
@@ -363,7 +363,7 @@
     }
     if (!stockLow || !Array.isArray(stockLow.products)) return '';
     var list = stockLow.products;
-    return '<section class="card" id="sum-low"><h2>สินค้าใกล้หมด <span class="count">เหลือไม่เกิน ' + esc(formatQty(stockLow.threshold)) + '</span></h2>' +
+    return '<section class="card" id="sum-low"><h2>สินค้าใกล้หมด <span class="count">ตามที่ตั้งแต่ละสินค้า</span></h2>' +
       '<ul class="list">' + (list.length ? list.slice(0, 10).map(function (p) {
         return '<li class="st-row"><div class="nm"><div class="n">' + esc(p.name) + '</div></div>' +
           '<div class="q ' + esc(p.level) + '"><b class="num">' + esc(formatQty(p.qty)) + '</b> ' + esc(p.unit) + '</div></li>';

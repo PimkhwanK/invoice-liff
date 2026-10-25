@@ -419,9 +419,9 @@
   }
 
   /** รอบ 21: ยอดคงเหลือต่อท้ายชื่อในแผ่นเลือกสินค้า (สินค้าที่ยังไม่นับสต็อก → ไม่แสดง) — ใกล้หมด/ติดลบ สีเตือน */
-  function stockLeft(s, low, alert) {
+  function stockLeft(s, alert) {
     if (!s || !s.tracked) return '';
-    var level = stockLevel({ stock_qty: s.qty, stock_since: 'นับแล้ว', low_alert: alert === null ? '' : alert }, low); // รอบ 22: ขั้นต่ำของสินค้านั้น
+    var level = stockLevel({ stock_qty: s.qty, stock_since: 'นับแล้ว', low_alert: alert === null ? '' : alert }); // รอบ 22–23: "เตือนเมื่อเหลือ" ของสินค้านั้น (ว่าง = ไม่เตือน)
     return ' <span class="stock-left ' + level + '">' + (level === 'neg' ? 'ติดลบ ' : 'เหลือ ') + esc(formatQty(s.qty)) + '</span>';
   }
 
@@ -437,9 +437,8 @@
         return !term || (p.name + ' ' + printedBarcode(p.barcode)).toLowerCase().indexOf(term) >= 0;
       });
       var stock = AppData.stockMap();
-      var low = AppData.stockThreshold();
       ul.innerHTML = list.length ? list.map(function (p) {
-        return '<li role="button" tabindex="0" class="tap" data-bc="' + esc(p.barcode) + '"><div class="t"><div class="n">' + esc(p.name) + stockLeft(stock[p.barcode], low, AppData.stockAlert(p.barcode)) + '</div>' +
+        return '<li role="button" tabindex="0" class="tap" data-bc="' + esc(p.barcode) + '"><div class="t"><div class="n">' + esc(p.name) + stockLeft(stock[p.barcode], AppData.stockAlert(p.barcode)) + '</div>' +
           '<div class="s">' + esc(barcodeText(p.barcode)) + '</div></div><div class="num right"><b>' + money(p.price) + '</b><div class="small muted">/' + esc(p.unit) + '</div></div></li>';
       }).join('') : '<li class="empty">ไม่พบสินค้า</li>';
     }

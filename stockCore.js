@@ -55,8 +55,8 @@ function stockRound(n) {
 }
 
 /**
- * รอบ 22: ค่าในช่อง "เตือนเมื่อเหลือ" ของสินค้า → ตัวเลข ≥ 0 / ว่าง หรืออ่านไม่ได้ → null (ใช้ค่าเริ่มต้น)
- * 0 = ไม่ต้องเตือนสินค้านี้
+ * รอบ 22–23: ค่าในช่อง "เตือนเมื่อเหลือ" ของสินค้า → ตัวเลข ≥ 0 / ว่าง หรืออ่านไม่ได้ → null (ไม่เตือน)
+ * รอบ 23: ไม่มีค่ากลางแล้ว (stock_low_threshold ไม่อ่าน) — 0 = เตือนเมื่อของหมด
  */
 function stockAlertValue(v) {
   var s = stockText(v);
@@ -85,14 +85,16 @@ function stockLowThreshold(config) {
   return config && stockText(config.stock_low_threshold) !== '' && isFinite(n) && n >= 0 ? n : STOCK_LOW_DEFAULT;
 }
 
-/** สถานะยอด: 'neg' ติดลบ / 'low' ใกล้หมด (≤ เกณฑ์) / 'ok' / 'off' ยังไม่ติดตาม */
-function stockLevel(p, threshold) {
+/**
+ * สถานะยอด: 'neg' ติดลบ / 'low' ใกล้หมด (≤ "เตือนเมื่อเหลือ" ของสินค้านั้น) / 'ok' / 'off' ยังไม่ติดตาม
+ * รอบ 23: ช่อง "เตือนเมื่อเหลือ" ว่าง = ไม่เตือน (ไม่มีค่ากลาง) / 0 = เตือนเมื่อหมด / ติดลบเตือนเสมอ
+ */
+function stockLevel(p) {
   if (!stockTracked(p)) return 'off';
   var q = Number(p.stock_qty) || 0;
-  if (q < 0) return 'neg'; // ติดลบ = ยอดผิด เตือนเสมอ (แม้ตั้ง 0)
-  var alert = stockAlertValue(p.low_alert); // รอบ 22: ขั้นต่ำของสินค้านี้ (ว่าง = ค่าเริ่มต้น)
-  if (alert === 0) return 'ok';             // 0 = ไม่ต้องเตือน
-  return q <= (alert === null ? threshold : alert) ? 'low' : 'ok';
+  if (q < 0) return 'neg'; // ติดลบ = ยอดผิด เตือนเสมอ
+  var alert = stockAlertValue(p.low_alert);
+  return alert !== null && q <= alert ? 'low' : 'ok';
 }
 
 /**
@@ -110,7 +112,7 @@ function stockProducts(products, stockRows) {
     return {
       barcode: bc, name: stockText(p.name), unit: stockText(p.unit), active: p.active !== false,
       tracked: tracked, qty: tracked ? stockRound(Number(s.stock_qty) || 0) : 0, since: tracked ? stockText(s.stock_since) : '',
-      lowAlert: stockAlertValue(s.low_alert) // รอบ 22: null = ใช้ค่าเริ่มต้น
+      lowAlert: stockAlertValue(s.low_alert) // รอบ 22: null = ไม่เตือน (รอบ 23)
     };
   });
 }

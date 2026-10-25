@@ -356,13 +356,7 @@ var AppData = (function () {
     return out;
   }
 
-  /** รอบ 21: จุดเตือนของใกล้หมด (แท็บตั้งค่า stock_low_threshold) — เซิร์ฟเวอร์รุ่นเก่าไม่ส่ง → ค่าเริ่มต้น */
-  function stockThreshold() {
-    var d = S.data;
-    return d && typeof d.stockThreshold === 'number' ? d.stockThreshold : STOCK_LOW_DEFAULT;
-  }
-
-  /** รอบ 22: ขั้นต่ำเตือนที่ตั้งแยกของสินค้า (ตัวเลข / null = ใช้ค่าเริ่มต้น) */
+  /** รอบ 22: "เตือนเมื่อเหลือ" ของสินค้า (ตัวเลข / null = ไม่เตือน — รอบ 23) */
   function stockAlert(barcode) {
     var d = S.data;
     var a = d && d.stockAlerts && typeof d.stockAlerts === 'object' ? d.stockAlerts[barcode] : undefined;
@@ -392,6 +386,6 @@ var AppData = (function () {
     ensure: ensure, refresh: refresh, clear: clear,
     data: data, shops: shops, products: products, recentDocs: recentDocs, name: name, issueInit: issueInit,
     shopStat: shopStat, docsOfShop: docsOfShop, shopComplete: shopComplete, loadShopDocs: loadShopDocs, docItems: docItems,
-    addDoc: addDoc, patchDoc: patchDoc, putShop: putShop, putProduct: putProduct, stockMap: stockMap, takeStock: takeStock, stockThreshold: stockThreshold, stockAlert: stockAlert
+    addDoc: addDoc, patchDoc: patchDoc, putShop: putShop, putProduct: putProduct, stockMap: stockMap, takeStock: takeStock, stockAlert: stockAlert
   };
 })();
