@@ -4,6 +4,7 @@
  *   ปุ่มล่าง: ของเข้า / ของออก (ไม่มีบิล) / แก้ยอดตามที่นับ (ทีละหลายสินค้า — รอบ 18 เปลี่ยนชื่อจาก รับเข้า / หักออก / นับสต็อก) → stockMove / แตะสินค้า → stock?barcode= ความเคลื่อนไหวย้อนหลัง (stockHistory)
  *   เรียง (รอบ 19): คงเหลือมาก→น้อย / น้อย→มาก / ชื่อ ก-ฮ ใช้กับรายการ "สินค้า" (ต้องดูอยู่บนสุดเสมอ) จำไว้ในเครื่อง (stock-sort)
  *   ข้อมูล: stockData (StockApi.gs) จำไว้ในเครื่อง ('stock') → เปิดครั้งถัดไปเห็นทันที แล้วอัปเดตเบื้องหลัง
+ *   รอบ 22: แตะสินค้า → หน้าสินค้า แก้ "เตือนเมื่อเหลือ" ของสินค้านั้นได้ (setStockAlert — ว่าง = ค่าเริ่มต้น / 0 = ไม่เตือน)
  *   รอบ 21: แท็บ "สินค้าทั้งหมด" | "ของใกล้หมด" (stock?tab=low — ≤ จุดเตือน หรือติดลบ เรียงน้อยสุดก่อน) + ตั้งจุดเตือน (setStockThreshold) ตัวเลขเดียวทุกสินค้า
  *     เตือนในหน้าเว็บเท่านั้น ไม่ส่งข้อความ LINE
  *   กติกา (ตรวจซ้ำที่เซิร์ฟเวอร์): stockCore.js stockPlanManual — หน้าเว็บใช้ตัวเดียวกันแสดงยอดใหม่ระหว่างพิมพ์
@@ -29,6 +30,8 @@
   function qtyText(n) { return formatQty(n); }
 
   function products() { return (data && data.products) || []; }
+  /** หัวหน้า: ค่าเริ่มต้นของการเตือน (รอบ 22 — สินค้าที่ตั้งเองใช้ค่าของสินค้านั้น) */
+  function subText(t) { return 'ค่าเริ่มต้น: เตือนเมื่อเหลือไม่เกิน ' + qtyText(t); }
   function find(bc) { return products().find(function (p) { return p.barcode === bc; }); }
 
   // ---------- ข้อมูล
@@ -86,7 +89,7 @@
       view.innerHTML = '<section class="card alert warn" id="stock-not-ready">' + esc(data.message || 'ยังไม่ได้ตั้งค่าสต็อก กรุณาแจ้งผู้ดูแลระบบ') + '</section>';
       return;
     }
-    $('sub').textContent = 'ใกล้หมดเมื่อเหลือไม่เกิน ' + qtyText(data.threshold);
+    $('sub').textContent = subText(data.threshold);
     if (!$('stock-q')) {
       view.innerHTML =
         '<nav class="tabs stock-tabs" id="stock-tabs"><button type="button" data-tab="all">สินค้าทั้งหมด</button>' +
@@ -97,10 +100,10 @@
           return '<option value="' + k + '">เรียง: ' + esc(SORTS[k]) + '</option>';
         }).join('') + '</select></div></section>' +
         '<div id="stock-lists"></div></div>' +
-        '<div id="tab-low" class="hidden"><section class="card" id="th-card"><h2>จุดเตือนของใกล้หมด</h2>' +
+        '<div id="tab-low" class="hidden"><section class="card" id="th-card"><h2>ค่าเริ่มต้นเตือนใกล้หมด</h2>' +
         '<div class="th-box"><label for="th-input">เตือนเมื่อเหลือไม่เกิน</label><input type="number" class="num" id="th-input" min="0" step="any" inputmode="decimal">' +
         '<button type="button" class="btn sm primary" id="th-save">บันทึก</button></div>' +
-        '<div class="hint">ตัวเลขเดียวใช้กับทุกสินค้า เตือนในหน้าเว็บเท่านั้น ไม่ส่งข้อความ LINE</div><div id="th-error"></div></section>' +
+        '<div class="hint">ใช้กับสินค้าที่ไม่ได้ตั้งเอง (ตั้งแยกได้โดยแตะที่สินค้า) เตือนในหน้าเว็บเท่านั้น ไม่ส่งข้อความ LINE</div><div id="th-error"></div></section>' +
         '<div id="low-box"></div></div>';
       $('stock-tabs').addEventListener('click', function (e) {
         var b = e.target.closest('button[data-tab]');
@@ -162,10 +165,10 @@
     }
     data = r;
     LiffApp.keep('stock', r);
-    $('sub').textContent = 'ใกล้หมดเมื่อเหลือไม่เกิน ' + qtyText(r.threshold);
+    $('sub').textContent = subText(r.threshold);
     input.value = String(r.threshold);
     drawLists();
-    LiffApp.toast('บันทึกจุดเตือนแล้ว เหลือไม่เกิน ' + qtyText(r.threshold));
+    LiffApp.toast('บันทึกค่าเริ่มต้นแล้ว เตือนเมื่อเหลือไม่เกิน ' + qtyText(r.threshold));
   }
 
   function currentSort() {
@@ -301,10 +304,11 @@
     p = r.product;
     $('title').textContent = p.name;
     $('sub').textContent = p.tracked ? 'เริ่มนับ ' + formatThaiDateShort(String(p.since).slice(0, 10)) : 'ยังไม่เริ่มนับสต็อก';
-    var level = p.tracked ? stockLevel({ stock_qty: p.qty, stock_since: p.since }, data ? data.threshold : STOCK_LOW_DEFAULT) : 'off';
+    var level = p.tracked ? stockLevel({ stock_qty: p.qty, stock_since: p.since, low_alert: p.lowAlert === null || p.lowAlert === undefined ? '' : p.lowAlert }, data ? data.threshold : STOCK_LOW_DEFAULT) : 'off';
     view.innerHTML =
       '<section class="card"><div class="row"><span class="grow">คงเหลือ</span>' +
-      (p.tracked ? '<span class="st-big ' + level + '"><b class="num" id="hist-qty">' + esc(qtyText(p.qty)) + '</b> ' + esc(p.unit) + '</span>' : '<span class="muted">ยังไม่เริ่มนับ</span>') + '</div></section>' +
+      (p.tracked ? '<span class="st-big ' + level + '"><b class="num" id="hist-qty">' + esc(qtyText(p.qty)) + '</b> ' + esc(p.unit) + '</span>' : '<span class="muted">ยังไม่เริ่มนับ</span>') + '</div>' +
+      '<div id="alert-box" class="alert-box"></div></section>' +
       '<section class="card"><h2>ความเคลื่อนไหว <span class="count">' + r.total + ' รายการ</span></h2><ul class="list" id="hist-list">' +
       (r.moves.length ? r.moves.map(function (m) {
         var when = formatThaiDateShort(m.at.slice(0, 10)) + (m.at.length > 15 ? ' ' + m.at.slice(11, 16) : '');
@@ -314,10 +318,68 @@
           '<div class="small muted">เหลือ ' + esc(qtyText(m.balance)) + '</div></div></li>';
       }).join('') : '<li class="empty">ยังไม่มีความเคลื่อนไหว</li>') + '</ul></section>' +
       '<div class="card" style="background:transparent;box-shadow:none;padding:0"><button type="button" class="btn block" id="hist-back">' + iconSvg('back') + '<span>กลับไปรายการสินค้า</span></button></div>';
+    drawAlert(p);
     $('hist-back').addEventListener('click', function () {
       if (Shell.canBack()) Shell.back(); else Shell.go('stock', {}, { replace: true });
     });
     Shell.drawn(scr);
+  }
+
+  // ---------- รอบ 22: เตือนเมื่อเหลือ ของสินค้านี้ (ปุ่มเล็ก "แก้" → ช่องเดียว + บันทึก)
+
+  function alertText(p) {
+    var t = data ? data.threshold : STOCK_LOW_DEFAULT;
+    if (p.lowAlert === 0) return 'ไม่เตือน';
+    if (p.lowAlert === null || p.lowAlert === undefined) return qtyText(t) + ' ' + p.unit + ' (ค่าเริ่มต้น)';
+    return qtyText(p.lowAlert) + ' ' + p.unit;
+  }
+
+  function drawAlert(p, editing) {
+    var box = $('alert-box');
+    if (!box) return;
+    if (!editing) {
+      box.innerHTML = '<div class="row"><span class="grow small muted">เตือนเมื่อเหลือ</span><span id="alert-text">' + esc(alertText(p)) + '</span>' +
+        '<button type="button" class="btn sm ghost" id="alert-edit">แก้</button></div>';
+      $('alert-edit').addEventListener('click', function () { drawAlert(p, true); });
+      return;
+    }
+    var t = data ? data.threshold : STOCK_LOW_DEFAULT;
+    box.innerHTML = '<label class="f" for="alert-input">เตือนเมื่อเหลือไม่เกิน (' + esc(p.unit) + ')</label>' +
+      '<div class="th-box"><input type="number" class="num" id="alert-input" min="0" step="any" inputmode="decimal" placeholder="' + esc(qtyText(t)) + '" value="' +
+      (p.lowAlert === null || p.lowAlert === undefined ? '' : esc(String(p.lowAlert))) + '">' +
+      '<button type="button" class="btn sm primary" id="alert-save">บันทึก</button><button type="button" class="btn sm" id="alert-cancel">ยกเลิก</button></div>' +
+      '<div class="hint">เว้นว่าง = ใช้ค่าเริ่มต้น (' + esc(qtyText(t)) + ') · ใส่ 0 = ไม่ต้องเตือนสินค้านี้</div><div id="alert-error"></div>';
+    var input = $('alert-input');
+    input.focus();
+    $('alert-cancel').addEventListener('click', function () { drawAlert(p); });
+    $('alert-save').addEventListener('click', function () { saveAlert(p); });
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') saveAlert(p); if (e.key === 'Escape') drawAlert(p); });
+  }
+
+  async function saveAlert(p) {
+    var v = String($('alert-input').value).trim();
+    if (v !== '' && !(isFinite(Number(v)) && Number(v) >= 0)) {
+      $('alert-error').innerHTML = '<div class="alert err" id="alert-errors" style="margin-top:8px">ใส่ตัวเลข 0 ขึ้นไป หรือเว้นว่าง</div>';
+      return;
+    }
+    var btn = $('alert-save');
+    btn.disabled = true;
+    var r = await LiffApp.api('setStockAlert', { barcode: p.barcode, alert: v === '' ? '' : Number(v) });
+    if (!Shell.isCurrent(scr) || scr.params.barcode !== p.barcode) return;
+    btn.disabled = false;
+    if (!r.ok) {
+      if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
+      $('alert-error').innerHTML = '<div class="alert err" id="alert-errors" style="margin-top:8px">' + LiffApp.errorHtml(r.error || 'บันทึกไม่สำเร็จ ลองอีกครั้ง') + '</div>';
+      return;
+    }
+    data = Object.assign(data || {}, { ready: true, threshold: r.threshold, pending: r.pending, products: r.products });
+    LiffApp.keep('stock', data);
+    var np = r.product || p;
+    p.lowAlert = np.lowAlert;
+    var q = $('hist-qty');
+    if (q && q.parentNode) q.parentNode.className = 'st-big ' + np.level;
+    drawAlert(p);
+    LiffApp.toast('บันทึกแล้ว เตือนเมื่อเหลือ ' + alertText(p));
   }
 
   function tap(e) {

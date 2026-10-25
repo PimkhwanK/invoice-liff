@@ -362,6 +362,13 @@ var AppData = (function () {
     return d && typeof d.stockThreshold === 'number' ? d.stockThreshold : STOCK_LOW_DEFAULT;
   }
 
+  /** รอบ 22: ขั้นต่ำเตือนที่ตั้งแยกของสินค้า (ตัวเลข / null = ใช้ค่าเริ่มต้น) */
+  function stockAlert(barcode) {
+    var d = S.data;
+    var a = d && d.stockAlerts && typeof d.stockAlerts === 'object' ? d.stockAlerts[barcode] : undefined;
+    return typeof a === 'number' ? a : null;
+  }
+
   /** หลังออกบิลจริง: หักยอดที่จำไว้ในแอปเอง (เหมือนเซิร์ฟเวอร์ รวมของแถม) — รอบตรวจถัดไปเตือนถูก ไม่ต้องโหลดใหม่ */
   function takeStock(items) {
     var d = S.data;
@@ -385,6 +392,6 @@ var AppData = (function () {
     ensure: ensure, refresh: refresh, clear: clear,
     data: data, shops: shops, products: products, recentDocs: recentDocs, name: name, issueInit: issueInit,
     shopStat: shopStat, docsOfShop: docsOfShop, shopComplete: shopComplete, loadShopDocs: loadShopDocs, docItems: docItems,
-    addDoc: addDoc, patchDoc: patchDoc, putShop: putShop, putProduct: putProduct, stockMap: stockMap, takeStock: takeStock, stockThreshold: stockThreshold
+    addDoc: addDoc, patchDoc: patchDoc, putShop: putShop, putProduct: putProduct, stockMap: stockMap, takeStock: takeStock, stockThreshold: stockThreshold, stockAlert: stockAlert
   };
 })();

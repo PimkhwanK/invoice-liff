@@ -473,6 +473,7 @@ body.has-tabbar .toast { bottom: 140px; }
 .stock-tabs { margin: 0 0 4px; }
 .th-box { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .th-box input { width: 100px; flex: none; }
+.alert-box { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--theme-line); } /* รอบ 22: เตือนเมื่อเหลือ ของสินค้า */
 @media (min-width: 768px) {
   .menu-grid { gap: 16px; }
   .menu-tile { min-height: 200px; padding: 22px; }

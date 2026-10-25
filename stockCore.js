@@ -54,6 +54,17 @@ function stockRound(n) {
   return Math.round(Number(n) * 1000) / 1000;
 }
 
+/**
+ * รอบ 22: ค่าในช่อง "เตือนเมื่อเหลือ" ของสินค้า → ตัวเลข ≥ 0 / ว่าง หรืออ่านไม่ได้ → null (ใช้ค่าเริ่มต้น)
+ * 0 = ไม่ต้องเตือนสินค้านี้
+ */
+function stockAlertValue(v) {
+  var s = stockText(v);
+  if (s === '') return null;
+  var n = Number(s);
+  return isFinite(n) && n >= 0 ? stockRound(n) : null;
+}
+
 /** ช่อง "เริ่มนับสต็อก" ไม่ว่าง = ติดตามสต็อกสินค้านี้ */
 function stockTracked(p) {
   return !!p && stockText(p.stock_since) !== '';
@@ -78,8 +89,10 @@ function stockLowThreshold(config) {
 function stockLevel(p, threshold) {
   if (!stockTracked(p)) return 'off';
   var q = Number(p.stock_qty) || 0;
-  if (q < 0) return 'neg';
-  return q <= threshold ? 'low' : 'ok';
+  if (q < 0) return 'neg'; // ติดลบ = ยอดผิด เตือนเสมอ (แม้ตั้ง 0)
+  var alert = stockAlertValue(p.low_alert); // รอบ 22: ขั้นต่ำของสินค้านี้ (ว่าง = ค่าเริ่มต้น)
+  if (alert === 0) return 'ok';             // 0 = ไม่ต้องเตือน
+  return q <= (alert === null ? threshold : alert) ? 'low' : 'ok';
 }
 
 /**
@@ -96,7 +109,8 @@ function stockProducts(products, stockRows) {
     var tracked = stockTracked(s);
     return {
       barcode: bc, name: stockText(p.name), unit: stockText(p.unit), active: p.active !== false,
-      tracked: tracked, qty: tracked ? stockRound(Number(s.stock_qty) || 0) : 0, since: tracked ? stockText(s.stock_since) : ''
+      tracked: tracked, qty: tracked ? stockRound(Number(s.stock_qty) || 0) : 0, since: tracked ? stockText(s.stock_since) : '',
+      lowAlert: stockAlertValue(s.low_alert) // รอบ 22: null = ใช้ค่าเริ่มต้น
     };
   });
 }
@@ -375,6 +389,7 @@ if (typeof module !== 'undefined' && module.exports) {
     stockTracked: stockTracked,
     stockRef: stockRef,
     stockLowThreshold: stockLowThreshold,
+    stockAlertValue: stockAlertValue,
     stockLevel: stockLevel,
     stockProducts: stockProducts,
     stockSaleLines: stockSaleLines,
