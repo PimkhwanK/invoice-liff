@@ -274,10 +274,10 @@ var LiffApp = (function () {
 
   // ---------- รอบ 21: ใช้นอก LINE (เบราว์เซอร์ / แอปที่ติดตั้ง)
   //   - การเข้าสู่ระบบหมดอายุ → เข้าสู่ระบบใหม่เองอัตโนมัติ 1 ครั้ง (กันวน: ไม่ทำซ้ำภายใน 2 นาที) แล้วกลับหน้าเดิม
-  //   - ไม่ได้ใช้งานเกิน IDLE_MS (8 ชั่วโมง) → ออกจากระบบ + ล้างข้อมูลที่จำไว้ ต้องเข้าสู่ระบบใหม่
+  //   - ไม่ได้ใช้งานเกิน IDLE_MS (30 วัน — ผู้ใช้เปลี่ยนจาก 8 ชั่วโมง 2026-10-25) → ออกจากระบบ + ล้างข้อมูลที่จำไว้ ต้องเข้าสู่ระบบใหม่
   //   - ปุ่มออกจากระบบ (เครื่องที่ใช้ร่วมกัน) → ล้างการเข้าสู่ระบบ + ข้อมูลที่จำไว้ทั้งหมด
   //   ทุกคำขอยังตรวจ idToken + แท็บผู้ใช้ที่เซิร์ฟเวอร์เหมือนเดิม (ส่วนนี้ลดความเสี่ยงบนเครื่อง ไม่ได้แทนการตรวจที่เซิร์ฟเวอร์)
-  var IDLE_MS = 8 * 3600 * 1000;
+  var IDLE_MS = 30 * 24 * 3600 * 1000;
   var ACTIVE_KEY = 'invoice-liff:active';    // เวลาที่ใช้งานล่าสุด (ไม่ใช่ข้อมูลส่วนตัว)
   var RELOGIN_KEY = 'invoice-liff:relogin';  // sessionStorage: เวลาที่พาไปเข้าสู่ระบบใหม่เองครั้งล่าสุด
   var OUT_KEY = 'invoice-liff:out';          // sessionStorage: เหตุที่ออกจากระบบ ('logout' | 'idle') → หน้า "ออกจากระบบแล้ว"
@@ -312,6 +312,8 @@ var LiffApp = (function () {
     var b = el('<button type="button" class="btn primary block" id="btn-login">เข้าสู่ระบบด้วย LINE</button>');
     b.addEventListener('click', function () { sset(sessionStorage, OUT_KEY, null); liff.login({ redirectUri: appUrl('menu') }); });
     card.appendChild(b);
+    // การเข้าสู่ระบบ LINE: เครื่องที่มีแอป LINE จะเปิดแอป LINE ให้กดอนุญาต (LINE ทำให้เอง — ไม่ต้องพิมพ์รหัสผ่าน)
+    card.appendChild(el('<p class="small muted" id="login-hint">เครื่องที่มีแอป LINE จะเปิดแอป LINE ให้กดอนุญาต</p>'));
     view().replaceChildren(card);
   }
   /** การเข้าสู่ระบบหมดอายุนอก LINE → เข้าใหม่เอง (คืน true = กำลังพาไป) / ทำไปแล้วภายใน 2 นาที → false (แสดงปุ่มแทน กันวน) */
@@ -554,7 +556,7 @@ var LiffApp = (function () {
     }
     sset(sessionStorage, OUT_KEY, null);
     if (!inClient()) {
-      if (idleTooLong()) { logout('idle'); return false; } // รอบ 21: ไม่ได้ใช้งานเกิน 8 ชั่วโมง
+      if (idleTooLong()) { logout('idle'); return false; } // รอบ 21: ไม่ได้ใช้งานเกิน 30 วัน
       if (tokenExpired() && autoRelogin()) return false;
     }
     touch();
