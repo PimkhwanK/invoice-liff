@@ -167,6 +167,16 @@
 
   function receiptCard() {
     if (!isReceipt()) return '';
+    try {
+      return receiptCardHtml();
+    } catch (e) {
+      // รอบ 28: ส่วนนี้พัง (ข้อมูลแปลก / ไฟล์ไม่ครบ) → ฟอร์มยังใช้ได้ แค่ไม่มีรายการใบกำกับ (กรอกเองได้)
+      try { console.error('[ผู้ดูแลระบบ] แสดงรายการใบกำกับไม่ได้: ' + (e && e.stack ? e.stack : e)); } catch (x) { /* ไม่เป็นไร */ }
+      return '';
+    }
+  }
+
+  function receiptCardHtml() {
     if (S.fromInv) {
       var d = S.fromInv.doc;
       return '<section class="card" id="rc-card"><h2>อ้างถึงใบกำกับเลขที่</h2>' +
