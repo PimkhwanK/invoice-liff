@@ -339,7 +339,7 @@
       '<tr><td colspan="2" class="r"><b>รวมค่าใช้จ่าย</b></td><td></td></tr>' +
       '<tr><td colspan="2" class="r"><b>ยอดเงินสุทธิ</b></td><td></td></tr></tbody></table>' +
       '<div class="dsr-sign" id="dsr-sign">' + signer('ผู้จัดทำ') + signer('ผู้ตรวจสอบ') + '</div>' +
-      '<div class="dsr-note"><div class="dsr-fill">หมายเหตุ <span class="dsr-line"></span></div><div class="dsr-line full"></div></div>' +
+      '<div class="dsr-note" id="dsr-note">หมายเหตุ: สามารถเขียนรายละเอียดค่าใช้จ่าย เช่น ค่าน้ำมัน ค่าแรง ค่าขนส่ง หรือค่าใช้จ่ายอื่น ๆ ในช่องชื่อร้านของรายการหักค่าใช้จ่ายได้</div>' +
       '</div><div class="small muted no-print dsr-foot">นับใบกำกับภาษี ใบเงินสด และใบเสร็จที่ไม่มีใบกำกับคู่ เรียงตามเวลาออกบิล ไม่นับใบเสร็จที่ออกคู่กับใบกำกับ บิลที่ยกเลิก และบิลทดสอบ 0000</div></section>';
   }
 

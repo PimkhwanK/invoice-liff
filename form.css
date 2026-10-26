@@ -609,7 +609,7 @@ body.has-tabbar .toast { bottom: 140px; }
 .dsr-signer .dsr-fill { min-width: 0; }
 .dsr-paren { display: flex; align-items: flex-end; margin: 10px 0 0 3.2em; }
 .dsr-sign .dsr-line { margin: 0 4px; }
-.dsr-note { margin-top: 18px; }
+.dsr-note { margin-top: 18px; font-size: 12px; line-height: 1.5; }
 .dsr-foot { margin-top: 10px; }
 @media print {
   .dsr { box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; font-size: 11pt; }
