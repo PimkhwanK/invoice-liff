@@ -110,7 +110,8 @@ function stockLevel(p) {
  */
 function stockProducts(products, stockRows) {
   var byBc = {};
-  (stockRows || []).forEach(function (r) { var bc = stockText(r.barcode); if (bc) byBc[bc] = r; });
+  // รอบ 25: บาร์โค้ดซ้ำหลายแถว → ใช้แถวแรก (ตรงกับแถวที่ Store.gs เขียนยอด) — เดิมใช้แถวสุดท้าย สินค้าจึงดูเหมือนยังไม่เริ่มนับ แล้วถูกตั้งยอดเริ่มต้นซ้ำ
+  (stockRows || []).forEach(function (r) { var bc = stockText(r.barcode); if (bc && !byBc[bc]) byBc[bc] = r; });
   return (products || []).filter(function (p) { return stockText(p.barcode) !== ''; }).map(function (p) {
     var bc = stockText(p.barcode);
     var s = byBc[bc] || {};
@@ -282,15 +283,43 @@ function stockPlanManual(o) {
  */
 function stockBalancesFromMoves(moves) {
   var out = {};
-  (moves || []).forEach(function (m) {
+  var eff = stockMoveEffects(moves);
+  (moves || []).forEach(function (m, i) {
+    var e = eff[i];
+    if (!e.counted) return; // รายการก่อนเริ่มนับ (ไม่ควรมี) ไม่นับ
     var bc = stockText(m.barcode);
-    if (!bc) return;
-    var k = stockText(m.kind);
-    if (k === STOCK_KIND.open && !out[bc]) out[bc] = { qty: 0, since: stockText(m.at) };
-    if (!out[bc]) return; // รายการก่อนเริ่มนับ (ไม่ควรมี) ไม่นับ
-    out[bc].qty = stockRound(out[bc].qty + (Number(m.qty) || 0));
+    if (e.first) out[bc] = { qty: 0, since: stockText(m.at) };
+    out[bc].qty = e.after;
   });
   return out;
+}
+
+/**
+ * รอบ 25: ผลจริงของแต่ละแถวในแท็บความเคลื่อนไหว (ตามลำดับแถว) — ใช้ทุกที่ที่คิดยอดจากแท็บนี้ (ตามแก้ / รายงาน / หน้าประวัติ)
+ *   "ยอดเริ่มต้น" และ "แก้ยอดตามที่นับ" = ตั้งยอดเป็น X (X = คงเหลือหลังรายการ) → ส่วนต่างจริง = X − ยอดก่อนหน้า (ไม่ใช่ +X)
+ *     เคยเกิด: ยอดเริ่มต้น 3,570 ถูกบันทึก 3 ครั้ง → เดิมรวมได้ 10,710 แต่ของจริง 3,570
+ *     ช่องคงเหลือหลังรายการว่าง/อ่านไม่ได้ → ยอดเริ่มต้นใช้จำนวน / แก้ยอดใช้ยอดก่อนหน้า + จำนวน
+ *   รายการอื่น (ขาย / คืน / ของเข้า / ของออก) = บวกจำนวนตามเดิม / ก่อน "ยอดเริ่มต้น" แรก = ไม่นับ
+ *   แถวในชีตไม่ถูกแก้ — คิดใหม่ตอนอ่านเท่านั้น
+ * @returns {Array<{counted:boolean, first:boolean, setTo:(number|null), delta:number, before:number, after:number}>} เรียงตรงกับ moves
+ */
+function stockMoveEffects(moves) {
+  var run = {};
+  return (moves || []).map(function (m) {
+    var bc = stockText(m.barcode);
+    var kind = stockKindText(m.kind);
+    var q = Number(m.qty) || 0;
+    var bal = stockText(m.balance) !== '' && isFinite(Number(m.balance)) ? stockRound(Number(m.balance)) : null;
+    if (!bc || (run[bc] === undefined && kind !== STOCK_KIND.open)) return { counted: false, first: false, setTo: null, delta: 0, before: 0, after: 0 };
+    var first = run[bc] === undefined;
+    var before = first ? 0 : run[bc];
+    var setTo = null;
+    if (kind === STOCK_KIND.open) setTo = bal !== null ? bal : stockRound(q);
+    else if (kind === STOCK_KIND.count) setTo = bal !== null ? bal : stockRound(before + q);
+    var after = setTo !== null ? setTo : stockRound(before + q);
+    run[bc] = after;
+    return { counted: true, first: first, setTo: setTo, delta: stockRound(after - before), before: before, after: after };
+  });
 }
 
 /**
@@ -454,24 +483,25 @@ function stockReportRange(o, today) {
 function stockReportRows(o) {
   var acc = {};
   var order = [];
-  (o.moves || []).forEach(function (m) {
+  var eff = stockMoveEffects(o.moves); // รอบ 25: ยอดเริ่มต้น / แก้ยอดตามที่นับ = ตั้งยอดเป็น X (ส่วนต่างจริง)
+  (o.moves || []).forEach(function (m, i) {
+    var e = eff[i];
+    if (!e.counted) return; // ก่อนเริ่มนับ
     var bc = stockText(m.barcode);
-    if (!bc) return;
     var kind = stockKindText(m.kind);
     var day = stockText(m.at).slice(0, 10);
-    var q = Number(m.qty) || 0;
+    var q = e.delta;
     var a = acc[bc];
     if (!a) {
-      if (kind !== STOCK_KIND.open) return; // ก่อนเริ่มนับ
       a = acc[bc] = { barcode: bc, name: stockText(m.name), since: stockText(m.at), startedIn: false, open: 0, inQty: 0, sale: 0, out: 0, adjust: 0, close: 0, first: true };
       order.push(bc);
     }
     if (day > o.to) return;
     var first = a.first;
     a.first = false;
-    if (day < o.from) { a.open = stockRound(a.open + q); a.close = a.open; return; }
-    a.close = stockRound(a.close + q);
-    if (first) { a.startedIn = true; a.open = stockRound(a.open + q); return; }
+    if (day < o.from) { a.open = e.after; a.close = a.open; return; }
+    a.close = e.after;
+    if (first) { a.startedIn = true; a.open = e.after; return; }
     if (kind === STOCK_KIND.sale || kind === STOCK_KIND.ret) a.sale = stockRound(a.sale - q);
     else if (kind === STOCK_KIND.in) a.inQty = stockRound(a.inQty + q);
     else if (kind === STOCK_KIND.out) a.out = stockRound(a.out - q);
@@ -514,6 +544,7 @@ if (typeof module !== 'undefined' && module.exports) {
     stockPlanReturn: stockPlanReturn,
     stockPlanManual: stockPlanManual,
     stockBalancesFromMoves: stockBalancesFromMoves,
+    stockMoveEffects: stockMoveEffects,
     stockSyncPlan: stockSyncPlan
   };
 }
