@@ -3,7 +3,9 @@
  *   เปิดจาก Rich Menu (/summary) — ไม่ผูกกับประเภทเอกสาร (shell.js ALONE: ไม่มีแถบเมนูล่าง ไม่มี ?type=)
  *   ข้อมูล: summaryData (Api.gs) ทีละปี → salesView (salesSummary.js) คำนวณตามช่วงเวลาที่เลือกบนมือถือ (สลับช่วงเวลาไม่ต้องรอเซิร์ฟเวอร์)
  *   จำไว้ในเครื่อง ('sales-<ปี>') → เปิดครั้งถัดไปเห็นตัวเลขเดิมทันที แล้วอัปเดตเบื้องหลัง
- *   ช่วงเวลา: วันนี้ / เดือนนี้ / เลือกเดือน / ทั้งปี (ย้อนหลังได้ทุกปีที่มีบิล)
+ *   ช่วงเวลา (รอบ 29 สองแถว): วันนี้ / เดือนนี้ / ปีนี้ — เลือกวัน / เลือกเดือน / เลือกปี (ย้อนหลังได้ทุกปีที่มีบิล)
+ *     เลือกวัน: ยอดรวมจากข้อมูลของปี / ร้านและสินค้าของวันนั้นจาก salesDay (Api.gs) ทีละวัน
+ *   รอบ 29: ใบเช็คยอดขายรายวัน (summary?print=YYYY-MM-DD) — A4 แนวตั้ง ขาวดำ พิมพ์ / PDF ด้วย window.print() แบบรายงานสต็อก / ในแอป LINE → เปิดเบราว์เซอร์
  *   เนื้อหา: ยอดขายรวม (แยกประเภท เทียบช่วงก่อน จำนวนบิล เฉลี่ยต่อบิล) / กราฟ / ภาษีขาย (ใบกำกับ) / ร้านซื้อเยอะสุด / สินค้าขายดี / ร้านที่ไม่ได้ซื้อนาน
  */
 (function () {
@@ -18,7 +20,10 @@
   var yearPick = 0;                  // ช่วง "ทั้งปี"
   var prodBy = 'qty';                // สินค้าขายดี: ตามจำนวน / ตามยอดเงิน
   var stockLow;                      // รอบ 16: สินค้าใกล้หมด { products } (รอบ 23: ไม่มี threshold) / null = ยังไม่ได้ตั้งค่าสต็อก / undefined = ยังไม่รู้
-  var KINDS = [['today', 'วันนี้'], ['month', 'เดือนนี้'], ['pick', 'เลือกเดือน'], ['year', 'ทั้งปี']];
+  var KINDS = [['today', 'วันนี้'], ['month', 'เดือนนี้'], ['thisyear', 'ปีนี้'], ['day', 'เลือกวัน'], ['pick', 'เลือกเดือน'], ['year', 'เลือกปี']]; // รอบ 29: 2 แถว แถวละ 3
+  var dayPick = '';                  // รอบ 29: ช่วง "เลือกวัน"
+  var days = {};                     // รอบ 29: วันที่ → คำตอบ salesDay (ร้าน/สินค้าของวันนั้น + บิลสำหรับใบเช็คยอด)
+  var dayPending = {};               // วันที่ → Promise ของคำขอที่กำลังรอ
   var MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
   function $(id) { return scr.$(id); }
 
@@ -37,6 +42,7 @@
   function yearOf() {
     if (period.kind === 'pick') return pick.year;
     if (period.kind === 'year') return yearPick;
+    if (period.kind === 'day') return Number(dayPick.slice(0, 4));
     return thisYear();
   }
 
@@ -76,8 +82,9 @@
     return pending[year];
   }
 
-  async function show() {
-    if (!pick.year) { pick.year = thisYear(); pick.month = Number(today().slice(5, 7)); yearPick = thisYear(); }
+  async function show(params) {
+    if (!pick.year) { pick.year = thisYear(); pick.month = Number(today().slice(5, 7)); yearPick = thisYear(); dayPick = today(); }
+    if (params && params.print) return showDaily(params.print);
     var year = yearOf();
     if (!data[year] && !LiffApp.remember('sales-' + year)) LiffApp.loading('กำลังรวมยอดขาย…', view);
     var r = await ensure(year);
@@ -105,6 +112,29 @@
         return;
       }
       draw();
+    });
+  }
+
+  /** รอบ 29: ข้อมูลของวันเดียว (salesDay) — ไม่จำไว้ในเครื่อง (บิลของวันเก่าเปลี่ยนได้จากการยกเลิก) */
+  function fetchDay(date) {
+    if (dayPending[date]) return dayPending[date];
+    dayPending[date] = LiffApp.api('salesDay', { date: date }).then(function (r) {
+      delete dayPending[date];
+      if (r.ok) days[date] = r;
+      return r;
+    });
+    return dayPending[date];
+  }
+
+  /** เลือกวัน (ไม่ใช่วันนี้) → ร้าน/สินค้าของวันนั้น แล้ววาดใหม่ */
+  function needDay() {
+    if (period.kind !== 'day' || dayPick === today() || days[dayPick]) return;
+    var date = dayPick;
+    fetchDay(date).then(function (r) {
+      if (!Shell.isCurrent(scr) || period.kind !== 'day' || dayPick !== date || !$('sum-body')) return;
+      if (!r.ok && LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
+      if (!r.ok) return LiffApp.toast('โหลดร้านและสินค้าของวันนั้นไม่สำเร็จ ลองอีกครั้ง', true);
+      drawBody();
     });
   }
 
@@ -153,18 +183,21 @@
       .filter(function (m) { return pick.year < Number(t.slice(0, 4)) || m[0] <= Number(t.slice(5, 7)); });
     var d = data[yearOf()];
     var range = salesRange(periodArg(), t);
-    box.innerHTML = '<div class="seg-choice" id="sum-kinds" role="radiogroup" aria-label="ช่วงเวลา">' + KINDS.map(function (k) {
+    box.innerHTML = '<div class="seg-choice sum-kinds" id="sum-kinds" role="radiogroup" aria-label="ช่วงเวลา">' + KINDS.map(function (k) {
       return '<label><input type="radio" name="sum-kind" value="' + k[0] + '"' + (period.kind === k[0] ? ' checked' : '') + '>' + k[1] + '</label>';
     }).join('') + '</div>' +
       (period.kind === 'pick' ? '<div class="sum-pick"><select id="sum-month" aria-label="เดือน">' + options(months, pick.month) + '</select>' +
         '<select id="sum-year" aria-label="ปี">' + options(years, pick.year) + '</select></div>' : '') +
       (period.kind === 'year' ? '<div class="sum-pick"><select id="sum-year" aria-label="ปี">' + options(years, yearPick) + '</select></div>' : '') +
+      (period.kind === 'day' ? '<div class="sum-pick">' + dateBox('sum-day', dayPick, 'วันที่') + '</div>' : '') +
       '<div class="small muted sum-range" id="sum-range">' + esc(range.label) + (d ? ' เทียบกับ ' + esc(range.plabel) : '') + '</div>';
   }
 
   function periodArg() {
     if (period.kind === 'pick') return { kind: 'month', year: pick.year, month: pick.month };
     if (period.kind === 'year') return { kind: 'year', year: yearPick };
+    if (period.kind === 'thisyear') return { kind: 'year', year: thisYear() };
+    if (period.kind === 'day') return { kind: 'day', date: dayPick };
     if (period.kind === 'month') return { kind: 'month', year: thisYear(), month: Number(today().slice(5, 7)) };
     return { kind: 'today' };
   }
@@ -178,6 +211,9 @@
         pick.year = Number(t.value);
         if (pick.year === thisYear()) pick.month = Math.min(pick.month, Number(today().slice(5, 7)));
       } else yearPick = Number(t.value);
+    } else if (t.id === 'sum-day') {
+      if (!t.value || t.value > today()) return;
+      dayPick = t.value;
     } else return;
     change();
   }
@@ -195,13 +231,116 @@
     var body = $('sum-body');
     var d = data[yearOf()];
     if (!body || !d) return;
-    var v = salesView(d, periodArg());
+    var v = salesView(d, periodArg(), period.kind === 'day' && days[dayPick] ? days[dayPick].day : null);
+    needDay();
     var miss = [];
     if (v.missing.tax) miss.push('ใบกำกับภาษี');
     if (v.missing.cash) miss.push('ใบเงินสด');
     body.innerHTML =
       (miss.length ? '<div class="alert warn" id="sum-missing" style="margin:12px">ยังไม่รวม' + miss.join(' และ ') + ' กรุณาแจ้งผู้ดูแลระบบ</div>' : '') +
-      totalCard(v) + chartCard(v) + vatCard(v) + shopsCard(v) + productsCard(v) + recentCard(d) + lowCard(); // รอบ 21: บิลที่ออกล่าสุด แทนร้านที่ไม่ได้ซื้อ
+      totalCard(v) + dailyCard() + chartCard(v) + vatCard(v) + shopsCard(v, v.dayPending) + productsCard(v, v.dayPending) + recentCard(d) + lowCard(); // รอบ 21: บิลที่ออกล่าสุด แทนร้านที่ไม่ได้ซื้อ
+    $('sum-daily-go').addEventListener('click', printDaily);
+    $('sum-daily-date').addEventListener('change', function (e) {
+      $('sum-daily-date-th').textContent = e.target.value ? formatThaiDateShort(e.target.value) : 'เลือกวันที่';
+    });
+  }
+
+  /** ช่องวันที่แบบหน้าออกบิล: วันที่ไทยในช่อง + input date โปร่งใสซ้อน */
+  function dateBox(id, value, label) {
+    return '<div class="date-box" id="' + id + '-box"><span class="date-text" id="' + id + '-th">' + esc(value ? formatThaiDateShort(value) : 'เลือกวันที่') + '</span>' +
+      iconSvg('calendar') + '<input type="date" id="' + id + '" value="' + esc(value) + '" max="' + esc(today()) + '" aria-label="' + esc(label) + '"></div>';
+  }
+
+  function pickerOpen(e) {
+    var input = e.target.closest && e.target.closest('input[type=date]');
+    try { if (input && typeof input.showPicker === 'function') input.showPicker(); } catch (err) { /* ไม่เป็นไร */ }
+  }
+
+  // ---------- รอบ 29: ใบเช็คยอดขายรายวัน
+
+  /** วันที่เริ่มต้นของใบเช็คยอด: เลือกวันอยู่ → วันนั้น / อื่น ๆ → วันนี้ (แก้ในกล่องได้) */
+  function dailyDefault() { return period.kind === 'day' ? dayPick : today(); }
+
+  function dailyCard() {
+    return '<section class="card" id="sum-daily"><h2>ใบเช็คยอดขายรายวัน</h2>' +
+      '<label class="f" for="sum-daily-date">วันที่จะพิมพ์</label>' + dateBox('sum-daily-date', dailyDefault(), 'วันที่จะพิมพ์') +
+      '<button type="button" class="btn primary block" id="sum-daily-go" style="margin-top:10px">' + iconSvg('file') + '<span>พิมพ์ใบเช็คยอดขายรายวัน</span></button></section>';
+  }
+
+  function printDaily() {
+    var input = $('sum-daily-date');
+    var date = input && input.value && input.value <= today() ? input.value : dailyDefault();
+    if (LiffApp.inClient()) {
+      // ในแอป LINE พิมพ์ / บันทึก PDF มักไม่ได้ → เปิดหน้าเดียวกันในเบราว์เซอร์ (แบบรายงานสต็อก)
+      if (!LiffApp.openExternal(LiffApp.appUrl('summary') + '?print=' + encodeURIComponent(date))) LiffApp.toast('เปิดเบราว์เซอร์ไม่สำเร็จ ลองอีกครั้ง', true);
+      else LiffApp.toast('เปิดในเบราว์เซอร์แล้ว กดพิมพ์ที่นั่น');
+      return;
+    }
+    Shell.go('summary', { print: date });
+  }
+
+  var DAILY_MIN_ROWS = 10;   // ตารางอย่างน้อย 10 แถว (บิลมากกว่านี้ → ตารางยาวขึ้น ขึ้นหน้าใหม่ได้ หัวตารางซ้ำ)
+  // ส่วนหักค่าใช้จ่ายรายวัน: ชื่อรายการตามแบบฟอร์ม จำนวนเงินเขียนมือ
+  var DAILY_COSTS = ['ค่าเชื้อเพลิง/ค่าน้ำมัน', 'ค่าแรง/ค่าจ้าง', 'ค่าขนส่ง', 'ค่าน้ำ/ค่าไฟ/อินเทอร์เน็ต', 'ค่าใช้จ่ายอื่นๆ'];
+
+  async function showDaily(date) {
+    if (!isIsoDate(date)) date = today();
+    LiffApp.loading('กำลังเตรียมใบเช็คยอดขาย…', view);
+    var r = await fetchDay(date);
+    if (!Shell.isCurrent(scr) || scr.params.print !== date && isIsoDate(scr.params.print)) return;
+    if (!r.ok) {
+      if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
+      view.innerHTML = '<section class="card alert err" id="dsr-error">' + LiffApp.errorHtml(r.error || 'โหลดยอดขายไม่สำเร็จ ลองอีกครั้ง') + '</section>' +
+        '<div class="rep-acts"><button type="button" class="btn block" id="dsr-retry">ลองอีกครั้ง</button></div>';
+      $('dsr-retry').addEventListener('click', function () { showDaily(date); });
+      Shell.drawn(scr);
+      return;
+    }
+    view.innerHTML = dailySheet(r) +
+      '<div class="rep-acts no-print"><button type="button" class="btn" id="dsr-back">กลับ</button>' +
+      '<button type="button" class="btn primary" id="dsr-print">พิมพ์ / PDF</button></div>';
+    $('dsr-print').addEventListener('click', function () { window.print(); });
+    $('dsr-back').addEventListener('click', function () { Shell.go('summary', {}); });
+    Shell.drawn(scr);
+  }
+
+  function dailySheet(r) {
+    var d = r.day;
+    var bills = d.bills || [];
+    var rows = '';
+    var n = Math.max(DAILY_MIN_ROWS, bills.length);
+    for (var i = 0; i < n; i++) {
+      var b = bills[i];
+      rows += '<tr' + (b ? ' class="bill"' : '') + '><td class="c">' + (b ? i + 1 : '') + '</td><td>' + (b ? esc(b.shop) : '') + '</td>' +
+        '<td class="nw">' + (b ? esc(b.label) : '') + '</td><td class="r num">' + (b ? money(b.sat) : '') + '</td><td></td></tr>';
+    }
+    var cost = '';
+    DAILY_COSTS.forEach(function (c, k) { cost += '<tr><td class="c">' + (k + 1) + '</td><td>' + esc(c) + '</td><td></td></tr>'; });
+    var miss = [];
+    if (d.missing && d.missing.tax) miss.push('ใบกำกับภาษี');
+    if (d.missing && d.missing.cash) miss.push('ใบเงินสด');
+    // ลงชื่อ ..... ผู้จัดทำ / ผู้ตรวจสอบ แล้ววงเล็บใต้เส้นสำหรับเขียนชื่อ (ตามแบบฟอร์ม)
+    var signer = function (role) {
+      return '<div class="dsr-signer"><div class="dsr-fill">ลงชื่อ<span class="dsr-line"></span>' + role + '</div>' +
+        '<div class="dsr-paren">(<span class="dsr-line"></span>)</div></div>';
+    };
+    return '<section class="card dsr" id="dsr">' +
+      (miss.length ? '<div class="alert warn no-print" id="dsr-missing">ยังไม่รวม' + miss.join(' และ ') + ' กรุณาแจ้งผู้ดูแลระบบ</div>' : '') +
+      '<div class="dsr-head">' + (r.company ? '<div class="dsr-co">' + esc(r.company) + '</div>' : '') +
+      '<h2>ใบเช็คยอดขายรายวัน</h2><div class="dsr-en">DAILY SALES RECONCILIATION</div></div>' +
+      '<div class="dsr-meta"><div>วันที่ <b id="dsr-date">' + esc(formatThaiDateLong(d.date)) + '</b></div>' +
+      '<div class="dsr-fill">ผู้ตรวจสอบ <span class="dsr-line"></span></div></div>' +
+      '<table class="dsr-table" id="dsr-table"><thead><tr><th class="w-no">ลำดับ</th><th>ชื่อร้าน</th><th class="w-bill">เลขที่บิล</th><th class="w-amt">ยอดเงิน</th><th class="w-amt">ยอดเงินที่ได้รับ</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+      '<tbody class="dsr-sum"><tr><td colspan="3" class="r"><b>รวมยอดขายทุกร้าน</b> (' + bills.length + ' บิล)</td><td class="r num"><b id="dsr-total">' + money(d.total) + '</b></td><td></td></tr></tbody></table>' +
+      '<div class="dsr-end" id="dsr-end">' +
+      '<table class="dsr-table dsr-cost" id="dsr-cost"><thead><tr><th class="w-no">ลำดับ</th><th>ส่วนหักค่าใช้จ่ายรายวัน</th><th class="w-amt">จำนวนเงิน</th></tr></thead>' +
+      '<tbody>' + cost +
+      '<tr><td colspan="2" class="r"><b>รวมค่าใช้จ่าย</b></td><td></td></tr>' +
+      '<tr><td colspan="2" class="r"><b>ยอดเงินสุทธิ</b></td><td></td></tr></tbody></table>' +
+      '<div class="dsr-sign" id="dsr-sign">' + signer('ผู้จัดทำ') + signer('ผู้ตรวจสอบ') + '</div>' +
+      '<div class="dsr-note"><div class="dsr-fill">หมายเหตุ <span class="dsr-line"></span></div><div class="dsr-line full"></div></div>' +
+      '</div><div class="small muted no-print dsr-foot">นับใบกำกับภาษี ใบเงินสด และใบเสร็จที่ไม่มีใบกำกับคู่ เรียงตามเวลาออกบิล ไม่นับใบเสร็จที่ออกคู่กับใบกำกับ บิลที่ยกเลิก และบิลทดสอบ 0000</div></section>';
   }
 
   function tile(kind, label, p) {
@@ -284,8 +423,8 @@
       '<div class="hint" id="sum-vat-note">ตัวเลขประมาณการ ยื่นภาษีให้ใช้ตัวเลขจากนักบัญชี</div></section>';
   }
 
-  function rankRows(list, valueOf, maxOf, extra) {
-    if (!list.length) return '<li class="empty">ยังไม่มีบิลในช่วงนี้</li>';
+  function rankRows(list, valueOf, maxOf, extra, pending) {
+    if (!list.length) return '<li class="empty">' + (pending ? 'กำลังโหลด…' : 'ยังไม่มีบิลในช่วงนี้') + '</li>';
     var max = Math.max.apply(null, list.map(maxOf)) || 1;
     return list.map(function (x, i) {
       return '<li class="sum-rank"' + (extra ? extra(x) : '') + '><span class="no">' + (i + 1) + '</span>' +
@@ -304,14 +443,14 @@
     return 'history?type=' + (x.kind === 'c' ? 'cash' : 'tax') + '&shopId=' + encodeURIComponent(x.id);
   }
 
-  function shopsCard(v) {
+  function shopsCard(v, pending) {
     return '<section class="card" id="sum-shops"><h2>ร้านซื้อเยอะสุด <span class="count">' + v.shops.length + ' อันดับ</span></h2>' +
       '<ul class="list">' + rankRows(v.shops, function (x) {
         return '<b class="num">' + money(x.sat) + '</b><span class="small muted">' + x.n.toLocaleString('th-TH') + ' บิล</span>';
-      }, function (x) { return x.sat; }, function (x) { return ' data-href="' + esc(historyHref(x)) + '" role="link" tabindex="0"'; }) + '</ul></section>';
+      }, function (x) { return x.sat; }, function (x) { return ' data-href="' + esc(historyHref(x)) + '" role="link" tabindex="0"'; }, pending) + '</ul></section>';
   }
 
-  function productsCard(v) {
+  function productsCard(v, pending) {
     var qty = prodBy === 'qty';
     var list = qty ? v.productsQty : v.productsAmt;
     return '<section class="card" id="sum-products"><h2>สินค้าขายดี <span class="count">ไม่นับของแถม</span></h2>' +
@@ -322,7 +461,7 @@
         var q = '<span class="num">' + formatQty(x.qty) + '</span> ' + esc(x.unit);
         var m = '<span class="num">' + money(x.sat) + '</span>';
         return qty ? '<b>' + q + '</b><span class="small muted">' + m + '</span>' : '<b>' + m + '</b><span class="small muted">' + q + '</span>';
-      }, function (x) { return qty ? x.qty : x.sat; }) + '</ul></section>';
+      }, function (x) { return qty ? x.qty : x.sat; }, null, pending) + '</ul></section>';
   }
 
 /**
@@ -386,9 +525,9 @@
         '<h1>สรุปยอดขาย</h1><div class="sub">ไม่นับบิลที่ยกเลิกและบิลทดสอบ</div></div>' +
         '<div id="view" aria-live="polite"></div>';
       view = $('view');
-      view.addEventListener('click', function (e) { go(e.target); });
+      view.addEventListener('click', function (e) { pickerOpen(e); go(e.target); });
       view.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(e.target); });
     },
-    show: function () { return show(); }
+    show: function (s, params) { return show(params); }
   });
 })();

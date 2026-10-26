@@ -5,7 +5,10 @@
  *     (ยอดรายวันของปีนั้นและปีก่อน / ร้านและสินค้ารายเดือน / ร้านและสินค้าของวันนี้ / ร้านที่หายไป) — cache ได้ ส่งให้มือถือทั้งก้อน
  *   salesView (มือถือ liff-site/summary.js): ข้อมูลสรุป + ช่วงเวลาที่เลือก → ตัวเลขบนจอ (สลับช่วงเวลาได้ทันที ไม่ต้องถามเซิร์ฟเวอร์)
  *
- *   ไม่นับ: บิลยกเลิก, บิลทดสอบ 0000, บิลที่วันที่อ่านไม่ได้ / สินค้าขายดีไม่นับของแถม
+ *   salesDay (เซิร์ฟเวอร์ action salesDay — รอบ 29): บิลของวันเดียว → ร้าน/สินค้าของวันนั้น + รายการบิลสำหรับใบเช็คยอดขายรายวัน
+ *
+ *   ไม่นับ: บิลยกเลิก, บิลทดสอบ 0000, บิลที่วันที่อ่านไม่ได้, ใบเสร็จรับเงินที่มีใบกำกับคู่ (รอบ 29 — ขายครั้งเดียวกัน นับซ้ำ) / สินค้าขายดีไม่นับของแถม
+ *     ใบเสร็จที่ไม่มีใบกำกับคู่ (หรือใบกำกับคู่ถูกยกเลิก) = ยอดขาย นับปกติ
  *   ร้าน = ประเภท + รหัสร้าน ('t:5' ใบกำกับ / 'c:5' ใบเงินสด — ร้านของสองไฟล์เป็นคนละรายชื่อ) / สินค้า = บาร์โค้ด (แท็บสินค้าใช้ร่วมกัน)
  *   เงินเป็นสตางค์ (จำนวนเต็ม) ทั้งหมด / วันที่เป็น YYYY-MM-DD (ค.ศ.)
  *
@@ -20,9 +23,10 @@ if (typeof require === 'function' && typeof module !== 'undefined') {
   var THAI_MONTHS_SHORT = _salesDate.THAI_MONTHS_SHORT;
   var cashDocParse = require('./cashDoc').cashDocParse;
   var taxItemOwners = require('./invoice').taxItemOwners;
+  var TAX_RECEIPT_TYPE = require('./invoice').TAX_RECEIPT_TYPE;
 }
 
-var SALES_VERSION = 3;        // รูปแบบข้อมูลสรุป (เปลี่ยนเมื่อรูปแบบเปลี่ยน → cache / ข้อมูลที่มือถือจำไว้รุ่นเก่าไม่ถูกใช้) — รอบ 21: + recent / รอบ 24: recent มีประเภทเอกสาร (ช่องที่ 8)
+var SALES_VERSION = 5;        // รูปแบบข้อมูลสรุป (เปลี่ยนเมื่อรูปแบบเปลี่ยน → cache / ข้อมูลที่มือถือจำไว้รุ่นเก่าไม่ถูกใช้) — รอบ 21: + recent / รอบ 24: recent มีประเภทเอกสาร (ช่องที่ 8) / รอบ 29: ไม่นับใบเสร็จที่มีใบกำกับคู่
 var SALES_RECENT = 10;        // รอบ 21: บิลที่ออกล่าสุด (ทั้งสองประเภท รวมใบที่ยกเลิก ไม่รวม 0000)
 var SALES_TOP = 10;           // อันดับร้าน / สินค้า
 var SALES_LOST_DAYS = 30;     // ร้านที่หายไป: ไม่ได้ซื้อเกินกี่วัน
@@ -51,6 +55,30 @@ function salesDocKey(kind, v) {
   var s = salesText(v);
   var n = Number(s);
   return s !== '' && isFinite(n) && n >= 1 && Math.floor(n) === n ? String(n) : '';
+}
+
+/** รอบ 29: ใบเสร็จรับเงินของไฟล์ใบกำกับ */
+function salesIsReceipt(kind, d) {
+  return kind === 't' && salesText(d.doc_type) === TAX_RECEIPT_TYPE;
+}
+
+/**
+ * รอบ 29: ใบเสร็จที่ไม่นับในยอดขาย (ลำดับแถว → true) = มีใบกำกับคู่: เลขที่เดียวกัน ร้านเดียวกัน ประเภทอื่นที่ไม่ใช่ใบเสร็จ ยังไม่ยกเลิก (ขายครั้งเดียวกัน)
+ * ใบเสร็จที่ไม่มีใบคู่ / ใบคู่ถูกยกเลิก → นับเป็นยอดขาย / ใบเงินสด → ว่าง
+ */
+function salesPairedReceipts(kind, docs) {
+  var out = {};
+  if (kind !== 't') return out;
+  var live = {};
+  (docs || []).forEach(function (d) {
+    var no = salesDocKey('t', d.doc_no);
+    if (no && !salesIsReceipt('t', d) && salesText(d.status) !== 'cancelled') live[no + '|' + salesText(d.shop_id)] = true;
+  });
+  (docs || []).forEach(function (d, i) {
+    var no = salesDocKey('t', d.doc_no);
+    if (no && salesIsReceipt('t', d) && live[no + '|' + salesText(d.shop_id)]) out[i] = true;
+  });
+  return out;
 }
 
 function salesQty(n) {
@@ -101,6 +129,7 @@ function salesBuild(input) {
     if (!book) return;
     var inYear = {}; // บิล → วันที่ (บิลของปีที่ขอ) — ใบเงินสด: เลขที่ / ใบกำกับ (รอบ 24): ลำดับแถว (เลขที่ซ้ำได้ถ้าคนละประเภท)
     var owners = kind === 't' ? taxItemOwners(book.docs, book.items) : null;
+    var paired = salesPairedReceipts(kind, book.docs);
     (book.docs || []).forEach(function (d, di) {
       var no = salesDocKey(kind, d.doc_no);
       if (!no) return;
@@ -108,7 +137,7 @@ function salesBuild(input) {
       if (!date) return;
       var cancelled = salesText(d.status) === 'cancelled';
       recent.push([kind, kind === 'c' ? no : Number(no), date, salesText(d.created_at), salesText(d.shop_short_name) || salesText(d.shop_legal_name), toSatang(d.total), cancelled ? 1 : 0, kind === 't' ? salesText(d.doc_type) : '']);
-      if (cancelled) return;
+      if (cancelled || paired[di]) return; // รอบ 29: ใบเสร็จที่มีใบกำกับคู่อยู่ใน "บิลที่ออกล่าสุด" แต่ไม่นับยอด
       var y = Number(date.slice(0, 4));
       years[y] = true;
       var sat = toSatang(d.total);
@@ -218,16 +247,17 @@ function salesRangeText(from, to) {
 
 /**
  * ช่วงเวลาที่เลือก → วันที่ของช่วงนี้และช่วงก่อนหน้า
- * @param {{kind:'today'|'month'|'year', year?:number, month?:number}} period
+ * @param {{kind:'today'|'day'|'month'|'year', date?:string, year?:number, month?:number}} period (day = รอบ 29 เลือกวัน)
  *   เดือน/ปีปัจจุบัน (ยังไม่จบ): ช่วงนี้ = ทั้งเดือน/ปี (บิลลงวันที่ล่วงหน้าก็นับ) เทียบกับช่วงก่อนหน้าถึงวันที่เดียวกับวันนี้
  * @returns {{from, to, pfrom, pto, label, plabel, partial}}
  */
 function salesRange(period, today) {
   var t = today.split('-').map(Number);
   var r;
-  if (period.kind === 'today') {
-    var y1 = addDaysIso(today, -1);
-    return { from: today, to: today, pfrom: y1, pto: y1, label: 'วันนี้ ' + salesDayText(today), plabel: salesDayText(y1), partial: false };
+  if (period.kind === 'today' || period.kind === 'day') {
+    var day = period.kind === 'day' && isIsoDate(period.date) ? period.date : today; // รอบ 29: เลือกวัน
+    var y1 = addDaysIso(day, -1);
+    return { from: day, to: day, pfrom: y1, pto: y1, label: (day === today ? 'วันนี้ ' : '') + salesDayText(day), plabel: salesDayText(y1), partial: false };
   }
   if (period.kind === 'year') {
     var y = Number(period.year) || t[0];
@@ -272,10 +302,11 @@ function salesSumDays(days, from, to) {
 /**
  * ตัวเลขบนจอของช่วงเวลาที่เลือก
  * @param {object} data ผลจาก salesBuild (ปีเดียวกับช่วงเวลา — วันนี้/เดือนนี้ = ปีปัจจุบัน)
+ * @param {object} [day] รอบ 29: ผลจาก salesDay ของวันที่เลือก (period {kind:"day", date})
  * @returns {object} { range, all, cash, tax, chart, chartBy, shops, productsQty, productsAmt, lost, missing }
  *   all/cash/tax: { sat, n, psat, pn, pct, avg, pavg } (tax มี vat, net ของช่วงนี้ด้วย)
  */
-function salesView(data, period) {
+function salesView(data, period, day) {
   var today = data.today;
   var range = salesRange(period, today);
   var now = salesSumDays(data.days, range.from, range.to);
@@ -294,7 +325,7 @@ function salesView(data, period) {
 
   // กราฟ: ดูเดือน → รายวัน / ดูทั้งปี → รายเดือน / วันนี้ → ไม่มีกราฟ
   var chart = [];
-  var chartBy = period.kind === 'year' ? 'month' : period.kind === 'month' ? 'day' : '';
+  var chartBy = period.kind === 'year' ? 'month' : period.kind === 'month' ? 'day' : ''; // วันนี้ / เลือกวัน → ไม่มีกราฟ
   if (chartBy === 'day') {
     var ym = range.from.slice(0, 8);
     var lastDay = Number(range.to.slice(8, 10));
@@ -314,7 +345,18 @@ function salesView(data, period) {
   var month = period.kind === 'month' ? Number(range.from.slice(5, 7)) : 0;
   var shopSum = {};
   var prodSum = {};
-  if (period.kind === 'today') {
+  var names = data.names || {};
+  var pnames = data.pnames || {};
+  // รอบ 29: เลือกวัน — วันนี้ใช้ข้อมูลสรุป / วันอื่นใช้ day (ผลจาก salesDay ของวันนั้น) / ยังไม่มี → dayPending
+  var dayPending = false;
+  if (period.kind === 'day' && range.from !== today) {
+    if (day && day.date === range.from) {
+      (day.shops || []).forEach(function (r) { shopSum[r[0]] = [r[1], r[2]]; });
+      (day.products || []).forEach(function (r) { prodSum[r[0]] = [r[1], r[2]]; });
+      names = Object.assign({}, names, day.names || {});
+      pnames = Object.assign({}, pnames, day.pnames || {});
+    } else dayPending = true;
+  } else if (period.kind === 'today' || period.kind === 'day') {
     (data.shopsToday || []).forEach(function (r) { shopSum[r[0]] = [r[1], r[2]]; });
     (data.productsToday || []).forEach(function (r) { prodSum[r[0]] = [r[1], r[2]]; });
   } else {
@@ -329,8 +371,6 @@ function salesView(data, period) {
       x[0] += r[2]; x[1] += r[3];
     });
   }
-  var names = data.names || {};
-  var pnames = data.pnames || {};
   function shopOf(k) {
     var i = k.indexOf(':');
     return { key: k, kind: k.slice(0, i), id: k.slice(i + 1), name: names[k] || 'ร้านรหัส ' + k.slice(i + 1) };
@@ -360,8 +400,76 @@ function salesView(data, period) {
 
   return {
     range: range, all: all, cash: cash, tax: tax, chart: chart, chartBy: chartBy,
-    shops: shops, productsQty: productsQty, productsAmt: productsAmt, lost: lost,
+    shops: shops, productsQty: productsQty, productsAmt: productsAmt, lost: lost, dayPending: dayPending,
     missing: data.missing || { tax: false, cash: false }
+  };
+}
+
+/** รอบ 29: ข้อความเลขที่ในใบเช็คยอด — "ใบกำกับ 25" / "ใบเสร็จ 25" (ไม่มีใบกำกับคู่) / "เงินสด 1069-15" */
+function salesBillLabel(kind, no, receipt) {
+  return (kind === 'c' ? 'เงินสด ' : receipt ? 'ใบเสร็จ ' : 'ใบกำกับ ') + no;
+}
+
+/**
+ * รอบ 29: บิลของวันเดียว (เซิร์ฟเวอร์ action salesDay) — กติกาเดียวกับ salesBuild (ไม่นับยกเลิก / 0000 / ใบเสร็จที่มีใบกำกับคู่ / ของแถมในสินค้า)
+ * @param {object} input { tax: {docs, items} | null, cash: {docs, items} | null, date: 'YYYY-MM-DD' }
+ * @returns {object} { date, bills, total, shops, products, names, pnames, missing }
+ *   bills [{ kind 't'|'c', no, label, shop, sat, at }] เรียงตามเวลาที่ออก (created_at — ไม่มี = ลำดับแถว ต่อท้าย) / total = รวมสตางค์
+ *   shops [[ร้าน, สตางค์, ใบ]] / products [[บาร์โค้ด, จำนวน, สตางค์]] (รูปแบบเดียวกับ shopsToday / productsToday)
+ */
+function salesDay(input) {
+  var date = input.date;
+  var bills = [];
+  var shopSum = {};
+  var prodSum = {};
+  var names = {};
+  var pnames = {};
+  var seq = 0;
+  [['t', input.tax], ['c', input.cash]].forEach(function (pair) {
+    var kind = pair[0];
+    var book = pair[1];
+    if (!book) return;
+    var mine = {};
+    var owners = kind === 't' ? taxItemOwners(book.docs, book.items) : null;
+    var paired = salesPairedReceipts(kind, book.docs);
+    (book.docs || []).forEach(function (d, di) {
+      var no = salesDocKey(kind, d.doc_no);
+      if (!no || salesIso(d.doc_date) !== date) return;
+      if (salesText(d.status) === 'cancelled' || paired[di]) return;
+      var sat = toSatang(d.total);
+      var shop = kind + ':' + (salesText(d.shop_id) === '' ? '?' : Number(d.shop_id));
+      var name = salesText(d.shop_short_name) || salesText(d.shop_legal_name);
+      if (name) names[shop] = name;
+      bills.push({ kind: kind, no: no, label: salesBillLabel(kind, no, salesIsReceipt(kind, d)), shop: salesText(d.shop_legal_name) || name, sat: sat, at: salesText(d.created_at), seq: seq++ });
+      var x = shopSum[shop] || (shopSum[shop] = [shop, 0, 0]);
+      x[1] += sat; x[2]++;
+      mine[owners ? 'd' + di : no] = true;
+    });
+    (book.items || []).forEach(function (it, ii) {
+      if (!mine[owners ? 'd' + owners[ii] : salesDocKey(kind, it.doc_no)] || salesTrue(it.is_free)) return;
+      var bc = salesText(it.barcode);
+      if (!bc) return;
+      if (salesText(it.name)) pnames[bc] = [salesText(it.name), salesText(it.unit)];
+      var p = prodSum[bc] || (prodSum[bc] = [bc, 0, 0]);
+      p[1] += Number(it.qty) || 0;
+      p[2] += toSatang(it.amount);
+    });
+  });
+  // เวลาที่ออก (ข้อความ ISO เทียบกันได้) — บิลที่ไม่มีเวลาไว้ท้ายตามลำดับแถว
+  bills.sort(function (a, b) {
+    if (a.at && b.at && a.at !== b.at) return a.at < b.at ? -1 : 1;
+    if (!a.at !== !b.at) return a.at ? -1 : 1;
+    return a.seq - b.seq;
+  });
+  var total = 0;
+  bills.forEach(function (b) { total += b.sat; delete b.seq; });
+  var values = function (map) { return Object.keys(map).map(function (k) { return map[k]; }); };
+  return {
+    date: date, bills: bills, total: total,
+    shops: values(shopSum),
+    products: values(prodSum).map(function (r) { return [r[0], salesQty(r[1]), r[2]]; }),
+    names: names, pnames: pnames,
+    missing: { tax: !input.tax, cash: !input.cash }
   };
 }
 
@@ -375,6 +483,9 @@ if (typeof module !== 'undefined' && module.exports) {
     salesView: salesView,
     salesRange: salesRange,
     salesRangeText: salesRangeText,
-    salesPct: salesPct
+    salesPct: salesPct,
+    salesDay: salesDay,
+    salesBillLabel: salesBillLabel,
+    salesPairedReceipts: salesPairedReceipts
   };
 }

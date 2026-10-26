@@ -253,6 +253,7 @@
     var ok = sh.el.querySelector('#c-ok');
     // ขั้น 1: บันทึกการยกเลิก (เซิร์ฟเวอร์ตอบทันที) → ขั้น 2: ทำ PDF ลายน้ำ (regeneratePdf replace) ต่อเอง
     ok.addEventListener('click', async function () {
+      if (ok.dataset.done) return sh.close();
       if (ok.dataset.retry) return makePdf();
       if (!reason.value.trim()) { msg.innerHTML = '<div class="alert err" id="c-error">กรุณาระบุเหตุผลที่ยกเลิก</div>'; return; }
       ok.disabled = true;
@@ -286,13 +287,30 @@
         msg.innerHTML = '<div class="alert err" id="c-error">' + errText('ยกเลิกบิล ' + LiffApp.docLabel(d.doc_no, d.doc_type) + ' แล้ว แต่ใส่ลายน้ำใน PDF ไม่สำเร็จ กด "ลองอีกครั้ง"') + '</div>';
         return;
       }
-      sh.close();
-      LiffApp.toast('ยกเลิกบิล ' + LiffApp.docLabel(d.doc_no, d.doc_type) + ' แล้ว' + (stockNote ? String.fromCharCode(10) + stockNote : ''));
+      var done = 'ยกเลิกบิล ' + LiffApp.docLabel(d.doc_no, d.doc_type) + ' แล้ว';
+      // รอบ 29: นอกแอป LINE → เปิดแชท OA พร้อมข้อความ "บิล N" (ผู้ใช้กดส่ง บอทตอบการ์ดที่มีป้ายยกเลิก) / เปิดเองไม่ได้ → ปุ่มในแผ่นนี้
+      var cmd = LiffApp.chatCommand(d.doc_no, d.doc_type);
+      var chatUrl = LiffApp.inClient() ? '' : LiffApp.oaMessageUrl(cmd);
+      if (!chatUrl) {
+        sh.close();
+        LiffApp.toast(done + (stockNote ? String.fromCharCode(10) + stockNote : ''));
+        AppData.patchDoc(LiffApp.docParam(d.doc_no), { pdfUrl: r.pdfUrl, hasPdf: !!r.pdfUrl }, d.doc_type); // PDF เปลี่ยน (ลายน้ำ) → หน้าจอดู PDF ของใบนี้โหลดใหม่
+        return;
+      }
       AppData.patchDoc(LiffApp.docParam(d.doc_no), { pdfUrl: r.pdfUrl, hasPdf: !!r.pdfUrl }, d.doc_type); // PDF เปลี่ยน (ลายน้ำ) → หน้าจอดู PDF ของใบนี้โหลดใหม่
+      var opened = LiffApp.openChat(cmd);
+      msg.innerHTML = '<div class="alert ok" id="c-done">' + LiffApp.esc(done) + (stockNote ? '<div id="c-stock">' + LiffApp.esc(stockNote) + '</div>' : '') +
+        '<div>' + LiffApp.esc(opened ? 'เปิดแชท LINE แล้ว กดส่ง "' + cmd + '" เพื่อดูการ์ดบิล' : 'กดปุ่ม "ส่งเข้าแชท LINE" แล้วกดส่ง "' + cmd + '"') + '</div></div>' +
+        '<a class="btn block" id="c-chat" href="' + LiffApp.esc(chatUrl) + '" target="_blank" rel="noopener" style="margin-top:8px">' + iconSvg('send') + '<span>ส่งเข้าแชท LINE</span></a>';
+      var keep = sh.el.querySelector('.btn.grow[data-close]'); // ปุ่ม "ไม่ยกเลิก" ไม่มีความหมายแล้ว
+      if (keep) keep.classList.add('hidden');
+      ok.dataset.done = '1';
+      ok.classList.remove('danger');
+      ok.textContent = 'ปิด';
     }
     // เมื่อปิดแผ่น ให้รายการอัปเดตเสมอ (เผื่อยกเลิกไปแล้วแต่ PDF ล้มเหลว)
     sh.el.addEventListener('click', function (e) {
-      if (ok.dataset.retry && (e.target === sh.el || e.target.closest('[data-close]'))) setTimeout(update, 0);
+      if (ok.dataset.retry && (e.target === sh.el || e.target.closest('[data-close]') || (ok.dataset.done && e.target.closest('#c-ok')))) setTimeout(update, 0);
     });
   }
 

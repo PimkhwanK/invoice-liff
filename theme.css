@@ -50,6 +50,7 @@
   --theme-shadow-pop: 0 4px 16px rgba(58, 51, 45, .25);
   --theme-page-shadow: 0 1px 4px rgba(58, 51, 45, .22);
   --theme-pdf-bg: #E9E3DA;       /* พื้นหลังหน้าดู PDF */
+  --theme-ink: #000000;          /* รอบ 29: ตัวหนังสือ/เส้นของใบเช็คยอดขายรายวัน (พิมพ์ขาวดำ) */
   --theme-debug-bg: rgba(58, 51, 45, .92);
 }
 

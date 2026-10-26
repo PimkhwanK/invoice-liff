@@ -26,7 +26,6 @@
   function scrollTop() { Shell.scrollTop(scr); }
 
   var TITLE = 'ออกบิล'; // รอบ 13: ทั้งสองประเภท (ประเภทดูจากป้ายบนหัว)
-  var CHAT_CMD = CASH ? 'เงินสด ' : 'บิล '; // คำสั่งในแชทที่บอทตอบเป็นการ์ดของบิล
 
   var S = {
     init: null,       // ข้อมูลตั้งต้น (AppData.issueInit)
@@ -954,9 +953,12 @@
   }
 
   // ---------- สำเร็จ
-  /** ในแอป LINE: ส่ง "บิล <เลขที่>" / "เงินสด <เลขที่>" เข้าแชทแล้วปิดหน้า / นอกแอป LINE หรือส่งไม่ได้: แสดงหน้าสำเร็จ */
+  /**
+   * ในแอป LINE: ส่ง "บิล <เลขที่>" / "ใบเสร็จ <เลขที่>" / "เงินสด <เลขที่>" เข้าแชทแล้วปิดหน้า / ส่งไม่ได้: แสดงหน้าสำเร็จ
+   * รอบ 29 นอกแอป LINE: เปิดแชท OA พร้อมข้อความ (oaMessage — ผู้ใช้กดส่ง บอทตอบการ์ด ไม่ใช้ push) + หน้าสำเร็จมีปุ่ม "ส่งเข้าแชท LINE"
+   */
   async function finish(r) {
-    var cmd = CHAT_CMD + LiffApp.docNoText(r.docNo);
+    var cmd = LiffApp.chatCommand(r.docNo, r.document ? r.document.doc_type : S.doc && S.doc.doc_type);
     if (LiffApp.inClient()) {
       try {
         await liff.sendMessages([{ type: 'text', text: cmd }]);
@@ -968,10 +970,12 @@
       liff.closeWindow();
       return;
     }
-    showSuccess(r, 'พิมพ์ "' + cmd + '" ในแชท LINE เพื่อดูบิล');
+    if (!LiffApp.oaMessageUrl(cmd)) return showSuccess(r, 'พิมพ์ "' + cmd + '" ในแชท LINE เพื่อดูบิล');
+    var opened = LiffApp.openChat(cmd);
+    showSuccess(r, opened ? 'เปิดแชท LINE แล้ว กดส่ง "' + cmd + '" เพื่อดูการ์ดบิล' : 'กดปุ่ม "ส่งเข้าแชท LINE" แล้วกดส่ง "' + cmd + '" เพื่อดูการ์ดบิล', cmd);
   }
 
-  function showSuccess(r, note) {
+  function showSuccess(r, note, chatCmd) {
     S.screen = 'done';
     totalbar.classList.add('hidden');
     $('title').textContent = 'ออกบิลสำเร็จ';
@@ -989,6 +993,7 @@
         ? '<a class="btn block" id="btn-pdf" href="' + esc(LiffApp.viewHref(LiffApp.docNoText(r.docNo), r.document ? r.document.doc_type : '')) + '">' + iconSvg('file') + '<span>ดู PDF</span></a>' +
           '<button type="button" class="btn block" id="btn-share">' + iconSvg('send') + '<span>ส่งต่อ</span></button>'
         : '<div class="small muted" id="no-pdf">ยังไม่มี PDF สร้างได้ที่เมนู "ประวัติเอกสาร"</div>') +
+      (chatCmd ? '<a class="btn block" id="btn-chat" href="' + esc(LiffApp.oaMessageUrl(chatCmd)) + '" target="_blank" rel="noopener">' + iconSvg('send') + '<span>ส่งเข้าแชท LINE</span></a>' : '') + // รอบ 29
       '<button type="button" class="btn primary block" id="btn-new">ออกบิลใหม่</button>' +
       '</div>';
     $('btn-new').addEventListener('click', load);

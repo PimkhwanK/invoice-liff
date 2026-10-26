@@ -372,6 +372,30 @@ var LiffApp = (function () {
     var id = String(CFG.LINE_OA_ID || '').trim();
     return /^@[A-Za-z0-9._-]{2,40}$/.test(id) ? 'https://line.me/R/ti/p/' + encodeURIComponent(id) : '';
   }
+  /**
+   * รอบ 29: คำสั่งในแชทที่บอทตอบเป็นการ์ดของบิล — "เงินสด 1069-15" / "ใบเสร็จ 25" (เลขซ้ำกับใบกำกับได้) / "บิล 25"
+   */
+  function chatCommand(no, type) {
+    if (MODE === 'cash') return 'เงินสด ' + docNoText(no);
+    return (Number(no) !== 0 && typeText(type) === TAX_RECEIPT_TYPE ? 'ใบเสร็จ ' : 'บิล ') + docNoText(no);
+  }
+  /** รอบ 29: ลิงก์เปิดแชท OA พร้อมพิมพ์ข้อความไว้ให้ (ผู้ใช้กดส่งเอง บอทตอบด้วย reply — ไม่ใช้ push) / ไม่ได้ตั้ง LINE_OA_ID → '' */
+  function oaMessageUrl(text) {
+    var id = String(CFG.LINE_OA_ID || '').trim();
+    if (!/^@[A-Za-z0-9._-]{2,40}$/.test(id)) return '';
+    return 'https://line.me/R/oaMessage/' + encodeURIComponent(id) + '/?' + encodeURIComponent(text);
+  }
+  /** รอบ 29: นอก LINE เปิดแชทพร้อมข้อความเอง — คืน true ถ้าเบราว์เซอร์เปิดให้ (ถูกบล็อก → false หน้าเว็บแสดงปุ่มแทน) */
+  function openChat(text) {
+    var url = oaMessageUrl(text);
+    if (!url) return false;
+    try {
+      var w = window.open(url, '_blank');
+      if (!w) return false;
+      try { w.opener = null; } catch (e) { /* ไม่เป็นไร */ }
+      return true;
+    } catch (e) { return false; }
+  }
   /** ชื่อ LINE ของผู้ที่เข้าสู่ระบบ (จาก idToken บนเครื่อง) */
   function profileName() { return lineIdentity().name; }
   // ใช้งานอยู่ (แตะ / พิมพ์) → จดเวลา / กลับมาที่แอปหลังไม่ได้ใช้นาน → ออกจากระบบ / token ใกล้หมด → เข้าใหม่เองก่อนกรอกฟอร์ม
@@ -699,6 +723,7 @@ var LiffApp = (function () {
     syncing: syncing, setScope: setScope, find: find, hooks: hooks,
     openExternal: openExternal, remember: remember, keep: keep, forget: forget, drop: drop,
     MSG: MSG, SETUP: SETUP, splitSetup: splitSetup, errorHtml: errorHtml,
-    logout: logout, openFullScreen: openFullScreen, lineChatUrl: lineChatUrl, profileName: profileName, appUrl: appUrl, IDLE_MS: IDLE_MS
+    logout: logout, openFullScreen: openFullScreen, lineChatUrl: lineChatUrl, profileName: profileName, appUrl: appUrl, IDLE_MS: IDLE_MS,
+    chatCommand: chatCommand, oaMessageUrl: oaMessageUrl, openChat: openChat // รอบ 29
   };
 })();

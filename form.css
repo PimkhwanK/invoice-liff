@@ -577,3 +577,43 @@ body.has-tabbar .toast { bottom: 140px; }
 
 /* รอบ 26: ความเคลื่อนไหวสต็อก — บรรทัดแรก (ประเภท อ้างอิง · ชื่อร้าน) บรรทัดเดียว ยาวตัดด้วย … */
 .mv .mv-h { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- รอบ 29: หน้าสรุป ช่วงเวลา 2 แถว (วันนี้ / เดือนนี้ / ปีนี้ — เลือกวัน / เลือกเดือน / เลือกปี) ---------- */
+.sum-kinds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--theme-field-border); }
+.sum-kinds label + label { border-left: 0; }
+.sum-pick .date-box { flex: 1; min-width: 0; }
+
+/* ---------- รอบ 29: ใบเช็คยอดขายรายวัน (summary?print=) — ขาวดำทั้งบนจอและตอนพิมพ์ ---------- */
+.dsr { color: var(--theme-ink); background: var(--theme-card); }
+.dsr-head { text-align: center; margin-bottom: 10px; }
+.dsr-head h2 { margin: 2px 0 0; font-size: 20px; color: var(--theme-ink); }
+.dsr-co { font-weight: 700; }
+.dsr-en { font-size: 12px; letter-spacing: .08em; }
+.dsr-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-bottom: 8px; }
+.dsr-fill { display: flex; align-items: flex-end; gap: 6px; flex: 1; min-width: 180px; }
+.dsr-meta > div:first-child { white-space: nowrap; }
+.dsr-line { display: block; flex: 1; min-width: 40px; height: 1.2em; border-bottom: 1px dotted var(--theme-ink); }
+.dsr-line.full { margin-top: 12px; }
+.dsr-table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--theme-ink); }
+.dsr-table th, .dsr-table td { border: 1px solid var(--theme-ink); padding: 5px 6px; height: 1.9em; vertical-align: middle; }
+.dsr-table th { font-weight: 700; text-align: center; line-height: 1.25; }
+.dsr-table td.c { text-align: center; }
+.dsr-table td.r { text-align: right; }
+.dsr-table td.nw { white-space: nowrap; }
+.dsr-table .w-no { width: 3.2em; }
+.dsr-table .w-bill { width: 8.5em; }
+.dsr-table .w-amt { width: 7.5em; }
+.dsr-end { margin-top: 14px; break-inside: avoid; }
+.dsr-cost { margin-bottom: 4px; }
+.dsr-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 34px; }
+.dsr-signer .dsr-fill { min-width: 0; }
+.dsr-paren { display: flex; align-items: flex-end; margin: 10px 0 0 3.2em; }
+.dsr-sign .dsr-line { margin: 0 4px; }
+.dsr-note { margin-top: 18px; }
+.dsr-foot { margin-top: 10px; }
+@media print {
+  .dsr { box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; font-size: 11pt; }
+  .dsr-table { font-size: 10.5pt; }
+  .dsr-table thead { display: table-header-group; }
+  .dsr-table tr { break-inside: avoid; }
+}
