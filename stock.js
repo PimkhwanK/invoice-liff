@@ -103,7 +103,10 @@
         '<div id="tab-report" class="hidden"></div>';
       $('stock-tabs').addEventListener('click', function (e) {
         var b = e.target.closest('button[data-tab]');
-        if (b) setTab(b.dataset.tab);
+        if (!b) return;
+        // รอบ 27: แตะแท็บ "รายงาน" = เริ่มที่ "เดือนนี้" เสมอ (ช่วงที่เลือกครั้งก่อนไม่ติดมา — วันจันทร์ "สัปดาห์นี้" มีวันเดียว สับสน)
+        if (b.dataset.tab === 'report' && !b.classList.contains('on')) { rep = null; repData = null; scr.params = { tab: 'report' }; }
+        setTab(b.dataset.tab);
       });
       $('stock-q').addEventListener('input', function (e) { term = e.target.value; drawLists(); });
       $('stock-q').value = term;
