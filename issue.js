@@ -36,7 +36,8 @@
     requestId: null,  // 1 ค่าต่อ 1 รอบการยืนยัน (ใช้ซ้ำถ้ากดลองใหม่หลังเน็ตหลุด)
     lastKey: 0,
     docNoInput: '',   // ใบกำกับ: เลขที่ที่พิมพ์
-    cashTest: false   // ใบเงินสด: ออกเป็นบิลทดสอบ 0000
+    cashTest: false,  // ใบเงินสด: ออกเป็นบิลทดสอบ 0000
+    fromInv: null     // รอบ 27: ใบเสร็จที่อ้างถึงใบกำกับ { no, type, doc, shop } (null = กรอกเอง)
   };
 
   function cfg() { return S.init.config; }
@@ -66,6 +67,7 @@
     S.lines = [];
     S.docNoInput = '';
     S.cashTest = false;
+    S.fromInv = null;
     showForm();
   }
 
@@ -140,11 +142,124 @@
   /** ใบกำกับ: ช่องเลขที่บนสุดของฟอร์ม (ทุกใบ ว่างทุกครั้ง — ตัวอย่างในช่อง = เลขล่าสุด + 1) */
   function docNoField() {
     var hint = lastTaxNo() ? lastTaxNo() + 1 : 1701;
+    var locked = !!S.fromInv; // รอบ 27: ใบเสร็จจากใบกำกับ = เลขเดียวกับใบกำกับ
     return '<section class="card first-no" id="first-no-card">' +
       '  <div class="field"><label class="f" for="first-doc-no">เลขที่บิลใบนี้</label>' +
-      '  <input type="text" id="first-doc-no" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" required placeholder="เช่น ' + hint + '" value="' + esc(S.docNoInput) + '">' +
-      (S.init.hasRealDoc ? '' : '  <div class="hint" id="first-doc-hint">ทดสอบ: ใส่ 0000</div>') + '</div>' +
+      '  <input type="text" id="first-doc-no" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" required placeholder="เช่น ' + hint + '" value="' + esc(S.docNoInput) + '"' + (locked ? ' readonly' : '') + '>' +
+      (locked ? '  <div class="hint" id="first-doc-locked">เลขเดียวกับใบกำกับที่อ้างถึง</div>'
+        : S.init.hasRealDoc ? '' : '  <div class="hint" id="first-doc-hint">ทดสอบ: ใส่ 0000</div>') + '</div>' +
       '</section>';
+  }
+
+  // ---------- รอบ 27: ใบเสร็จรับเงินจากใบกำกับภาษี (เลือกใบกำกับ → ดึงร้าน รายการ ชนิดการขายมาให้ / ไม่เลือกก็กรอกเองได้)
+
+  function isReceipt() { return !CASH && S.doc && S.doc.doc_type === TAX_RECEIPT_TYPE; }
+
+  /** ใบกำกับ 10 ใบล่าสุดที่ออกใบเสร็จได้ (ไม่ยกเลิก / ยังไม่มีใบเสร็จเลขเดียวกัน) */
+  function receiptCandidates() {
+    var has = ((S.init.docNosByType || {})[TAX_RECEIPT_TYPE] || []);
+    return AppData.recentDocs().filter(function (d) {
+      var n = Number(d.doc_no);
+      return n > 0 && d.doc_type !== TAX_RECEIPT_TYPE && d.status !== 'cancelled' && has.indexOf(n) < 0 &&
+        !AppData.recentDocs().some(function (x) { return Number(x.doc_no) === n && x.doc_type === TAX_RECEIPT_TYPE; });
+    }).slice(0, 10);
+  }
+
+  function receiptCard() {
+    if (!isReceipt()) return '';
+    if (S.fromInv) {
+      var d = S.fromInv.doc;
+      return '<section class="card" id="rc-card"><h2>อ้างถึงใบกำกับเลขที่</h2>' +
+        '<div class="picked" id="rc-picked"><div class="row"><div class="grow"><div class="name">#' + esc(d.doc_no) + ' · ' + esc(d.shop_short_name || d.shop_legal_name) + '</div>' +
+        '<div class="small muted">' + esc(formatThaiDateShort(d.doc_date)) + ' · ' + money(d.total) + ' บาท</div></div>' +
+        '<button type="button" class="btn sm" id="rc-clear">ไม่อ้างถึง</button></div>' +
+        '<div class="small" style="margin-top:6px">ดึงร้านและรายการจากใบกำกับแล้ว แก้ได้ถ้าจำเป็น · วันที่ใบเสร็จต้องไม่ก่อน ' + esc(formatThaiDateShort(d.doc_date)) + '</div></div></section>';
+    }
+    var list = receiptCandidates();
+    return '<section class="card" id="rc-card"><h2>อ้างถึงใบกำกับเลขที่</h2>' +
+      '<p class="small muted" style="margin-top:0">เลือกใบกำกับ ระบบจะดึงร้านและรายการมาให้ (ไม่เลือกก็กรอกเองได้)</p>' +
+      (list.length ? '<ul class="list pick-list" id="rc-list">' + list.map(function (d) {
+        return '<li role="button" tabindex="0" class="tap" data-no="' + esc(d.doc_no) + '" data-dt="' + esc(d.doc_type) + '"><div class="t"><div class="n">#' + esc(d.doc_no) + ' · ' + esc(d.shop_short_name || d.shop_legal_name) + '</div>' +
+          '<div class="s">' + esc(formatThaiDateShort(d.doc_date)) + '</div></div><div class="right"><b class="num">' + money(d.total) + '</b></div></li>';
+      }).join('') + '</ul>' : '<div class="empty" id="rc-empty">ไม่มีใบกำกับที่รอออกใบเสร็จ</div>') +
+      '<div class="row" style="margin-top:10px"><input type="text" id="rc-no" class="grow" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="ใบเก่ากว่านี้ พิมพ์เลขที่" aria-label="เลขที่ใบกำกับ">' +
+      '<button type="button" class="btn" id="rc-use">ใช้เลขนี้</button></div><div id="rc-msg"></div></section>';
+  }
+
+  function listenReceiptCard() {
+    if (!$('rc-card')) return;
+    if ($('rc-clear')) {
+      $('rc-clear').addEventListener('click', function () { S.fromInv = null; showForm(); }); // ข้อมูลที่ดึงมายังอยู่ แก้เองได้
+      return;
+    }
+    if ($('rc-list')) {
+      $('rc-list').addEventListener('click', function (e) {
+        var li = e.target.closest('li[data-no]');
+        if (li) pickInvoice(Number(li.dataset.no), li.dataset.dt);
+      });
+    }
+    $('rc-no').addEventListener('input', function (e) { e.target.value = e.target.value.replace(/[^0-9]/g, ''); });
+    $('rc-use').addEventListener('click', function () {
+      var n = Number($('rc-no').value);
+      if (!(n >= 1)) return receiptMsg('กรุณาพิมพ์เลขที่ใบกำกับ');
+      pickInvoice(n, '');
+    });
+  }
+
+  function receiptMsg(text) {
+    var box = $('rc-msg');
+    if (box) box.innerHTML = text ? '<div class="alert err" id="rc-error" style="margin-top:8px">' + esc(text) + '</div>' : '';
+  }
+
+  /** ดึงใบกำกับ (getDocument — ร้าน ณ วันออกใบกำกับ + รายการ) แล้วเติมฟอร์ม / วันที่ใบเสร็จ ผู้ใช้กรอกเอง */
+  async function pickInvoice(no, type) {
+    receiptMsg('');
+    var btn = $('rc-use');
+    if (btn) { btn.disabled = true; btn.textContent = 'กำลังดึง…'; }
+    var r = await LiffApp.api('getDocument', { docNo: no, docType: type || '' });
+    if (S.screen !== 'form' || !isReceipt()) return;
+    if (btn && $('rc-use')) { btn.disabled = false; btn.textContent = 'ใช้เลขนี้'; }
+    if (!r.ok) {
+      if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
+      return receiptMsg(r.code === 'not_found' ? 'ไม่พบใบกำกับเลขที่ ' + no : r.error || 'ดึงใบกำกับไม่สำเร็จ ลองอีกครั้ง');
+    }
+    var d = r.document;
+    if (d.doc_type === TAX_RECEIPT_TYPE) return receiptMsg('ไม่พบใบกำกับเลขที่ ' + no);
+    if (d.status === 'cancelled') return receiptMsg('ใบกำกับเลขที่ ' + no + ' ถูกยกเลิกแล้ว ออกใบเสร็จไม่ได้');
+    if (((S.init.docNosByType || {})[TAX_RECEIPT_TYPE] || []).indexOf(no) >= 0) return receiptMsg('ใบกำกับเลขที่ ' + no + ' มีใบเสร็จแล้ว');
+    if (!r.shop) return receiptMsg('ระบบยังไม่พร้อมใช้งาน กรุณาแจ้งผู้ดูแลระบบ'); // เซิร์ฟเวอร์รุ่นเก่า (ไม่ส่งข้อมูลร้านของใบกำกับ)
+    var sh = r.shop;
+    S.fromInv = { no: no, type: d.doc_type, doc: d, shop: sh };
+    S.docNoInput = String(no);
+    S.doc.ref = 'ใบกำกับ ' + no;
+    if (labels().indexOf(d.sale_type) >= 0) S.doc.sale_type = d.sale_type;
+    S.doc.due_date = d.due_date || '';
+    S.doc.doc_date = ''; // วันที่ใบเสร็จ ผู้ใช้กรอกเอง
+    S.shop = {
+      shop_id: sh.shop_id, short_name: sh.shop_short_name, legal_name: sh.shop_legal_name,
+      address: [sh.shop_address1, sh.shop_address2].filter(function (x) { return x; }).join(' '),
+      tel: sh.shop_tel, fax: sh.shop_fax, branch: sh.shop_branch, tax_id: sh.shop_tax_id, credit_days: '', active: true
+    };
+    S.lines = [];
+    (r.items || []).forEach(function (it) {
+      addLine({ barcode: it.barcode, name: it.name, unit: it.unit, price: it.price },
+        { qty: it.qty, price: it.is_free ? startPrice(it.price) : it.price, discount: it.discount || '', is_free: !!it.is_free, note: it.note || '', fromInv: true });
+    });
+    showForm();
+    LiffApp.toast('ดึงข้อมูลจากใบกำกับ #' + no + ' แล้ว ใส่วันที่ใบเสร็จ');
+  }
+
+  /** ข้อมูลตรวจบนมือถือของใบเสร็จจากใบกำกับ: ร้าน + สินค้าตามใบกำกับ (ตรงกับ apiReceiptContext ใน Api.gs) */
+  function receiptInit(init) {
+    if (!S.fromInv || !S.shop) return init;
+    var out = Object.assign({}, init);
+    var id = Number(S.shop.shop_id);
+    out.allShops = (init.allShops || init.shops || []).filter(function (x) { return Number(x.shop_id) !== id; }).concat([S.shop]);
+    out.shops = out.allShops;
+    var mine = {};
+    S.lines.forEach(function (l) { if (l.fromInv) mine[l.barcode] = { barcode: l.barcode, name: l.name, unit: l.unit, price: l.list_price, active: true }; });
+    out.allProducts = previewProducts(init).filter(function (p) { return !mine[p.barcode]; }).concat(Object.keys(mine).map(function (k) { return mine[k]; }));
+    return out;
   }
 
   /** รอบ 24: เปลี่ยนประเภทเอกสาร → ตัวอย่างในช่องเลขที่ = เลขล่าสุดของประเภทนั้น + 1 */
@@ -169,8 +284,13 @@
     view.innerHTML = CASH ? cashFormHtml() : taxFormHtml();
     if (!CASH) {
       view.querySelectorAll('input[name=doc_type]').forEach(function (i) {
-        i.addEventListener('change', function () { S.doc.doc_type = i.value; setSubtitle(); updateDocNoHint(); }); // รอบ 24: เลขล่าสุดของประเภทนี้
+        i.addEventListener('change', function () {
+          S.doc.doc_type = i.value;
+          if (S.fromInv && !isReceipt()) S.fromInv = null; // ไม่ใช่ใบเสร็จแล้ว → ไม่อ้างถึงใบกำกับ (ข้อมูลที่กรอกไว้ยังอยู่)
+          showForm(); // รอบ 27: การ์ดอ้างถึงใบกำกับแสดง/ซ่อนตามประเภท (รอบ 24: เลขล่าสุดของประเภทนี้)
+        });
       });
+      listenReceiptCard();
       var noInput = $('first-doc-no');
       noInput.addEventListener('input', function () {
         var digits = noInput.value.replace(/[^0-9]/g, ''); // ตัวเลขเท่านั้น
@@ -218,6 +338,8 @@
   /** ใบกำกับภาษี: เลขที่ → ข้อมูลบิล → ร้าน → สินค้า (แบบเดิม) */
   function taxFormHtml() {
     var c = cfg();
+    // รอบ 27: การ์ด "อ้างถึงใบกำกับเลขที่" อยู่ใต้ปุ่มเลือกประเภททันที (กดใบเสร็จแล้วเห็นเลย) — ข้อมูลบิลส่วนที่เหลืออยู่การ์ดถัดไป
+    var rc = receiptCard();
     return docNoField() +
       '<section class="card">' +
       '  <h2>ข้อมูลบิล</h2>' +
@@ -225,6 +347,7 @@
       c.doc_types.map(function (t) {
         return '<label><input type="radio" name="doc_type" value="' + esc(t) + '"' + (t === S.doc.doc_type ? ' checked' : '') + '>' + esc(t) + '</label>';
       }).join('') + '</div></div>' +
+      (rc ? '</section>' + rc + '<section class="card" id="doc-info-rest">' : '') +
       '  <div class="field two">' +
       '    <div><label class="f" for="doc-date">วันที่</label>' + dateBox('doc-date', S.doc.doc_date) + '</div>' +
       '    <div><label class="f" for="doc-ref">อ้างถึง</label><input type="text" id="doc-ref" placeholder="เช่น เลข PO" maxlength="100" value="' + esc(S.doc.ref) + '"></div>' +
@@ -347,6 +470,7 @@
       var li = e.target.closest('li[data-id]');
       if (!li) return;
       S.shop = S.init.shops.find(function (x) { return String(x.shop_id) === li.dataset.id; });
+      if (S.fromInv) { S.fromInv = null; LiffApp.toast('เปลี่ยนร้านแล้ว ใบเสร็จนี้ไม่อ้างถึงใบกำกับ'); } // รอบ 27
       var kb = e.detail === 0; // รอบ 20: เลือกด้วยคีย์บอร์ด (Enter) → โฟกัสปุ่ม "เปลี่ยน" ต่อ
       s.close();
       renderShop();
@@ -577,7 +701,10 @@
   function showReview() {
     S.dateConfirmed = ''; // ทุกรอบตรวจต้องติ๊กยืนยันวันที่ใหม่
     var payload = buildDocumentPayload();
-    var r = CASH ? previewCashLocal(payload, S.init) : previewLocal(payload, S.init);
+    var r = CASH ? previewCashLocal(payload, S.init) : previewLocal(payload, receiptInit(S.init));
+    if (S.fromInv && isIsoDate(payload.doc_date) && payload.doc_date < S.fromInv.doc.doc_date) {
+      r.errors.unshift('วันที่ใบเสร็จต้องไม่ก่อนวันที่ใบกำกับ (' + formatThaiDateShort(S.fromInv.doc.doc_date) + ')'); // รอบ 27 (เซิร์ฟเวอร์ตรวจซ้ำ)
+    }
     payload.items.forEach(function (it, i) {
       if (it.qty !== '') return;
       var p = 'บรรทัดที่ ' + (i + 1) + ': ';
@@ -715,6 +842,7 @@
     var body = { requestId: S.requestId, document: buildDocumentPayload(), expected: S.expected, deferPdf: true };
     if (CASH) { if (S.cashTest) body.test = true; }
     else body.firstDocNo = S.reviewNo; // ชื่อ firstDocNo เดิม (รอบ 7) — รอบ 10 ใช้กับทุกใบ
+    if (S.fromInv) body.fromInvoice = { docNo: S.fromInv.no, docType: S.fromInv.type }; // รอบ 27
     var r = await LiffApp.api('createDocument', body);
     if (!r.ok) {
       msg.innerHTML = '';
