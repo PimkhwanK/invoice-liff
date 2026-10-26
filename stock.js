@@ -285,7 +285,9 @@
       '<section class="card"><h2>ความเคลื่อนไหว <span class="count">' + r.total + ' รายการ</span></h2><ul class="list" id="hist-list">' +
       (r.moves.length ? r.moves.map(function (m) {
         var when = formatThaiDateShort(m.at.slice(0, 10)) + (m.at.length > 15 ? ' ' + m.at.slice(11, 16) : '');
-        return '<li class="mv"><div class="t"><b>' + esc(m.kind) + '</b>' + (m.ref ? ' ' + esc(m.ref) : '') +
+        // รอบ 26: รายการจากบิล → ชื่อร้าน (ณ วันออกบิล) ต่อท้าย บรรทัดเดียว ยาวตัดด้วย …
+        return '<li class="mv"><div class="t"><div class="mv-h"><b>' + esc(m.kind) + '</b>' + (m.ref ? ' ' + esc(m.ref) : '') +
+          (m.shop ? ' · <span class="mv-shop">' + esc(m.shop) + '</span>' : '') + '</div>' +
           '<div class="small muted">' + esc(when) + (m.by ? ' · ' + esc(m.by) : '') + (m.reason ? ' · ' + esc(m.reason) : '') + '</div></div>' +
           '<div class="d"><b class="num ' + (m.qty < 0 ? 'minus' : 'plus') + '">' + (m.qty > 0 ? '+' : '') + esc(qtyText(m.qty)) + '</b>' +
           '<div class="small muted">เหลือ ' + esc(qtyText(m.balance)) + '</div></div></li>';

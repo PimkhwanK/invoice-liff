@@ -404,6 +404,34 @@ function stockReturnNote(o) {
   return { returned: 0, note: early ? 'บิลนี้ออกก่อนเริ่มนับสต็อก จึงไม่ได้คืน' : '' };
 }
 
+/**
+ * รอบ 26: ชื่อร้านของรายการที่มาจากบิล (ขาย / คืนจากยกเลิก) — ชื่อ ณ วันออกบิล (snapshot ในแถวเอกสาร) ไม่ใช่ชื่อปัจจุบัน
+ * แถวในแท็บความเคลื่อนไหวไม่มีชื่อร้าน → หาจากบิลตอนอ่าน (อ้างอิง = stockRef ของบิล แยกใบกำกับ / ใบเสร็จ / ใบเงินสด)
+ * อ้างอิงเดียวกันหลายใบ (เลขที่ซ้ำคนละประเภทที่หักสต็อก) → ใบที่ออกตรงเวลารายการ / ใบล่าสุดที่ออกก่อนรายการ
+ * @param {Array<{kind:'tax'|'cash', docs:object[]}>} books
+ * @returns {function(object):string} move → ชื่อร้าน ('' = ไม่ใช่รายการจากบิล / หาไม่พบ)
+ */
+function stockRefShops(books) {
+  var by = {};
+  (books || []).forEach(function (b) {
+    (b.docs || []).forEach(function (d) {
+      if (!stockSyncDocKey(b.kind, d.doc_no)) return;
+      var ref = stockRef(b.kind, d.doc_no, d.doc_type);
+      (by[ref] = by[ref] || []).push({ at: stockText(d.created_at), name: stockText(d.shop_short_name) || stockText(d.shop_legal_name) });
+    });
+  });
+  return function (m) {
+    var list = by[stockText(m.ref)];
+    if (!list) return '';
+    if (list.length === 1) return list[0].name;
+    var at = stockText(m.at);
+    var best = null;
+    list.forEach(function (c) { if (c.at === at) best = c; });
+    if (!best) list.forEach(function (c) { if (c.at <= at && (!best || c.at > best.at)) best = c; });
+    return (best || list[0]).name;
+  };
+}
+
 /** เลขที่ของบิลจริง ('tax' จำนวนเต็ม ≥ 1 / 'cash' MMYY-ลำดับ) → ข้อความ / บิลทดสอบ 0000 หรืออ่านไม่ได้ → '' */
 function stockSyncDocKey(kind, v) {
   if (kind === 'cash') {
@@ -545,6 +573,7 @@ if (typeof module !== 'undefined' && module.exports) {
     stockPlanManual: stockPlanManual,
     stockBalancesFromMoves: stockBalancesFromMoves,
     stockMoveEffects: stockMoveEffects,
+    stockRefShops: stockRefShops,
     stockSyncPlan: stockSyncPlan
   };
 }

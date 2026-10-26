@@ -574,3 +574,6 @@ body.has-tabbar .toast { bottom: 140px; }
   .rep-table thead { display: table-header-group; }
   .rep-table tr { break-inside: avoid; }
 }
+
+/* รอบ 26: ความเคลื่อนไหวสต็อก — บรรทัดแรก (ประเภท อ้างอิง · ชื่อร้าน) บรรทัดเดียว ยาวตัดด้วย … */
+.mv .mv-h { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
