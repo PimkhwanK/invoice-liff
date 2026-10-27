@@ -490,6 +490,26 @@ body.has-tabbar .toast { bottom: 140px; }
 .menu-tile.manage { background: var(--theme-text); grid-column: 1 / -1; min-height: 96px; } /* รอบ 34: จัดการข้อมูล เต็มความกว้าง */
 .menu-tile:active { filter: brightness(.92); }
 .menu-tile:focus-visible { outline: 3px solid var(--theme-text); outline-offset: 2px; }
+/* รอบ 34 ขั้น 2: หน้าแรก — ปุ่มออกบิลเตี้ยลง (ตัวเลขวันนี้เห็นในจอแรก) / การ์ดที่แตะได้ทั้งใบ / สิ่งที่ต้องทำ / บิลล่าสุด */
+.menu-tile.cash, .menu-tile.tax { min-height: 116px; }
+.menu-tile.cash .n, .menu-tile.tax .n { font-size: 20px; }
+a.card { display: block; text-decoration: none; color: inherit; }
+a.card:active { background: var(--theme-pressed); }
+.home-nums { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.home-nums > div { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+.home-nums .muted { font-size: 13px; }
+.home-nums b { font-size: 24px; line-height: 1.2; color: var(--theme-text); }
+.home-todo-row, .home-bill { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 0; text-decoration: none; color: var(--theme-text); }
+.home-todo-row svg.icon { width: 22px; height: 22px; flex: 0 0 auto; }
+.home-todo-row svg.icon:last-child { width: 18px; height: 18px; color: var(--theme-text-2); }
+.home-todo-row .t { flex: 1; min-width: 0; font-weight: 700; }
+.home-todo-row .v { white-space: nowrap; font-size: 14px; color: var(--theme-text-2); }
+.home-todo-row.late > svg.icon:first-child { color: var(--theme-err-text); }
+.home-todo-row.near > svg.icon:first-child { color: var(--theme-warn-text); }
+.home-bill .nm { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.home-bill .n { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-bill b { white-space: nowrap; }
+.home-todo-row:active, .home-bill:active { background: var(--theme-pressed); }
 .menu-more .btn { justify-content: flex-start; }
 .menu-more .btn + .btn { margin-top: 8px; }
 .menu-more:not(:has(.btn:not(.hidden))) { display: none; }
