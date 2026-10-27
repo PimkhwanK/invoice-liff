@@ -562,9 +562,12 @@ a.card:active { background: var(--theme-pressed); }
 
   /* สรุป: การ์ดเรียง 2 คอลัมน์ (ตัวเลือกช่วงเวลาเต็มแถวด้านบน) */
   .screen[data-screen=summary] { --w: 1100px; }
-  #sum-body { columns: 2; column-gap: 0; }
-  #sum-body > .card { break-inside: avoid; margin: 0 12px 12px; }
-  #sum-body > .alert { column-span: all; }
+  /* รอบ 34: เฉพาะแท็บภาพรวม 2 คอลัมน์ / ร้านค้า สินค้า ลูกหนี้ = การ์ดเดียวกลางจอ / ตัวเลข 4 ตัวเรียงแถวเดียว */
+  #sum-body[data-tab=overview] { columns: 2; column-gap: 0; }
+  #sum-body[data-tab=overview] > .card { break-inside: avoid; margin: 0 12px 12px; }
+  #sum-body[data-tab=overview] > .alert { column-span: all; }
+  #sum-body:not([data-tab=overview]) > .card { max-width: 760px; margin-left: auto; margin-right: auto; }
+  .screen[data-screen=summary] .sum-key { grid-template-columns: repeat(4, minmax(0, 1fr)); } /* ชนะกฎพื้นฐานที่อยู่ท้ายไฟล์ */
 
   /* สต็อก: ต้องดู | สินค้า */
   .screen[data-screen=stock] { --w: 1100px; }
@@ -629,6 +632,25 @@ a.card:active { background: var(--theme-pressed); }
 .mv .mv-h { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- รอบ 29: หน้าสรุป ช่วงเวลา 2 แถว (วันนี้ / เดือนนี้ / ปีนี้ — เลือกวัน / เลือกเดือน / เลือกปี) ---------- */
+/* รอบ 34 ขั้น 3: ตัวเลขสำคัญ 4 ตัว / แท็บย่อย / ปุ่มใบเช็คยอดบนหัว / ดูทั้งหมด — ทุกปุ่มสูง ≥ 48px */
+.sum-head { display: flex; align-items: flex-start; gap: 10px; }
+.sum-head > div { flex: 1; min-width: 0; }
+.sum-daily-btn { flex: 0 0 auto; min-height: 48px; padding: 6px 10px; font-size: 14px; line-height: 1.2; max-width: 46%; white-space: normal; text-align: left; }
+.sum-key { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; padding: 10px; }
+.sum-key .key { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; min-height: 96px; padding: 10px; border-radius: 12px; background: var(--theme-bg); }
+.sum-key .key .l { font-size: 13px; color: var(--theme-text-2); }
+.sum-key .key b { font-size: 22px; line-height: 1.2; color: var(--theme-text); overflow-wrap: anywhere; }
+.sum-key .key .small { font-size: 12px; }
+.sum-key .key-debt { border: 1px solid var(--theme-line); font: inherit; text-align: left; cursor: pointer; }
+.sum-key .key-debt:active { background: var(--theme-pressed); }
+.sum-key .key-debt .late { color: var(--theme-err-text); font-weight: 700; }
+.seg-choice.sum-tabs { margin: 0 12px 12px; }
+.sum-tabs button { flex: 1 1 0; min-width: 0; min-height: 48px; border: 0; background: var(--theme-card); font: inherit; font-size: 15px; color: var(--theme-text); cursor: pointer; }
+.sum-tabs button + button { border-left: 1px solid var(--theme-field-border); }
+.sum-tabs button.on { background: var(--theme-primary); color: var(--theme-on-primary); font-weight: 700; }
+.sum-tabs button:focus-visible { outline: 2px solid var(--theme-primary-dark); outline-offset: -4px; }
+.sum-more { margin-top: 8px; min-height: 48px; }
+.sum-kinds label { min-height: 48px; display: flex; align-items: center; justify-content: center; }
 .sum-kinds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--theme-field-border); }
 .sum-kinds label + label { border-left: 0; }
 .sum-pick .date-box { flex: 1; min-width: 0; }

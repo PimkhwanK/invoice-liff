@@ -20,7 +20,7 @@
  *   หัวหน้าออกบิล / ประวัติ: ทางลัด "จัดการข้อมูล" (#manage-link) / ปุ่ม "เมนูหลัก" บนหัวเลิกใช้ (มี "หน้าแรก" ในแถบล่าง) / หน้าดู PDF ยังมีป้ายประเภทเดิม
  */
 var Shell = (function () {
-  var ROUTES = { issue: [], history: ['shopId'], manage: ['tab'], view: ['no', 'dt'], summary: ['print'], stock: ['barcode', 'tab', 'period', 'month', 'from', 'to'], menu: [] };
+  var ROUTES = { issue: [], history: ['shopId'], manage: ['tab'], view: ['no', 'dt'], summary: ['print', 'tab'], stock: ['barcode', 'tab', 'period', 'month', 'from', 'to'], menu: [] };
   var ALONE = { summary: true, stock: true, menu: true }; // รอบ 15: หน้าที่ไม่ผูกกับประเภทเอกสาร (รอบ 21: + เมนูหลัก)
   var MODED = { issue: true, history: true, manage: true }; // รอบ 34: หน้าจอที่มีปุ่มสลับโหมดบนหัว
   var MODE_KEY = 'invoice-liff:mode';                       // รอบ 34: โหมดที่ใช้ล่าสุด (ไม่ใช่ข้อมูลส่วนตัว)

@@ -2,7 +2,7 @@
  * menu.js — หน้าแรก (รอบ 21 เมนูหลัก / รอบ 34 ขั้น 2: หน้าแรกแบบสรุปสั้น)
  *   หน้าแรกของแอปทั้งใน LINE และนอก LINE (index.html → menu) / แถบล่าง "หน้าแรก" (shell.js)
  *   เรียงจากบน: ปุ่มใหญ่ ออกใบเงินสด / ออกใบกำกับภาษี → ตัวเลขวันนี้ (ยอดขาย เทียบเมื่อวาน จำนวนบิล) → สิ่งที่ต้องทำ
- *     (ลูกหนี้เลยกำหนด / ใกล้ครบกำหนด / สินค้าใกล้หมด — ไม่มีอะไรค้าง = ซ่อนทั้งส่วน) → บิลล่าสุด 5 ใบ → ปุ่มใหญ่ จัดการข้อมูล → ชื่อผู้ใช้ + ปุ่มเดิม
+ *     (ลูกหนี้เลยกำหนด / ใกล้ครบกำหนด → แท็บลูกหนี้ของหน้าสรุป / สินค้าใกล้หมด — ไม่มีอะไรค้าง = ซ่อนทั้งส่วน) → บิลล่าสุด 5 ใบ → ปุ่มใหญ่ จัดการข้อมูล → ชื่อผู้ใช้ + ปุ่มเดิม
  *   ข้อมูล: summaryData (ปีนี้ — ข้อมูลชุดเดียวกับหน้าสรุป จำไว้ที่ 'sales-<ปี>' ใช้ร่วมกัน) + debtData (จำไว้ที่ 'home-debt')
  *     แสดงตัวเลขที่จำไว้ก่อน แล้วอัปเดตเบื้องหลัง / ไม่สำเร็จชั่วคราว → ลองใหม่เงียบ ๆ 3 ครั้ง (แบบหน้าสรุป)
  *   ใน LINE: ปุ่ม "เปิดแบบเต็มจอ" (liff.openWindow external → เบราว์เซอร์ของเครื่องที่หน้านี้)
@@ -146,8 +146,8 @@
   /** สิ่งที่ต้องทำ — ไม่มีอะไรค้าง (หรือยังไม่รู้) → ซ่อนทั้งส่วน */
   function todoCard() {
     var rows = [];
-    if (debt && debt.overdue[0]) rows.push(['home-todo-overdue', 'summary', 'warn', 'ลูกหนี้เลยกำหนด ' + debt.overdue[0] + ' บิล', money(debt.overdue[1]) + ' บาท', 'late']);
-    if (debt && debt.soon[0]) rows.push(['home-todo-soon', 'summary', 'calendar', 'ลูกหนี้ใกล้ครบกำหนด ' + debt.soon[0] + ' บิล', money(debt.soon[1]) + ' บาท', 'near']);
+    if (debt && debt.overdue[0]) rows.push(['home-todo-overdue', 'summary?tab=debt', 'warn', 'ลูกหนี้เลยกำหนด ' + debt.overdue[0] + ' บิล', money(debt.overdue[1]) + ' บาท', 'late']);
+    if (debt && debt.soon[0]) rows.push(['home-todo-soon', 'summary?tab=debt', 'calendar', 'ลูกหนี้ใกล้ครบกำหนด ' + debt.soon[0] + ' บิล', money(debt.soon[1]) + ' บาท', 'near']);
     var low = stockLow && Array.isArray(stockLow.products) ? stockLow.products.length : 0;
     if (low) rows.push(['home-todo-stock', 'stock?tab=low', 'stock', 'สินค้าใกล้หมด ' + low + ' รายการ', 'ดูสต็อก', 'near']);
     if (!rows.length) return '';

@@ -7,6 +7,9 @@
  *     เลือกวัน: ยอดรวมจากข้อมูลของปี / ร้านและสินค้าของวันนั้นจาก salesDay (Api.gs) ทีละวัน
  *   รอบ 29: ใบเช็คยอดขายรายวัน (summary?print=YYYY-MM-DD) — A4 แนวตั้ง ขาวดำ พิมพ์ / PDF ด้วย window.print() แบบรายงานสต็อก / ในแอป LINE → เปิดเบราว์เซอร์
  *   เนื้อหา: ยอดขายรวม (แยกประเภท เทียบช่วงก่อน จำนวนบิล เฉลี่ยต่อบิล) / กราฟ / ภาษีขาย (ใบกำกับ) / ร้านซื้อเยอะสุด / สินค้าขายดี / ร้านที่ไม่ได้ซื้อนาน
+ * รอบ 34 ขั้น 3: ช่วงเวลา → ตัวเลขสำคัญ 4 ตัว (#sum-total: ยอดขาย / จำนวนบิล / เฉลี่ยต่อบิล / ลูกหนี้ค้าง) → แท็บย่อย (#sum-tabs) ภาพรวม / ร้านค้า / สินค้า / ลูกหนี้
+ *   ภาพรวม = ยอดตามประเภท กราฟ ภาษีขาย บิลล่าสุด สินค้าใกล้หมด / ร้านค้า สินค้า = 5 อันดับแรก + "ดูทั้งหมด" (สูงสุด 10) / ลูกหนี้ = การ์ดลูกหนี้
+ *   แท็บ: summary?tab=… (หน้าแรกแตะลูกหนี้ → tab=debt) ไม่มี = แท็บที่เลือกล่าสุด (จำในเครื่อง 'sum-tab') / ใบเช็คยอดรายวัน = ปุ่มบนหัว (#sum-daily-btn → แผ่นเลือกวัน)
  */
 (function () {
   var esc = LiffApp.esc;
@@ -24,6 +27,10 @@
   var dayPick = '';                  // รอบ 29: ช่วง "เลือกวัน"
   var days = {};                     // รอบ 29: วันที่ → คำตอบ salesDay (ร้าน/สินค้าของวันนั้น + บิลสำหรับใบเช็คยอด)
   var dayPending = {};               // วันที่ → Promise ของคำขอที่กำลังรอ
+  var TABS = [['overview', 'ภาพรวม'], ['shops', 'ร้านค้า'], ['products', 'สินค้า'], ['debt', 'ลูกหนี้']]; // รอบ 34
+  var tab = '';                      // แท็บที่แสดง
+  var TOP_SHOW = 5;                  // ร้านค้า / สินค้า: แสดงกี่อันดับก่อนกด "ดูทั้งหมด"
+  var showAll = {};                  // 'shops' / 'products' → กดดูทั้งหมดแล้ว
   var MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
   function $(id) { return scr.$(id); }
 
@@ -103,6 +110,7 @@
   async function show(params) {
     if (!pick.year) { pick.year = thisYear(); pick.month = Number(today().slice(5, 7)); yearPick = thisYear(); dayPick = today(); }
     if (params && params.print) return showDaily(params.print);
+    setTab(params && params.tab, true);
     fetchDebt(); // รอบ 33: ลูกหนี้ (ทุกครั้งที่เข้าหน้า — ยอดเปลี่ยนตามวัน)
     var year = yearOf();
     if (!data[year] && !LiffApp.remember('sales-' + year)) LiffApp.loading('กำลังรวมยอดขาย…', view);
@@ -186,7 +194,14 @@
   /** โครงหน้า: ตัวเลือกช่วงเวลา + เนื้อหา (สร้างใหม่หลังข้อความระหว่างรอ / หน้าผิดพลาดแทนที่ไป) */
   function layout() {
     if ($('sum-period')) return;
-    view.innerHTML = '<section class="card" id="sum-period"></section><div id="sum-body"></div>';
+    view.innerHTML = '<section class="card" id="sum-period"></section><section class="card sum-key" id="sum-total"></section>' +
+      '<div class="seg-choice sum-tabs" id="sum-tabs" role="tablist" aria-label="หัวข้อ">' + TABS.map(function (t) {
+        return '<button type="button" role="tab" data-tab="' + t[0] + '" id="sum-tab-' + t[0] + '">' + t[1] + '</button>';
+      }).join('') + '</div><div id="sum-body"></div>';
+    $('sum-tabs').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-tab]');
+      if (b && b.dataset.tab !== tab) { setTab(b.dataset.tab); drawBody(); }
+    });
     $('sum-period').addEventListener('change', onPeriod);
     $('sum-body').addEventListener('change', function (e) {
       if (e.target.name === 'prod-by') { prodBy = e.target.value; drawBody(); }
@@ -255,13 +270,77 @@
     var miss = [];
     if (v.missing.tax) miss.push('ใบกำกับภาษี');
     if (v.missing.cash) miss.push('ใบเงินสด');
-    body.innerHTML =
-      (miss.length ? '<div class="alert warn" id="sum-missing" style="margin:12px">ยังไม่รวม' + miss.join(' และ ') + ' กรุณาแจ้งผู้ดูแลระบบ</div>' : '') +
-      totalCard(v) + dailyCard() + chartCard(v) + vatCard(v) + shopsCard(v, v.dayPending) + productsCard(v, v.dayPending) + recentCard(d) + lowCard() + debtCard(); // รอบ 21: บิลที่ออกล่าสุด แทนร้านที่ไม่ได้ซื้อ / รอบ 33: ลูกหนี้ใต้ของใกล้หมด
-    $('sum-daily-go').addEventListener('click', printDaily);
-    $('sum-daily-date').addEventListener('change', function (e) {
-      $('sum-daily-date-th').textContent = e.target.value ? formatThaiDateShort(e.target.value) : 'เลือกวันที่';
+    lastView = v;
+    drawKey();
+    markTab();
+    var miss1 = miss.length ? '<div class="alert warn" id="sum-missing" style="margin:12px">ยังไม่รวม' + miss.join(' และ ') + ' กรุณาแจ้งผู้ดูแลระบบ</div>' : '';
+    body.dataset.tab = tab;
+    // รอบ 34: เนื้อหาตามแท็บ (ของใกล้หมดอยู่ท้ายภาพรวม — ดูแล้วไปหน้าสต็อกต่อได้)
+    body.innerHTML = tab === 'shops' ? miss1 + shopsCard(v, v.dayPending)
+      : tab === 'products' ? miss1 + productsCard(v, v.dayPending)
+      : tab === 'debt' ? debtCard()
+      : miss1 + typesCard(v) + chartCard(v) + vatCard(v) + recentCard(d) + lowCard();
+  }
+
+  // ---------- รอบ 34: แท็บย่อย / ตัวเลข 4 ตัว
+
+  var lastView = null; // ตัวเลขของช่วงเวลาที่แสดงอยู่ (วาดตัวเลข 4 ตัวใหม่เมื่อลูกหนี้มาถึง)
+
+  /** เลือกแท็บ: ค่าจาก URL / ที่จำไว้ / ภาพรวม — จำในเครื่อง + ใส่ใน URL (ปุ่มย้อนกลับ / เปิดซ้ำได้แท็บเดิม) */
+  function setTab(t, fromUrl) {
+    var ok = function (x) { return TABS.some(function (y) { return y[0] === x; }); };
+    if (!ok(t)) {
+      if (fromUrl && tab) t = tab;
+      else { var k = LiffApp.remember('sum-tab'); t = k && ok(k.data) ? k.data : 'overview'; }
+    }
+    tab = t;
+    LiffApp.keep('sum-tab', t);
+    Shell.setParams(scr, t === 'overview' ? {} : { tab: t });
+  }
+
+  function markTab() {
+    var box = $('sum-tabs');
+    if (!box) return;
+    Array.prototype.forEach.call(box.querySelectorAll('button[data-tab]'), function (b) {
+      var on = b.dataset.tab === tab;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
     });
+  }
+
+  /** ตัวเลขสำคัญ 4 ตัว (เห็นโดยไม่ต้องเลื่อน) — ลูกหนี้ค้างไม่ขึ้นกับช่วงเวลา แตะ = แท็บลูกหนี้ */
+  function drawKey() {
+    var box = $('sum-total');
+    if (!box || !lastView) return;
+    var a = lastView.all;
+    var dd = debt && debt.debt;
+    var owe = dd ? dd.overdue.concat(dd.soon, dd.later, dd.noDue) : null;
+    var oweSat = owe ? owe.reduce(function (x, y) { return x + y.sat; }, 0) : 0;
+    box.innerHTML =
+      '<div class="key"><span class="l">ยอดขาย (บาท)</span><b class="num" id="sum-all">' + money(a.sat) + '</b>' + delta(a.pct) +
+      '<span class="small muted">ช่วงก่อน ' + money(a.psat) + '</span></div>' +
+      '<div class="key"><span class="l">จำนวนบิล</span><b class="num" id="sum-count">' + a.n.toLocaleString('th-TH') + '</b>' +
+      '<span class="small muted">ช่วงก่อน ' + a.pn.toLocaleString('th-TH') + '</span></div>' +
+      '<div class="key"><span class="l">เฉลี่ยต่อบิล</span><b class="num" id="sum-avg">' + money(a.avg) + '</b>' +
+      '<span class="small muted">ช่วงก่อน ' + money(a.pavg) + '</span></div>' +
+      '<button type="button" class="key key-debt" id="sum-owe" data-tab-go="debt"><span class="l">ลูกหนี้ค้าง (บาท)</span>' +
+      '<b class="num" id="sum-owe-amt">' + (owe ? money(oweSat) : '…') + '</b>' +
+      '<span class="small' + (dd && dd.overdue.length ? ' late' : ' muted') + '" id="sum-owe-sub">' +
+      (owe ? owe.length + ' บิล' + (dd.overdue.length ? ' · เลยกำหนด ' + dd.overdue.length : '') : 'กำลังโหลด') + '</span></button>';
+  }
+
+  /** ภาพรวม: ยอดตามประเภท (ใบเงินสด / ใบกำกับภาษี) */
+  function typesCard(v) {
+    return '<section class="card" id="sum-types"><h2>ยอดตามประเภท <span class="count">บาท</span></h2>' +
+      '<div class="sum-tiles">' + tile('cash', 'ใบเงินสด', v.cash) + tile('tax', 'ใบกำกับภาษี', v.tax) + '</div></section>';
+  }
+
+  /** 5 อันดับแรก + ปุ่ม "ดูทั้งหมด" (ไม่เกิน 10) */
+  function topOf(name, list) { return showAll[name] ? list : list.slice(0, TOP_SHOW); }
+  function moreBtn(name, list) {
+    if (list.length <= TOP_SHOW) return '';
+    return '<button type="button" class="btn block sum-more" id="sum-more-' + name + '" data-more="' + name + '">' +
+      (showAll[name] ? 'แสดงแค่ ' + TOP_SHOW + ' อันดับ' : 'ดูทั้งหมด (' + list.length + ' อันดับ)') + '</button>';
   }
 
   /** ช่องวันที่แบบหน้าออกบิล: วันที่ไทยในช่อง + input date โปร่งใสซ้อน */
@@ -280,18 +359,21 @@
   /** วันที่เริ่มต้นของใบเช็คยอด: เลือกวันอยู่ → วันนั้น / อื่น ๆ → วันนี้ (แก้ในกล่องได้) */
   function dailyDefault() { return period.kind === 'day' ? dayPick : today(); }
 
-  function dailyCard() {
-    return '<section class="card" id="sum-daily"><h2>ใบเช็คยอดขายรายวัน</h2>' +
-      '<label class="f" for="sum-daily-date">วันที่จะพิมพ์</label>' + dateBox('sum-daily-date', dailyDefault(), 'วันที่จะพิมพ์') +
-      '<button type="button" class="btn primary block" id="sum-daily-go" style="margin-top:10px">' + iconSvg('file') + '<span>พิมพ์ใบเช็คยอดขายรายวัน</span></button></section>';
-  }
-
-  function printDaily() {
-    var input = $('sum-daily-date');
-    var date = input && input.value && input.value <= today() ? input.value : dailyDefault();
-    // ในแอป LINE พิมพ์ / บันทึก PDF มักไม่ได้ → เปิดหน้าเดียวกันในเบราว์เซอร์ (แบบรายงานสต็อก) + กล่องทางเลือกถ้าไม่เปิด (รอบ 31)
-    if (LiffApp.openOutside(dailyUrl(date), $('sum-daily'), 'กดพิมพ์')) return;
-    Shell.go('summary', { print: date });
+  /** รอบ 34: ปุ่มบนหัว → แผ่นเลือกวันที่ → พิมพ์ (เดิมเป็นการ์ดในหน้า) */
+  function openDaily() {
+    var sh = LiffApp.sheet('ใบเช็คยอดขายรายวัน',
+      '<div id="sum-daily"><label class="f" for="sum-daily-date">วันที่จะพิมพ์</label>' + dateBox('sum-daily-date', dailyDefault(), 'วันที่จะพิมพ์') + '</div>',
+      '<button type="button" class="btn grow" data-close>ยกเลิก</button><button type="button" class="btn primary grow" id="sum-daily-go">' + iconSvg('file') + '<span>พิมพ์</span></button>');
+    var input = sh.el.querySelector('#sum-daily-date');
+    sh.el.addEventListener('click', pickerOpen);
+    input.addEventListener('change', function () { sh.el.querySelector('#sum-daily-date-th').textContent = input.value ? formatThaiDateShort(input.value) : 'เลือกวันที่'; });
+    sh.el.querySelector('#sum-daily-go').addEventListener('click', function () {
+      var date = input.value && input.value <= today() ? input.value : dailyDefault();
+      // ในแอป LINE พิมพ์ / บันทึก PDF มักไม่ได้ → เปิดหน้าเดียวกันในเบราว์เซอร์ (แบบรายงานสต็อก) + กล่องทางเลือกถ้าไม่เปิด (รอบ 31)
+      if (LiffApp.openOutside(dailyUrl(date), sh.el.querySelector('#sum-daily'), 'กดพิมพ์')) return;
+      sh.close();
+      Shell.go('summary', { print: date });
+    });
   }
 
   function dailyUrl(date) { return LiffApp.appUrl('summary') + '?print=' + encodeURIComponent(date); }
@@ -369,18 +451,6 @@
     return '<div class="sum-tile ' + kind + '" id="sum-' + kind + '"><div class="t">' + label + '</div>' +
       '<div class="v num">' + money(p.sat) + '</div>' + delta(p.pct) +
       '<div class="small muted">' + p.n.toLocaleString('th-TH') + ' บิล</div></div>';
-  }
-
-  function totalCard(v) {
-    var a = v.all;
-    return '<section class="card" id="sum-total"><h2>ยอดขายรวม <span class="count">บาท</span></h2>' +
-      '<div class="sum-big num" id="sum-all">' + money(a.sat) + '</div>' +
-      '<div class="sum-sub">' + delta(a.pct) + ' <span class="small muted">ช่วงก่อน ' + money(a.psat) + '</span></div>' +
-      '<div class="sum-tiles">' + tile('cash', 'ใบเงินสด', v.cash) + tile('tax', 'ใบกำกับภาษี', v.tax) + '</div>' +
-      '<div class="sum-stats"><div><span class="muted">จำนวนบิล</span><b class="num" id="sum-count">' + a.n.toLocaleString('th-TH') + '</b>' +
-      '<span class="small muted">ช่วงก่อน ' + a.pn.toLocaleString('th-TH') + '</span></div>' +
-      '<div><span class="muted">เฉลี่ยต่อบิล</span><b class="num" id="sum-avg">' + money(a.avg) + '</b>' +
-      '<span class="small muted">ช่วงก่อน ' + money(a.pavg) + '</span></div></div></section>';
   }
 
   /** กราฟแท่งซ้อน (ใบเงินสดล่าง / ใบกำกับบน) — SVG วาดเอง ไม่พึ่งไลบรารี */
@@ -467,9 +537,9 @@
 
   function shopsCard(v, pending) {
     return '<section class="card" id="sum-shops"><h2>ร้านซื้อเยอะสุด <span class="count">' + v.shops.length + ' อันดับ</span></h2>' +
-      '<ul class="list">' + rankRows(v.shops, function (x) {
+      '<ul class="list">' + rankRows(topOf('shops', v.shops), function (x) {
         return '<b class="num">' + money(x.sat) + '</b><span class="small muted">' + x.n.toLocaleString('th-TH') + ' บิล</span>';
-      }, function (x) { return x.sat; }, function (x) { return ' data-href="' + esc(historyHref(x)) + '" role="link" tabindex="0"'; }, pending) + '</ul></section>';
+      }, function (x) { return x.sat; }, function (x) { return ' data-href="' + esc(historyHref(x)) + '" role="link" tabindex="0"'; }, pending) + '</ul>' + moreBtn('shops', v.shops) + '</section>';
   }
 
   function productsCard(v, pending) {
@@ -479,11 +549,11 @@
       '<div class="seg-choice sum-mini" role="radiogroup" aria-label="เรียงตาม">' +
       '<label><input type="radio" name="prod-by" value="qty"' + (qty ? ' checked' : '') + '>ตามจำนวน</label>' +
       '<label><input type="radio" name="prod-by" value="amt"' + (qty ? '' : ' checked') + '>ตามยอดเงิน</label></div>' +
-      '<ul class="list" id="sum-prod-list">' + rankRows(list, function (x) {
+      '<ul class="list" id="sum-prod-list">' + rankRows(topOf('products', list), function (x) {
         var q = '<span class="num">' + formatQty(x.qty) + '</span> ' + esc(x.unit);
         var m = '<span class="num">' + money(x.sat) + '</span>';
         return qty ? '<b>' + q + '</b><span class="small muted">' + m + '</span>' : '<b>' + m + '</b><span class="small muted">' + q + '</span>';
-      }, function (x) { return qty ? x.qty : x.sat; }, null, pending) + '</ul></section>';
+      }, function (x) { return qty ? x.qty : x.sat; }, null, pending) + '</ul>' + moreBtn('products', list) + '</section>';
   }
 
 /**
@@ -556,6 +626,7 @@
   function drawDebt() {
     var box = $('sum-debt');
     if (box) box.outerHTML = debtCard();
+    drawKey(); // รอบ 34: ลูกหนี้ค้างในตัวเลข 4 ตัว
   }
 
   function debtRow(x, part) {
@@ -635,6 +706,10 @@
   }
 
   function go(el) {
+    var more = el.closest && el.closest('[data-more]');
+    if (more) { showAll[more.dataset.more] = !showAll[more.dataset.more]; return drawBody(); }
+    var tg = el.closest && el.closest('[data-tab-go]');
+    if (tg) { setTab(tg.dataset.tabGo); drawBody(); var t = $('sum-tabs'); if (t) t.scrollIntoView({ block: 'start' }); return; }
     var b = el.closest && el.closest('[data-debt]');
     if (b) return debtAsk(b);
     if (el.closest && el.closest('#debt-retry')) { debtErr = null; drawDebt(); return fetchDebt(); }
@@ -648,9 +723,11 @@
       scr = s;
       s.root.innerHTML =
         '<div class="topbar"><div class="mode-pill" data-mode="all">' + iconSvg('summary') + '<span>ทุกประเภท</span></div>' +
-        '<h1>สรุปยอดขาย</h1><div class="sub">ไม่นับบิลที่ยกเลิกและบิลทดสอบ</div></div>' +
+        '<div class="sum-head"><div><h1>สรุปยอดขาย</h1><div class="sub">ไม่นับบิลที่ยกเลิกและบิลทดสอบ</div></div>' +
+        '<button type="button" class="btn sum-daily-btn" id="sum-daily-btn">' + iconSvg('file') + '<span>ใบเช็คยอดรายวัน</span></button></div></div>' +
         '<div id="view" aria-live="polite"></div>';
       view = $('view');
+      $('sum-daily-btn').addEventListener('click', openDaily);
       view.addEventListener('click', function (e) { pickerOpen(e); go(e.target); });
       view.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.target.closest('button')) go(e.target); }); // ปุ่มกด Enter = click อยู่แล้ว
     },
