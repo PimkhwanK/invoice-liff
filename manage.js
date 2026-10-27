@@ -289,6 +289,7 @@
       }
       var done = 'ยกเลิกบิล ' + LiffApp.docLabel(d.doc_no, d.doc_type) + ' แล้ว';
       // รอบ 29: นอกแอป LINE → เปิดแชท OA พร้อมข้อความ "บิล N" (ผู้ใช้กดส่ง บอทตอบการ์ดที่มีป้ายยกเลิก) / เปิดเองไม่ได้ → ปุ่มในแผ่นนี้
+      // รอบ 33: ปิดอยู่ (common.js ENABLE_OA_HANDOFF) → chatUrl '' = ปิดแผ่น + toast
       var cmd = LiffApp.chatCommand(d.doc_no, d.doc_type);
       var chatUrl = LiffApp.inClient() ? '' : LiffApp.oaMessageUrl(cmd);
       if (!chatUrl) {

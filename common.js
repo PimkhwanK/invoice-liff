@@ -379,8 +379,14 @@ var LiffApp = (function () {
     if (MODE === 'cash') return 'เงินสด ' + docNoText(no);
     return (Number(no) !== 0 && typeText(type) === TAX_RECEIPT_TYPE ? 'ใบเสร็จ ' : 'บิล ') + docNoText(no);
   }
-  /** รอบ 29: ลิงก์เปิดแชท OA พร้อมพิมพ์ข้อความไว้ให้ (ผู้ใช้กดส่งเอง บอทตอบด้วย reply — ไม่ใช้ push) / ไม่ได้ตั้ง LINE_OA_ID → '' */
+  /**
+   * รอบ 33: สวิตช์เดียวของ "ออก/ยกเลิกบิลนอกแอป LINE แล้วเด้งเข้าแชท OA" (รอบ 29) — false = ปิดไว้ (ไม่เปิดแชทเอง ไม่มีปุ่ม "ส่งเข้าแชท LINE")
+   * เปิดกลับ: เปลี่ยนเป็น true ค่าเดียว / ในแอป LINE ไม่เกี่ยว (sendMessages เหมือนเดิม) / คำสั่ง "ใบเสร็จ N" ของบอทยังอยู่
+   */
+  var ENABLE_OA_HANDOFF = false;
+  /** รอบ 29: ลิงก์เปิดแชท OA พร้อมพิมพ์ข้อความไว้ให้ (ผู้ใช้กดส่งเอง บอทตอบด้วย reply — ไม่ใช้ push) / ไม่ได้ตั้ง LINE_OA_ID หรือปิดสวิตช์ → '' */
   function oaMessageUrl(text) {
+    if (!ENABLE_OA_HANDOFF) return '';
     var id = String(CFG.LINE_OA_ID || '').trim();
     if (!/^@[A-Za-z0-9._-]{2,40}$/.test(id)) return '';
     return 'https://line.me/R/oaMessage/' + encodeURIComponent(id) + '/?' + encodeURIComponent(text);
@@ -828,6 +834,7 @@ var LiffApp = (function () {
     openExternal: openExternal, remember: remember, keep: keep, forget: forget, drop: drop,
     MSG: MSG, SETUP: SETUP, splitSetup: splitSetup, errorHtml: errorHtml,
     logout: logout, openFullScreen: openFullScreen, lineChatUrl: lineChatUrl, profileName: profileName, appUrl: appUrl, IDLE_MS: IDLE_MS,
-    chatCommand: chatCommand, oaMessageUrl: oaMessageUrl, openChat: openChat // รอบ 29
+    chatCommand: chatCommand, oaMessageUrl: oaMessageUrl, openChat: openChat, // รอบ 29
+    OA_HANDOFF: ENABLE_OA_HANDOFF // รอบ 33 (อ่านอย่างเดียว)
   };
 })();

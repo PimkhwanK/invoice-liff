@@ -315,6 +315,11 @@ dl.kv dd { margin: 0; }
 .doc .meta { font-size: 13px; color: var(--theme-text-2); grid-column: 1 / -1; }
 .doc .amt { font-weight: 700; text-align: right; }
 .doc .acts { grid-column: 1 / -1; display: flex; gap: 6px; margin-top: 6px; align-items: center; flex-wrap: wrap; }
+/* รอบ 33: หน้าประวัติ — ปุ่มมุมมอง (แบบเดียวกับปุ่มช่วงเวลาหน้าสรุป) / บิลล่าสุดมีชื่อร้าน / แตะแถวที่มี PDF = ดู PDF */
+.hist-mode { margin: 12px 12px 0; }
+.hist-mode label { padding: 10px 6px; }
+.doc .shop-n { grid-column: 1 / -1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc.doc-tap { cursor: pointer; }
 .summary { display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--theme-text-2); margin-bottom: 4px; }
 .summary b { color: var(--theme-text); }
 .shop-row { display: flex; gap: 10px; align-items: center; }

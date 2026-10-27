@@ -7,11 +7,16 @@
  *   จำนวนเอกสารของแต่ละร้านมาจากเซิร์ฟเวอร์ (shopStats) / ร้านที่มีเอกสารมากกว่าที่ส่งมา → โหลดเพิ่มตอนแตะร้าน (listDocuments) แล้วจำไว้
  *   แตะร้าน = เพิ่มรายการใน history (ปุ่มย้อนกลับกลับไปหน้าค้นหา) / ?shopId= เปิดร้านนั้นตรง ๆ
  * รอบ 10: โหมดใบเงินสด = ร้านและเอกสารของไฟล์ใบเงินสด (เลขที่เป็นข้อความ เช่น 1069-15)
+ * รอบ 33: ปุ่มมุมมอง 2 ปุ่มใต้หัวข้อ (#hist-mode) — "เลือกร้าน" (แบบเดิม) / "บิลล่าสุด 10 ใบ" (#recent ค่าเริ่มต้น)
+ *   บิลล่าสุด = เรียงตามเวลาที่ออก (created_at — เซิร์ฟเวอร์รุ่นก่อนรอบ 33 ไม่ส่ง → ลำดับเลขที่เดิม) / แตะแถว = ดู PDF เหมือนมุมมองเดิม
+ *   ใบเสร็จที่เลขซ้ำกับใบกำกับ: หัวแถว "#25 ใบเสร็จรับเงิน" (docLabel) + data-dt
  */
 (function () {
   var esc = LiffApp.esc;
   var scr = null;
-  var view = null;
+  var view = null;         // #hv (เนื้อหาใต้ปุ่มมุมมอง)
+  var mode = 'recent';     // รอบ 33: 'recent' | 'shops' (จำไว้จนปิดแอป)
+  var RECENT_N = 10;
   var shops = [];
   var current = null;      // ร้านที่กำลังดู (null = หน้าค้นหา)
   var term = '';           // คำค้นล่าสุด (กลับมาหน้าค้นหาแล้วยังอยู่)
@@ -29,22 +34,53 @@
 
   /** เข้าหน้าจอตาม URL: ?shopId= → เอกสารของร้าน / ไม่มี → ค้นหาร้าน (ข้อมูลเดิม + หน้าเดิม → ไม่ต้องวาดใหม่) */
   async function show(s, params) {
+    frame();
     if (!AppData.has()) LiffApp.loading('กำลังโหลดข้อมูล…', view);
     var r = await AppData.ensure();
     if (!r.ok) { failed = true; return LiffApp.showApiError(r, scr); }
     failed = false;
+    frame(); // หน้าแสดงข้อผิดพลาดแทนที่ทั้ง #view → สร้างปุ่มมุมมองใหม่
     var fresh = scr.seen !== AppData.version();
     if (fresh) sortShops();
     var shop = params.shopId ? findShop(params.shopId) : null;
+    markMode(shop ? 'shops' : mode);
     if (shop) {
       if (!fresh && current && String(current.shop_id) === String(shop.shop_id) && $('docs')) return;
       showShop(shop);
+    } else if (mode === 'recent') {
+      if (!fresh && !current && $('recent')) return;
+      showRecent();
     } else {
       if (!fresh && !current && $('q')) return;
       fromSearch = false;
       showSearch();
     }
     Shell.drawn(scr);
+  }
+
+  // ---------- รอบ 33: ปุ่มมุมมอง
+  function frame() {
+    if (!$('hv')) {
+      $('view').innerHTML =
+        '<div class="seg-choice hist-mode" id="hist-mode" role="radiogroup" aria-label="มุมมอง">' +
+        '<label><input type="radio" name="hist-mode" value="shops">เลือกร้าน</label>' +
+        '<label><input type="radio" name="hist-mode" value="recent">บิลล่าสุด ' + RECENT_N + ' ใบ</label></div>' +
+        '<div id="hv"></div>';
+      $('hist-mode').addEventListener('change', function (e) {
+        if (e.target.name !== 'hist-mode') return;
+        mode = e.target.value;
+        if (current) return Shell.go('history', {}, { replace: true }); // กำลังดูบิลของร้าน → กลับหน้ารายการ
+        markMode(mode);
+        if (mode === 'recent') showRecent();
+        else { fromSearch = false; showSearch(); }
+      });
+    }
+    view = $('hv');
+  }
+
+  function markMode(m) {
+    Array.prototype.forEach.call(scr.root.querySelectorAll('input[name=hist-mode]'), function (i) { i.checked = i.value === m; });
+    $('subtitle').textContent = m === 'recent' ? 'บิลที่ออกล่าสุด แตะเพื่อดูบิล' : 'ค้นหาร้าน แล้วแตะเพื่อดูบิล';
   }
 
   /** ข้อมูลในแอปเปลี่ยน: วาดหน้าเดิมใหม่ (คงคำค้น / ร้านที่ดูอยู่ / ตำแหน่งเลื่อน) */
@@ -54,6 +90,7 @@
     Shell.drawn(scr);
     var q = $('q');
     if (q) return drawShops(q.value);
+    if ($('recent')) return drawRecent();
     if (current) {
       var shop = findShop(current.shop_id);
       if (shop) showShop(shop, true);
@@ -92,6 +129,39 @@
     }).join('') : '<li class="empty">ไม่พบร้านที่ค้นหา</li>';
   }
 
+  // ---------- รอบ 33: บิลล่าสุด
+  function showRecent() {
+    current = null;
+    view.innerHTML = '<section class="card"><ul class="list" id="recent"></ul></section>';
+    $('recent').addEventListener('click', onDocClick);
+    drawRecent();
+    Shell.scrollTop(scr);
+  }
+
+  function drawRecent() {
+    var list = latestDocs(AppData.recentDocs(), RECENT_N);
+    $('recent').innerHTML = list.length ? list.map(function (d) { return docRow(d, true); }).join('') : '<li class="empty">ยังไม่มีบิล</li>';
+  }
+
+  /** n ใบที่ออกล่าสุด — ทุกใบมี created_at → เรียงตามเวลาที่ออก (เท่ากัน = ลำดับเดิม) / ไม่มี (เซิร์ฟเวอร์รุ่นเก่า) → ลำดับเดิม (เลขที่) */
+  function latestDocs(docs, n) {
+    var all = docs.map(function (d, i) { return { d: d, i: i, at: String(d.created_at || '') }; });
+    if (all.every(function (x) { return x.at; })) {
+      all.sort(function (a, b) { return a.at > b.at ? -1 : a.at < b.at ? 1 : a.i - b.i; });
+    }
+    return all.slice(0, n).map(function (x) { return x.d; });
+  }
+
+  /** แตะแถวบิล (ที่ไม่ใช่ปุ่ม) = ดู PDF / ปุ่ม "สร้าง PDF ใหม่" */
+  function onDocClick(e) {
+    var b = e.target.closest('[data-regen]');
+    if (b) return regenerate(b);
+    if (e.target.closest('a, button')) return;
+    var li = e.target.closest('li.doc');
+    var a = li && li.querySelector('a[data-pdf]');
+    if (a) a.click();
+  }
+
   // ---------- เอกสารของร้าน
   function showShop(shop, keepScroll) {
     current = shop;
@@ -106,8 +176,7 @@
       else Shell.go('history', {}, { replace: true });
     });
     $('shop-docs').addEventListener('click', function (e) {
-      var b = e.target.closest('[data-regen]');
-      if (b) regenerate(b);
+      onDocClick(e);
       var retry = e.target.closest('#docs-retry');
       if (retry) showShop(shop);
     });
@@ -156,11 +225,14 @@
     return '<div class="acts"><a class="btn sm" data-pdf href="' + esc(LiffApp.viewHref(no, type)) + '">' + iconSvg('file') + '<span>ดู PDF</span></a></div>';
   }
 
-  function docRow(d) {
+  /** withShop (รอบ 33 บิลล่าสุด) = มีชื่อร้าน / หัวแถว: ใบเสร็จบอกประเภท (เลขซ้ำกับใบกำกับได้) */
+  function docRow(d, withShop) {
     var c = d.status === 'cancelled';
-    return '<li class="doc" data-no="' + esc(d.doc_no) + '" data-dt="' + esc(d.doc_type || '') + '">' +
-      '<div class="no' + (c ? ' cancel' : '') + '">#' + LiffApp.docNoText(d.doc_no) + ' ' + (c ? '<span class="badge red">ยกเลิก</span>' : '<span class="badge">ออกแล้ว</span>') + '</div>' +
+    var shop = withShop ? d.shop_short_name || d.shop_legal_name || (findShop(d.shop_id) || {}).short_name || '' : '';
+    return '<li class="doc' + (d.hasPdf ? ' doc-tap' : '') + '" data-no="' + esc(d.doc_no) + '" data-dt="' + esc(d.doc_type || '') + '">' +
+      '<div class="no' + (c ? ' cancel' : '') + '">' + esc(LiffApp.docLabel(d.doc_no, d.doc_type)) + ' ' + (c ? '<span class="badge red">ยกเลิก</span>' : '<span class="badge">ออกแล้ว</span>') + '</div>' +
       '<div class="amt num">' + formatMoney(d.total) + '</div>' +
+      (withShop ? '<div class="shop-n">' + esc(shop) + '</div>' : '') +
       '<div class="meta">' + formatThaiDate(d.doc_date) + ' · ' + (LiffApp.isCash() ? esc(CASH_DOC_TITLE) + ' · ' + esc(d.sale_type || CASH_DOC_SALE_TYPE) : esc(d.doc_type) + ' · ' + esc(d.sale_type)) +
       (d.issued_by ? '<br>ออกโดย ' + esc(d.issued_by) : '') +
       (c ? '<br>เหตุผล: ' + esc(d.cancelled_reason) + (d.cancelled_by ? ' · ยกเลิกโดย ' + esc(d.cancelled_by) : '') : '') + '</div>' +
@@ -176,7 +248,7 @@
     build: function (s) {
       scr = s;
       s.root.innerHTML =
-        '<div class="topbar"><h1>ประวัติเอกสาร</h1><div class="sub" id="subtitle">ค้นหาร้าน แล้วแตะเพื่อดูบิล</div></div>' +
+        '<div class="topbar"><h1>ประวัติเอกสาร</h1><div class="sub" id="subtitle"></div></div>' +
         '<div id="view" aria-live="polite"></div>';
       view = $('view');
     },

@@ -956,6 +956,7 @@
   /**
    * ในแอป LINE: ส่ง "บิล <เลขที่>" / "ใบเสร็จ <เลขที่>" / "เงินสด <เลขที่>" เข้าแชทแล้วปิดหน้า / ส่งไม่ได้: แสดงหน้าสำเร็จ
    * รอบ 29 นอกแอป LINE: เปิดแชท OA พร้อมข้อความ (oaMessage — ผู้ใช้กดส่ง บอทตอบการ์ด ไม่ใช้ push) + หน้าสำเร็จมีปุ่ม "ส่งเข้าแชท LINE"
+   *   รอบ 33: ปิดอยู่ (common.js ENABLE_OA_HANDOFF = false → oaMessageUrl '' → แบบไม่ได้ตั้ง LINE_OA_ID)
    */
   async function finish(r) {
     var cmd = LiffApp.chatCommand(r.docNo, r.document ? r.document.doc_type : S.doc && S.doc.doc_type);
