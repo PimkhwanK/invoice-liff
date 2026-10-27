@@ -9,6 +9,7 @@
  *   สลับแท็บไม่เรียกเซิร์ฟเวอร์ / บันทึกแล้วแก้ข้อมูลในแอปจากคำตอบ (putShop, putProduct, patchDoc) ไม่โหลดรายการใหม่ทั้งหมด
  * รอบ 10: โหมดใบเงินสด — ร้านของไฟล์ใบเงินสด (ชื่อ ชื่อเต็ม ที่อยู่ โทร) + ยกเลิกใบเงินสด / สินค้าใช้รายการเดียวกับใบกำกับ
  *   สินค้าใหม่เว้นบาร์โค้ดว่างได้ (เซิร์ฟเวอร์สร้างรหัสภายใน NB-xxxx — บนจอแสดง "ไม่มีบาร์โค้ด")
+ * รอบ 33: แท็บแจ้งเตือน — แจ้งเตือนลูกหนี้ทาง LINE เปิด/ปิด + จำนวนวัน (debtData / debtAlertSet ของใบกำกับ ใช้ร่วมทั้งสองประเภท)
  */
 (function () {
   var esc = LiffApp.esc;
@@ -17,11 +18,12 @@
   var view = null;
   var tabs = null;
   var tab = 'shops';
+  var TAB_NAMES = ['shops', 'products', 'cancel', 'alert']; // รอบ 33: + แจ้งเตือน
   var failed = false;
   function $(id) { return scr.$(id); }
 
   function setTab(t) {
-    if (['shops', 'products', 'cancel'].indexOf(t) < 0) t = 'shops';
+    if (TAB_NAMES.indexOf(t) < 0) t = 'shops';
     tab = t;
     tabs.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === t); });
     Shell.setParams(scr, t === 'shops' ? {} : { tab: t });
@@ -40,7 +42,7 @@
     return false;
   }
 
-  var LOADING = { shops: 'กำลังโหลดรายชื่อร้านค้า…', products: 'กำลังโหลดรายการสินค้า…', cancel: 'กำลังโหลดบิลที่ยกเลิกได้…' };
+  var LOADING = { shops: 'กำลังโหลดรายชื่อร้านค้า…', products: 'กำลังโหลดรายการสินค้า…', cancel: 'กำลังโหลดบิลที่ยกเลิกได้…', alert: 'กำลังโหลดการแจ้งเตือน…' };
 
   var CANCEL_LIMIT = 50; // แท็บยกเลิกเอกสาร: ใบที่ยังไม่ยกเลิก ล่าสุดกี่ใบ
 
@@ -48,6 +50,7 @@
   function source(t) {
     if (t === 'shops') return { shops: AppData.shops() };
     if (t === 'products') return { products: AppData.products() };
+    if (t === 'alert') return {};
     return { documents: AppData.recentDocs().filter(function (d) { return d.status !== 'cancelled'; }).slice(0, CANCEL_LIMIT) };
   }
 
@@ -65,15 +68,15 @@
     tabs.classList.remove('hidden');
     var q = $('q');
     var term = keepTerm === true && q ? q.value : '';
-    ({ shops: renderShops, products: renderProducts, cancel: renderCancel })[t](source(t));
+    ({ shops: renderShops, products: renderProducts, cancel: renderCancel, alert: renderAlert })[t](source(t));
     if (term) { var q2 = $('q'); q2.value = term; q2.dispatchEvent(new Event('input')); }
     if (keepTerm !== true) Shell.scrollTop(scr);
     Shell.drawn(scr);
   }
 
-  /** ข้อมูลในแอปเปลี่ยน — กำลังแก้ข้อมูลในแผ่นอยู่ ไม่วาดทับ (วาดหลังปิดแผ่น) */
+  /** ข้อมูลในแอปเปลี่ยน — กำลังแก้ข้อมูลในแผ่นอยู่ ไม่วาดทับ (วาดหลังปิดแผ่น) / แท็บแจ้งเตือนไม่ใช้ข้อมูลในแอป */
   function update() {
-    if (document.querySelector('.sheet-back')) return;
+    if (document.querySelector('.sheet-back') || tab === 'alert') return;
     render(true);
   }
 
@@ -315,16 +318,73 @@
     });
   }
 
+  // ---------- รอบ 33: แจ้งเตือนลูกหนี้ทาง LINE (ค่าในแท็บตั้งค่าของไฟล์ใบกำกับ ใช้ร่วมทั้งสองประเภท)
+  function tapi(action, payload) { return LiffApp.api(action, Object.assign({}, payload, { type: 'tax' })); }
+
+  async function renderAlert() {
+    LiffApp.loading(LOADING.alert, view);
+    var r = await tapi('debtData', {});
+    if (tab !== 'alert') return;
+    if (!r.ok) {
+      if (fatal(r)) return;
+      view.innerHTML = '<section class="card alert err" id="al-error">' + errText(r.error || 'โหลดการแจ้งเตือนไม่สำเร็จ') + '</section>' +
+        '<div style="margin:0 12px"><button type="button" class="btn block" id="al-retry">ลองอีกครั้ง</button></div>';
+      $('al-retry').addEventListener('click', renderAlert);
+      return;
+    }
+    drawAlert(r);
+  }
+
+  function drawAlert(r) {
+    var s = r.settings;
+    view.innerHTML = '<section class="card" id="al-card"><h2>แจ้งเตือนลูกหนี้ทาง LINE</h2>' +
+      '<div class="field"><label class="chk"><input type="checkbox" id="al-on"' + (s.enabled ? ' checked' : '') + '> ส่งแจ้งเตือนทุกเช้า</label></div>' +
+      '<div class="field"><label class="f" for="al-days">แจ้งเมื่อเหลือไม่เกินกี่วันก่อนครบกำหนด</label>' +
+      '<input type="number" id="al-days" min="0" max="60" step="1" inputmode="numeric" value="' + esc(s.days) + '"></div>' +
+      '<ul class="small muted al-notes" id="al-notes">' +
+      '<li>ส่งวันละ 1 ข้อความ เฉพาะวันที่มีบิลเลยกำหนดหรือใกล้ครบกำหนด</li>' +
+      '<li>ผู้รับตอนนี้ <b id="al-count">' + esc(r.recipients) + '</b> คน (ผู้ใช้ทุกคนที่ใช้งานอยู่ ยกเว้นคนที่ผู้ดูแลปิดไว้)</li>' +
+      '<li>ใช้ 0 วัน = แจ้งเฉพาะบิลที่ครบกำหนดวันนี้หรือเลยกำหนดแล้ว</li></ul>' +
+      '<div id="al-msg"></div>' +
+      '<button type="button" class="btn primary block" id="al-save" style="margin-top:10px">บันทึก</button></section>';
+    $('al-save').addEventListener('click', saveAlert);
+    Shell.drawn(scr);
+  }
+
+  async function saveAlert() {
+    var btn = $('al-save');
+    var days = $('al-days').value.trim();
+    var msg = $('al-msg');
+    if (!/^[0-9]{1,2}$/.test(days) || Number(days) > 60) {
+      msg.innerHTML = '<div class="alert err" id="al-bad">' + errText('จำนวนวันต้องเป็นตัวเลข 0 ถึง 60') + '</div>';
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'กำลังบันทึก…';
+    var r = await tapi('debtAlertSet', { enabled: $('al-on').checked, days: Number(days) });
+    if (tab !== 'alert' || !$('al-save')) return;
+    if (!r.ok) {
+      if (fatal(r)) return;
+      btn.disabled = false;
+      btn.textContent = 'ลองอีกครั้ง';
+      msg.innerHTML = '<div class="alert err" id="al-save-error">' + errText(r.error || 'บันทึกไม่สำเร็จ') + '</div>';
+      return;
+    }
+    drawAlert(r);
+    LiffApp.toast('บันทึกการแจ้งเตือนแล้ว');
+  }
+
   Shell.define('manage', {
     title: 'จัดการข้อมูล',
     build: function (s) {
       scr = s;
       s.root.innerHTML =
-        '<div class="topbar"><h1>จัดการข้อมูล</h1><div class="sub" id="subtitle">ร้านค้า · สินค้า · ยกเลิกบิล</div></div>' +
+        '<div class="topbar"><h1>จัดการข้อมูล</h1><div class="sub" id="subtitle">ร้านค้า · สินค้า · ยกเลิกบิล · แจ้งเตือน</div></div>' +
         '<nav class="tabs hidden" id="tabs">' +
         '<button type="button" data-tab="shops">ร้านค้า</button>' +
         '<button type="button" data-tab="products">สินค้า</button>' +
-        '<button type="button" data-tab="cancel">ยกเลิกบิล</button></nav>' +
+        '<button type="button" data-tab="cancel">ยกเลิกบิล</button>' +
+        '<button type="button" data-tab="alert">แจ้งเตือน</button></nav>' +
         '<div id="view" aria-live="polite"></div>';
       view = $('view');
       tabs = $('tabs');
@@ -335,7 +395,7 @@
     },
     /** เข้าหน้าจอ: แท็บตาม URL (?tab=) / แท็บเดิม ข้อมูลเดิม → ไม่ต้องวาดใหม่ */
     show: function (s, params) {
-      var t = ['shops', 'products', 'cancel'].indexOf(params.tab) >= 0 ? params.tab : 'shops';
+      var t = TAB_NAMES.indexOf(params.tab) >= 0 ? params.tab : 'shops';
       if (!failed && t === tab && s.seen === AppData.version() && $('q')) return;
       var same = t === tab && s.seen !== -1 && !failed;
       tab = t;

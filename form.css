@@ -406,6 +406,19 @@ body.has-tabbar .toast { bottom: 140px; }
 .sum-rank .bar { height: 6px; border-radius: 3px; background: var(--theme-accent); margin-top: 4px; }
 .sum-rank .amt, .sum-lost .amt { display: flex; flex-direction: column; align-items: flex-end; text-align: right; white-space: nowrap; font-size: 15px; }
 .badge.sum-kind { font-weight: 400; vertical-align: 1px; }
+/* รอบ 33: การ์ดลูกหนี้ (หน้าสรุป) — ส่วนละหัวข้อ / แถว: ร้าน เลขที่ วันครบกำหนด + ยอด ปุ่ม */
+.debt-part + .debt-part, .debt-later { margin-top: 12px; }
+.debt-part h3 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 4px; font-size: 15px; }
+.debt-part h3 .count { margin-left: auto; font-size: 13px; font-weight: 400; color: var(--theme-text-2); }
+.debt-row { display: flex; gap: 10px; align-items: center; }
+.debt-row .nm { flex: 1; min-width: 0; }
+.debt-row .n { font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
+.debt-row .amt { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; white-space: nowrap; font-size: 15px; }
+.debt-row .left.late { color: var(--theme-err-text); }
+.debt-row .left.near { color: var(--theme-warn-text); }
+.debt-later summary { cursor: pointer; font-size: 14px; color: var(--theme-text-2); padding: 6px 0; }
+.debt-confirm { display: grid; gap: 4px; text-align: center; }
+.debt-confirm .n { font-weight: 700; font-size: 17px; }
 .badge.sum-kind.cash { background: var(--theme-cash-soft); color: var(--theme-cash-dark); }
 .badge.sum-kind.tax { background: var(--theme-primary-soft); color: var(--theme-primary-dark); }
 .soon { text-align: center; padding: 32px 20px; }

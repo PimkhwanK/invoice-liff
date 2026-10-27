@@ -103,6 +103,7 @@
   async function show(params) {
     if (!pick.year) { pick.year = thisYear(); pick.month = Number(today().slice(5, 7)); yearPick = thisYear(); dayPick = today(); }
     if (params && params.print) return showDaily(params.print);
+    fetchDebt(); // รอบ 33: ลูกหนี้ (ทุกครั้งที่เข้าหน้า — ยอดเปลี่ยนตามวัน)
     var year = yearOf();
     if (!data[year] && !LiffApp.remember('sales-' + year)) LiffApp.loading('กำลังรวมยอดขาย…', view);
     var r = await ensure(year);
@@ -256,7 +257,7 @@
     if (v.missing.cash) miss.push('ใบเงินสด');
     body.innerHTML =
       (miss.length ? '<div class="alert warn" id="sum-missing" style="margin:12px">ยังไม่รวม' + miss.join(' และ ') + ' กรุณาแจ้งผู้ดูแลระบบ</div>' : '') +
-      totalCard(v) + dailyCard() + chartCard(v) + vatCard(v) + shopsCard(v, v.dayPending) + productsCard(v, v.dayPending) + recentCard(d) + lowCard(); // รอบ 21: บิลที่ออกล่าสุด แทนร้านที่ไม่ได้ซื้อ
+      totalCard(v) + dailyCard() + chartCard(v) + vatCard(v) + shopsCard(v, v.dayPending) + productsCard(v, v.dayPending) + recentCard(d) + lowCard() + debtCard(); // รอบ 21: บิลที่ออกล่าสุด แทนร้านที่ไม่ได้ซื้อ / รอบ 33: ลูกหนี้ใต้ของใกล้หมด
     $('sum-daily-go').addEventListener('click', printDaily);
     $('sum-daily-date').addEventListener('change', function (e) {
       $('sum-daily-date-th').textContent = e.target.value ? formatThaiDateShort(e.target.value) : 'เลือกวันที่';
@@ -532,7 +533,111 @@
       '<a class="btn block" id="sum-to-stock" href="stock?tab=low" style="margin-top:8px">ไปหน้าสต็อก</a></section>'; // รอบ 21: แท็บของใกล้หมด
   }
 
+  // ---------- รอบ 33: ลูกหนี้ใกล้ครบกำหนดชำระ (debtData — ไม่ขึ้นกับช่วงเวลา อ่านใหม่ทุกครั้งที่เปิดหน้า)
+
+  var debt = null;       // คำตอบ debtData ล่าสุด { debt, ready, settings } / null = ยังไม่ได้
+  var debtErr = null;    // โหลดไม่สำเร็จ (ข้อความ)
+  var debtPending = null;
+
+  function fetchDebt() {
+    if (debtPending) return debtPending;
+    debtPending = tapi('debtData', {}).then(function (r) {
+      debtPending = null;
+      if (r.ok) { debt = r; debtErr = null; }
+      else if (LiffApp.isAuthFail(r.code)) return r;
+      else debtErr = r.error || 'โหลดลูกหนี้ไม่สำเร็จ';
+      drawDebt();
+      return r;
+    });
+    return debtPending;
+  }
+
+  /** วาดการ์ดลูกหนี้ใหม่ที่เดิม (ไม่วาดทั้งหน้า) */
+  function drawDebt() {
+    var box = $('sum-debt');
+    if (box) box.outerHTML = debtCard();
+  }
+
+  function debtRow(x, part) {
+    var cls = part === 'overdue' ? ' late' : part === 'soon' ? ' near' : '';
+    var when = part === 'paidToday'
+      ? (x.byReceipt ? 'ออก' + esc(x.byReceipt) + ' แล้ว' : 'รับชำระแล้ว' + (x.paidBy ? ' โดย ' + esc(x.paidBy) : ''))
+      : x.due ? 'ครบกำหนด ' + esc(formatThaiDateShort(x.due)) + ' · <b class="left' + cls + '">' + esc(salesDebtLeftText(x.left)) + '</b>'
+        : 'บิลวันที่ ' + esc(formatThaiDateShort(x.docDate));
+    var ready = debt && debt.ready && debt.ready[x.kind === 'c' ? 'cash' : 'tax'];
+    var btn = part === 'paidToday'
+      ? (x.byReceipt ? '' : '<button type="button" class="btn sm" data-debt="undo">ย้อนกลับ</button>')
+      : '<button type="button" class="btn sm' + (ready ? ' primary' : '') + '" data-debt="pay"' + (ready ? '' : ' disabled') + '>รับชำระแล้ว</button>';
+    return '<li class="debt-row" data-book="' + x.kind + '" data-no="' + esc(x.no) + '" data-dt="' + esc(x.docType) + '">' +
+      '<div class="nm"><div class="n">' + esc(x.shop || '-') + '</div>' +
+      '<div class="small">' + esc(x.label) + '</div>' + // ป้ายบอกประเภทอยู่ในเลขที่แล้ว (ใบกำกับ / ใบเสร็จ / เงินสด)
+      '<div class="small muted">' + when + '</div></div>' +
+      '<div class="amt"><b class="num">' + money(x.sat) + '</b>' + btn + '</div></li>';
+  }
+
+  function debtPart(id, title, list, part, sum, empty) {
+    if (!list.length && !empty) return '';
+    return '<div class="debt-part" id="' + id + '"><h3>' + title + ' <span class="count">' + list.length + ' บิล' + (list.length ? ' · ' + money(sum) + ' บาท' : '') + '</span></h3>' +
+      '<ul class="list">' + (list.length ? list.map(function (x) { return debtRow(x, part); }).join('') : '<li class="empty">' + empty + '</li>') + '</ul></div>';
+  }
+
+  function debtCard() {
+    var head = '<section class="card" id="sum-debt"><h2>ลูกหนี้ใกล้ครบกำหนดชำระ <span class="count">บิลเครดิต / สินเชื่อ</span></h2>';
+    if (!debt) {
+      if (!debtErr) return head + '<div class="small muted">กำลังโหลด…</div></section>';
+      return head + '<div class="alert err" id="debt-error">' + LiffApp.errorHtml(debtErr) + '</div>' +
+        '<button type="button" class="btn block" id="debt-retry" style="margin-top:10px">ลองอีกครั้ง</button></section>';
+    }
+    var d = debt.debt;
+    var s = d.sums || {};
+    var notReady = debt.ready && (!debt.ready.tax || (!d.missing.cash && !debt.ready.cash));
+    return head +
+      (notReady ? '<div class="alert warn small" id="debt-not-ready">ยังกด "รับชำระแล้ว" ไม่ได้ กรุณาแจ้งผู้ดูแลระบบ</div>' : '') +
+      debtPart('debt-overdue', 'เลยกำหนด', d.overdue, 'overdue', s.overdue, 'ไม่มีบิลเลยกำหนด') +
+      debtPart('debt-soon', 'ใกล้ครบกำหนด (ภายใน ' + d.days + ' วัน)', d.soon, 'soon', s.soon, 'ไม่มีบิลใกล้ครบกำหนด') +
+      debtPart('debt-nodue', 'ไม่มีวันครบกำหนด', d.noDue, 'noDue', s.noDue, '') +
+      debtPart('debt-paid', 'รับชำระแล้ววันนี้', d.paidToday, 'paidToday', s.paidToday, '') +
+      (d.later.length ? '<details class="debt-later" id="debt-later"><summary>ยังไม่ถึงกำหนดอีก ' + d.later.length + ' บิล · ' + money(s.later) + ' บาท</summary>' +
+        '<ul class="list">' + d.later.map(function (x) { return debtRow(x, 'later'); }).join('') + '</ul></details>' : '') +
+      '</section>';
+  }
+
+  /** ปุ่ม "รับชำระแล้ว" / "ย้อนกลับ" → ยืนยันในแผ่น → debtPay → วาดการ์ดจากคำตอบ */
+  function debtAsk(btn) {
+    var li = btn.closest('li.debt-row');
+    var all = debt ? [].concat(debt.debt.overdue, debt.debt.soon, debt.debt.later, debt.debt.noDue, debt.debt.paidToday) : [];
+    var x = all.filter(function (y) { return y.kind === li.dataset.book && String(y.no) === li.dataset.no && y.docType === li.dataset.dt; })[0];
+    if (!x) return;
+    var pay = btn.dataset.debt === 'pay';
+    var sh = LiffApp.sheet(pay ? 'บันทึกรับชำระ' : 'ย้อนกลับการรับชำระ',
+      '<div class="debt-confirm"><div class="n">' + esc(x.shop || '-') + '</div><div>' + esc(x.label) + '</div>' +
+      '<div class="num" style="font-size:20px;font-weight:700">' + money(x.sat) + ' บาท</div>' +
+      '<div class="small muted">' + (pay ? 'บันทึกว่ารับเงินบิลนี้ครบแล้ววันนี้' : 'บิลนี้จะกลับไปอยู่ในรายการลูกหนี้') + '</div></div><div id="debt-msg"></div>',
+      '<button type="button" class="btn grow" data-close>ยกเลิก</button><button type="button" class="btn primary grow" id="debt-ok">' + (pay ? 'ยืนยันรับชำระ' : 'ยืนยันย้อนกลับ') + '</button>');
+    var ok = sh.el.querySelector('#debt-ok');
+    ok.addEventListener('click', function () {
+      ok.disabled = true;
+      ok.textContent = 'กำลังบันทึก…';
+      tapi('debtPay', { book: x.kind, docNo: x.no, docType: x.docType, paid: pay }).then(function (r) {
+        if (!r.ok) {
+          if (LiffApp.isAuthFail(r.code)) { sh.close(); return LiffApp.showApiError(r, scr); }
+          ok.disabled = false;
+          ok.textContent = 'ลองอีกครั้ง';
+          sh.el.querySelector('#debt-msg').innerHTML = '<div class="alert err" id="debt-pay-error" style="margin-top:10px">' + LiffApp.errorHtml(r.error || 'บันทึกไม่สำเร็จ') + '</div>';
+          return;
+        }
+        sh.close();
+        debt = r;
+        drawDebt();
+        LiffApp.toast(pay ? 'บันทึกรับชำระ ' + x.label + ' แล้ว' : 'ย้อนกลับ ' + x.label + ' แล้ว');
+      });
+    });
+  }
+
   function go(el) {
+    var b = el.closest && el.closest('[data-debt]');
+    if (b) return debtAsk(b);
+    if (el.closest && el.closest('#debt-retry')) { debtErr = null; drawDebt(); return fetchDebt(); }
     var row = el.closest && el.closest('[data-href]');
     if (row) location.assign(row.getAttribute('data-href'));
   }
@@ -547,7 +652,7 @@
         '<div id="view" aria-live="polite"></div>';
       view = $('view');
       view.addEventListener('click', function (e) { pickerOpen(e); go(e.target); });
-      view.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(e.target); });
+      view.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.target.closest('button')) go(e.target); }); // ปุ่มกด Enter = click อยู่แล้ว
     },
     show: function (s, params) { return show(params); }
   });

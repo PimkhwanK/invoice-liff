@@ -473,8 +473,98 @@ function salesDay(input) {
   };
 }
 
+// ---------- รอบ 33: ลูกหนี้ (บิลเครดิต/สินเชื่อที่ยังไม่รับชำระ) — หน้าสรุป + แจ้งเตือน LINE รายวัน
+
+var SALES_DEBT_DAYS = 3;        // ค่าเริ่มต้นของ "ใกล้ครบกำหนด" = เหลือไม่เกินกี่วัน (ตั้งได้ในหน้าจัดการข้อมูล — debt_alert_days)
+var SALES_DEBT_DAYS_MAX = 60;
+var SALES_DEBT_ALERT_MAX = 10;  // ข้อความ LINE แสดงไม่เกินกี่บิล (ที่เหลือ "และอีก N บิล")
+
+/** จำนวนวันของ "ใกล้ครบกำหนด": จำนวนเต็ม 0–60 / ว่างหรือผิด → ค่าเริ่มต้น */
+function salesDebtDays(v) {
+  var s = salesText(v);
+  var n = Number(s);
+  return s !== '' && isFinite(n) && Math.floor(n) === n && n >= 0 && n <= SALES_DEBT_DAYS_MAX ? n : SALES_DEBT_DAYS;
+}
+
+/**
+ * ลูกหนี้ของทั้งสองไฟล์ (เซิร์ฟเวอร์ action debtData + แจ้งเตือนรายวัน)
+ *   นับ: ชนิดการขายไม่ใช่เงินสด (เครดิต / สินเชื่อ) ไม่ยกเลิก ไม่ใช่ 0000 ไม่ใช่ใบเสร็จที่มีใบกำกับคู่
+ *   รับชำระแล้ว: ช่อง "วันที่รับชำระ" มีค่า / ใบกำกับที่ออกใบเสร็จคู่แล้ว (เลขที่ + ร้านเดียวกัน ใบเสร็จไม่ยกเลิก — นับอัตโนมัติ ไม่เขียนชีต)
+ * @param {object} input { tax: docs[] | null, cash: docs[] | null, today: 'YYYY-MM-DD', days, cashLabel? ('เงินสด') }
+ * @returns {object} { today, days, overdue, soon, later, noDue, paidToday, sums: {ส่วน: สตางค์}, missing }
+ *   แต่ละบิล { kind 't'|'c', no, docType, label ("ใบกำกับ 25" / "ใบเสร็จ 25" / "เงินสด 1069-15"), shop, sat, due, left (วันที่เหลือ ติดลบ = เลยมา),
+ *              docDate, paidDate, paidBy, byReceipt (ใบเสร็จที่ทำให้รับชำระแล้ว หรือ '') }
+ *   overdue = เลยกำหนด / soon = เหลือ 0..days วัน / later = มากกว่านั้น / noDue = ไม่มีวันครบกำหนด / paidToday = รับชำระวันนี้
+ *   เรียงตามวันครบกำหนด ใกล้สุด (เก่าสุด) ก่อน
+ */
+function salesDebt(input) {
+  var today = input.today;
+  var days = salesDebtDays(input.days);
+  var cashLabel = salesText(input.cashLabel) || 'เงินสด';
+  var out = { today: today, days: days, overdue: [], soon: [], later: [], noDue: [], paidToday: [], sums: {}, missing: { tax: !input.tax, cash: !input.cash } };
+  [['t', input.tax], ['c', input.cash]].forEach(function (pair) {
+    var kind = pair[0];
+    var docs = pair[1];
+    if (!docs) return;
+    var paired = salesPairedReceipts(kind, docs);
+    var receiptOf = {}; // 'เลขที่|ร้าน' → ใบเสร็จที่ไม่ยกเลิก (ใบกำกับคู่ = รับชำระแล้ว)
+    if (kind === 't') {
+      docs.forEach(function (d) {
+        var no = salesDocKey('t', d.doc_no);
+        if (no && salesIsReceipt('t', d) && salesText(d.status) !== 'cancelled') receiptOf[no + '|' + salesText(d.shop_id)] = d;
+      });
+    }
+    docs.forEach(function (d, i) {
+      var no = salesDocKey(kind, d.doc_no);
+      if (!no || salesText(d.status) === 'cancelled' || paired[i]) return;
+      var st = salesText(d.sale_type);
+      if (!st || st === cashLabel) return;
+      var receipt = !salesIsReceipt(kind, d) && receiptOf[no + '|' + salesText(d.shop_id)];
+      var item = {
+        kind: kind, no: no, docType: kind === 't' ? salesText(d.doc_type) : '', label: salesBillLabel(kind, no, salesIsReceipt(kind, d)),
+        shop: salesText(d.shop_short_name) || salesText(d.shop_legal_name), sat: toSatang(d.total), due: salesIso(d.due_date), left: null,
+        docDate: salesIso(d.doc_date), paidDate: salesIso(d.paid_date), paidBy: salesText(d.paid_by), byReceipt: ''
+      };
+      if (receipt && !item.paidDate) {
+        item.byReceipt = salesBillLabel('t', no, true);
+        item.paidDate = salesIso(receipt.created_at) || salesIso(receipt.doc_date);
+        item.paidBy = salesText(receipt.issued_by);
+      }
+      if (item.paidDate || receipt) {
+        if (item.paidDate === today) out.paidToday.push(item);
+        return;
+      }
+      if (!item.due) return out.noDue.push(item);
+      item.left = isoDayDiff(today, item.due);
+      (item.left < 0 ? out.overdue : item.left <= days ? out.soon : out.later).push(item);
+    });
+  });
+  var byDue = function (a, b) {
+    var x = a.due || a.docDate;
+    var y = b.due || b.docDate;
+    return x < y ? -1 : x > y ? 1 : a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0;
+  };
+  ['overdue', 'soon', 'later', 'noDue', 'paidToday'].forEach(function (k) {
+    out[k].sort(byDue);
+    out.sums[k] = out[k].reduce(function (a, x) { return a + x.sat; }, 0);
+  });
+  return out;
+}
+
+/** ข้อความ "เหลือ N วัน" / "ครบกำหนดวันนี้" / "เลยมา N วัน" */
+function salesDebtLeftText(left) {
+  if (left === null || left === undefined || isNaN(left)) return '';
+  if (left === 0) return 'ครบกำหนดวันนี้';
+  return left < 0 ? 'เลยมา ' + (-left) + ' วัน' : 'เหลือ ' + left + ' วัน';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    SALES_DEBT_DAYS: SALES_DEBT_DAYS,
+    SALES_DEBT_ALERT_MAX: SALES_DEBT_ALERT_MAX,
+    salesDebt: salesDebt,
+    salesDebtDays: salesDebtDays,
+    salesDebtLeftText: salesDebtLeftText,
     SALES_VERSION: SALES_VERSION,
     SALES_TOP: SALES_TOP,
     SALES_LOST_DAYS: SALES_LOST_DAYS,
