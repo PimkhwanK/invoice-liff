@@ -458,10 +458,21 @@ body.has-tabbar .toast { bottom: 140px; }
 .move-desc { margin: 0; padding: 6px 16px 8px; border-bottom: 1px solid var(--theme-line); }
 
 /* ---------- รอบ 21: เมนูหลัก (menu.js) / ปุ่มเมนูหลักบนหัวทุกหน้า / แผ่นสอนติดตั้ง (pwa.js) ---------- */
-.home-link { display: inline-flex; align-items: center; gap: 4px; margin: -4px 0 6px -2px; padding: 4px 6px; border-radius: 8px; font-size: 14px; font-weight: 700; text-decoration: none; color: var(--theme-primary); }
-.home-link svg.icon { width: 18px; height: 18px; }
-.home-link:active { background: var(--theme-pressed); }
-.home-link + .mode-pill { margin-left: 8px; }
+/* รอบ 34: ปุ่ม "เมนูหลัก" บนหัวเลิกใช้ (มี "หน้าแรก" ในแถบล่าง) — หัวหน้าออกบิล / ประวัติ / จัดการข้อมูล: สลับโหมด + ทางลัดจัดการข้อมูล (ปุ่มสูง 48px) */
+.topbar-row { display: flex; align-items: center; gap: 8px; margin: -4px 0 8px; }
+.mode-switch { display: flex; flex: 1 1 auto; min-width: 0; max-width: 340px; border: 1px solid var(--theme-primary); border-radius: 12px; overflow: hidden; background: var(--theme-card); }
+.mode-switch button { flex: 1 1 0; min-width: 0; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 6px;
+  border: 0; background: none; font: inherit; font-size: 15px; font-weight: 700; color: var(--theme-text-2); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.mode-switch button + button { border-left: 1px solid var(--theme-primary); }
+.mode-switch button svg.icon { width: 18px; height: 18px; flex: 0 0 auto; }
+.mode-switch button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mode-switch button.on { background: var(--theme-primary); color: var(--theme-on-primary); }
+.mode-switch button:not(.on):active { background: var(--theme-pressed); }
+.manage-link { flex: 0 0 auto; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 64px; min-height: 48px; padding: 2px 6px;
+  border-radius: 12px; border: 1px solid var(--theme-line); text-decoration: none; font-size: 12px; font-weight: 700; line-height: 1.15; text-align: center; color: var(--theme-primary-dark); }
+.manage-link svg.icon { width: 20px; height: 20px; }
+.manage-link:active { background: var(--theme-pressed); }
+.mode-switch button:focus-visible, .manage-link:focus-visible { outline: 2px solid var(--theme-primary-dark); outline-offset: -3px; }
 .menu-hello { display: flex; align-items: center; gap: 10px; }
 .menu-hello .t { flex: 1; min-width: 0; }
 .menu-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin: 12px; }
@@ -476,6 +487,7 @@ body.has-tabbar .toast { bottom: 140px; }
 .menu-tile.tax { background: var(--theme-tax); }
 .menu-tile.stock { background: var(--theme-stock); }
 .menu-tile.summary { background: var(--theme-summary); }
+.menu-tile.manage { background: var(--theme-text); grid-column: 1 / -1; min-height: 96px; } /* รอบ 34: จัดการข้อมูล เต็มความกว้าง */
 .menu-tile:active { filter: brightness(.92); }
 .menu-tile:focus-visible { outline: 3px solid var(--theme-text); outline-offset: 2px; }
 .menu-more .btn { justify-content: flex-start; }

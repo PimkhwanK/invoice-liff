@@ -1051,6 +1051,8 @@
       if (!S.screen || S.screen === 'error') return load();
       if (scr.seen !== AppData.version()) update();
     },
-    update: update
+    update: update,
+    /** รอบ 34: กรอกฟอร์มค้างไว้ (เลือกร้านหรือมีรายการ ยังไม่ได้ออกบิล) → ปุ่มสลับโหมดถามก่อน */
+    dirty: function () { return (S.screen === 'form' || S.screen === 'review') && !!(S.shop || S.lines.length); }
   });
 })();

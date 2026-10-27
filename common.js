@@ -272,7 +272,7 @@ var LiffApp = (function () {
       var keys = [];
       for (var i = 0; i < localStorage.length; i++) {
         var k = localStorage.key(i);
-        if (k && (k.indexOf(STORE_PREFIX) === 0 || k === 'invoice-liff:active')) keys.push(k); // รอบ 21: + เวลาที่ใช้งานล่าสุด
+        if (k && (k.indexOf(STORE_PREFIX) === 0 || k === 'invoice-liff:active' || k === 'invoice-liff:mode')) keys.push(k); // รอบ 21: + เวลาที่ใช้งานล่าสุด / รอบ 34: + โหมดที่ใช้ล่าสุด
       }
       keys.forEach(function (k) { localStorage.removeItem(k); });
     } catch (e) { /* ไม่เป็นไร */ }

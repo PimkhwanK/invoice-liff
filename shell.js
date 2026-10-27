@@ -10,15 +10,21 @@
  *   หน้าจอที่ไม่ได้แสดงถูกถอดออกจากเอกสาร (เก็บไว้ทั้งก้อน) → id ซ้ำกันข้ามหน้าจอได้ / ฟอร์มที่กรอกค้างไว้ไม่หาย
  *   ปุ่มย้อนกลับ (Android) / ปัดย้อนกลับ: history.pushState ทุกครั้งที่เปลี่ยนหน้าจอ → popstate กลับหน้าจอก่อนหน้าในแอป
  *   ลำดับโหลด: shell.js → หน้าจอ (Shell.define) → Shell.boot() ท้ายหน้า
- *   แถบเมนูล่าง 3 ปุ่ม: ออกบิล / ประวัติ / จัดการข้อมูล (หน้าดู PDF ไม่อยู่ในแถบ)
+ *   แถบเมนูล่าง (รอบ 34: 5 ปุ่ม ดูด้านล่าง — เดิม 3 ปุ่ม ออกบิล / ประวัติ / จัดการข้อมูล) / หน้าดู PDF ไม่อยู่ในแถบ
  *   รอบ 15: หน้าสรุป (summary) / สต็อก (stock) เปิดจาก Rich Menu ตรง ๆ — ไม่ผูกกับประเภทเอกสาร (ALONE): ไม่มีแถบเมนูล่าง ไม่มีป้ายประเภท ไม่มี ?type= ใน URL
  *   รอบ 21: หน้าเมนูหลัก (menu) = หน้าแรก (ALONE) / ทุกหน้าจออื่นมีปุ่ม "เมนูหลัก" บนหัว / ลิงก์ไปโหมดอื่น (issue?type=…) → โหลดหน้าใหม่ (โหมดคงที่ต่อการเปิดแอป)
  *   ?debug=1 → แถบเวลาเล็ก ๆ บนจอ: liff.init, คำขอเซิร์ฟเวอร์แต่ละครั้ง, เวลาสลับหน้าจอ (จำไว้ในแท็บนี้จนปิด / ?debug=0 ปิด)
+ * รอบ 34 (ขั้น 1 การนำทาง): แถบล่าง 5 ปุ่มเดียวกันทุกหน้าจอ — หน้าแรก (menu) / ออกบิล / ประวัติ / สต็อก / สรุป (จอ ≥ 1024 อยู่ด้านบน)
+ *   ออกบิล / ประวัติ ผูกกับโหมด: ไปโหมดที่ใช้ล่าสุด (localStorage invoice-liff:mode ไม่มี = ใบเงินสด) — คนละโหมดกับที่เปิดอยู่ → โหลดหน้าใหม่ในโหมดนั้น
+ *   หัวหน้าออกบิล / ประวัติ / จัดการข้อมูล: ปุ่มสลับ "ใบเงินสด | ใบกำกับภาษี" (#mode-switch แทนป้ายประเภท) — ฟอร์มกรอกค้าง (def.dirty) → ถามก่อน
+ *   หัวหน้าออกบิล / ประวัติ: ทางลัด "จัดการข้อมูล" (#manage-link) / ปุ่ม "เมนูหลัก" บนหัวเลิกใช้ (มี "หน้าแรก" ในแถบล่าง) / หน้าดู PDF ยังมีป้ายประเภทเดิม
  */
 var Shell = (function () {
   var ROUTES = { issue: [], history: ['shopId'], manage: ['tab'], view: ['no', 'dt'], summary: ['print'], stock: ['barcode', 'tab', 'period', 'month', 'from', 'to'], menu: [] };
   var ALONE = { summary: true, stock: true, menu: true }; // รอบ 15: หน้าที่ไม่ผูกกับประเภทเอกสาร (รอบ 21: + เมนูหลัก)
-  var TABS = ['issue', 'history', 'manage'];
+  var MODED = { issue: true, history: true, manage: true }; // รอบ 34: หน้าจอที่มีปุ่มสลับโหมดบนหัว
+  var MODE_KEY = 'invoice-liff:mode';                       // รอบ 34: โหมดที่ใช้ล่าสุด (ไม่ใช่ข้อมูลส่วนตัว)
+  var MODE_NAMES = { cash: 'ใบเงินสด', tax: 'ใบกำกับภาษี' };
   var defs = {};
   var screens = {};
   var current = null;
@@ -69,15 +75,21 @@ var Shell = (function () {
     s.def.build(s);
     // รอบ 10: ป้ายประเภทเอกสารบนหัวทุกหน้าจอ (สีตามโหมด — theme.css .mode-pill) กันออกผิดประเภท
     var bar = s.root.querySelector('.topbar');
-    if (bar && !ALONE[name]) {
+    if (bar && MODED[name]) {
+      // รอบ 34: ปุ่มสลับโหมด (โหมดปัจจุบันเป็นปุ่มทึบ) + ทางลัดจัดการข้อมูล
+      var row = '<div class="topbar-row"><div class="mode-switch" id="mode-switch" role="group" aria-label="ประเภทเอกสาร">' +
+        ['cash', 'tax'].map(function (m) {
+          var on = m === LiffApp.MODE;
+          return '<button type="button" data-mode-to="' + m + '"' + (on ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"') + '>' +
+            iconSvg(m === 'cash' ? 'cash' : 'receipt') + '<span>' + MODE_NAMES[m] + '</span></button>';
+        }).join('') + '</div>' +
+        (name !== 'manage' ? '<a class="manage-link" id="manage-link" href="manage">' + iconSvg('manage') + '<span>จัดการข้อมูล</span></a>' : '') + '</div>';
+      bar.insertBefore(LiffApp.el(row), bar.firstChild);
+    } else if (bar && !ALONE[name]) {
       var pill = LiffApp.el('<div class="mode-pill" id="mode-pill" data-mode="' + LiffApp.MODE + '">' +
         iconSvg(LiffApp.isCash() ? 'cash' : 'receipt') + '<span></span></div>');
       pill.querySelector('span').textContent = LiffApp.MODE_LABEL;
       bar.insertBefore(pill, bar.firstChild);
-    }
-    // รอบ 21: ปุ่ม "เมนูหลัก" บนหัวทุกหน้าจอ (ยกเว้นเมนูหลักเอง)
-    if (bar && name !== 'menu') {
-      bar.insertBefore(LiffApp.el('<a class="home-link" id="home-link" href="menu">' + iconSvg('home') + '<span>เมนูหลัก</span></a>'), bar.firstChild);
     }
     screens[name] = s;
     return s;
@@ -95,12 +107,56 @@ var Shell = (function () {
     dockEl.replaceChildren(s.dock);
     appEl.scrollTop = s.scroll;
     document.title = ALONE[s.name] ? s.def.title : s.def.title + ' · ' + LiffApp.MODE_LABEL;
+    if (MODED[s.name] && !locked) rememberMode(LiffApp.MODE);
     LiffApp.syncing(AppData.isRefreshing(), s);
     drawTabbar();
   }
 
+  // ---------- รอบ 34: โหมดที่ใช้ล่าสุด / สลับโหมด
+
+  function lastMode() {
+    var m = '';
+    try { m = localStorage.getItem(MODE_KEY) || ''; } catch (e) { m = ''; }
+    return m === 'tax' || m === 'cash' ? m : 'cash';
+  }
+  function rememberMode(m) { try { localStorage.setItem(MODE_KEY, m); } catch (e) { /* ไม่เป็นไร */ } }
+
+  /** URL ของหน้าจอ name ในโหมด mode (คนละโหมด: ร้านของสองไฟล์เป็นคนละรายชื่อ → ไม่พา shopId ไป) */
+  function modeUrl(name, params, mode) {
+    var q = new URLSearchParams();
+    q.set('type', mode);
+    (ROUTES[name] || []).forEach(function (k) {
+      if (k !== 'shopId' && params && params[k] !== undefined && params[k] !== '') q.set(k, params[k]);
+    });
+    return name + '?' + q.toString();
+  }
+
+  /** ไปหน้าจอ name ในโหมด mode — โหมดเดียวกับที่เปิดอยู่ = สลับในแอป / คนละโหมด = โหลดหน้าใหม่ */
+  function goMode(name, params, mode) {
+    if (mode === LiffApp.MODE) return go(name, params);
+    rememberMode(mode);
+    location.assign(modeUrl(name, params, mode));
+  }
+
+  /** ปุ่มสลับโหมดบนหัว — กรอกฟอร์มค้างไว้ → ถามก่อน (ข้อมูลที่กรอกจะหาย) */
+  function switchMode(mode) {
+    if (!current || mode === LiffApp.MODE) return;
+    var s = current;
+    var go2 = function () { goMode(s.name, s.params, mode); };
+    if (!(s.def.dirty && s.def.dirty(s))) return go2();
+    var sh = LiffApp.sheet('สลับเป็น' + MODE_NAMES[mode] + '?',
+      '<p id="mode-confirm-text" style="margin:0">ข้อมูลที่กรอกไว้ใน' + MODE_NAMES[LiffApp.MODE] + 'จะหายไป</p>',
+      '<button type="button" class="btn grow" data-close>ไม่สลับ</button><button type="button" class="btn primary grow" id="mode-confirm">สลับ</button>');
+    sh.el.querySelector('#mode-confirm').addEventListener('click', function () { sh.close(); go2(); });
+  }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('#mode-switch button[data-mode-to]');
+    if (b && ready) switchMode(b.dataset.modeTo);
+  });
+
   function drawTabbar() {
-    var on = ready && !locked && !(current && ALONE[current.name]);
+    var on = ready && !locked; // รอบ 34: ทุกหน้าจอ (เดิมไม่มีในหน้าสรุป / สต็อก / เมนูหลัก)
     tabbar.classList.toggle('hidden', !on);
     document.body.classList.toggle('has-tabbar', on);
     tabbar.querySelectorAll('button[data-go]').forEach(function (b) {
@@ -170,7 +226,10 @@ var Shell = (function () {
     if (!b) return;
     var name = b.dataset.go;
     if (current && current.name === name) { appEl.scrollTop = 0; return; }
-    go(name, screens[name] ? screens[name].params : {});
+    var params = screens[name] ? screens[name].params : {};
+    // รอบ 34: ออกบิล / ประวัติ → โหมดของหน้าจอที่อยู่ (ถ้ามี) หรือโหมดที่ใช้ล่าสุด
+    if (MODED[name]) return goMode(name, params, current && MODED[current.name] ? LiffApp.MODE : lastMode());
+    go(name, params);
   });
 
   // ลิงก์ภายในแอป (เช่น ปุ่ม "ดู PDF" → view?no=…) → สลับหน้าจอแทนการโหลดหน้าใหม่
@@ -316,6 +375,7 @@ var Shell = (function () {
 
   return {
     define: define, has: has, go: go, back: back, canBack: canBack, setParams: setParams, drawn: drawn, isCurrent: isCurrent,
-    scrollTop: scrollTop, boot: boot, debug: Debug
+    scrollTop: scrollTop, boot: boot, debug: Debug,
+    lastMode: lastMode, goMode: goMode // รอบ 34
   };
 })();

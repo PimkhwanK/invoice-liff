@@ -13,10 +13,12 @@
 
   /** ปุ่มใหญ่: ใบเงินสด / ใบกำกับ เปิดแอปใหม่ในโหมดนั้น (โหมดคงที่ต่อการเปิดแอป) / สต็อก สรุป สลับหน้าจอในแอป */
   var TILES = [
-    { id: 'cash', href: 'issue?type=cash', icon: 'cash', name: 'ใบเงินสด', sub: 'ออกบิล · ประวัติ · จัดการ' },
-    { id: 'tax', href: 'issue?type=tax', icon: 'receipt', name: 'ใบกำกับภาษี', sub: 'ออกบิล · ประวัติ · จัดการ' },
+    { id: 'cash', href: 'issue?type=cash', icon: 'cash', name: 'ใบเงินสด', sub: 'ออกใบเงินสด' },
+    { id: 'tax', href: 'issue?type=tax', icon: 'receipt', name: 'ใบกำกับภาษี', sub: 'ออกใบกำกับภาษี' },
     { id: 'stock', href: 'stock', icon: 'stock', name: 'สต็อก', sub: 'คงเหลือ · ของเข้า-ออก' },
-    { id: 'summary', href: 'summary', icon: 'summary', name: 'สรุป', sub: 'ยอดขาย · สินค้าขายดี' }
+    { id: 'summary', href: 'summary', icon: 'summary', name: 'สรุป', sub: 'ยอดขาย · สินค้าขายดี' },
+    // รอบ 34: จัดการข้อมูลหาง่าย — โหมดที่ใช้ล่าสุด (ร้านของสองประเภทเป็นคนละรายชื่อ / สลับได้บนหัวหน้า)
+    { id: 'manage', href: function () { return 'manage?type=' + Shell.lastMode(); }, icon: 'manage', name: 'จัดการข้อมูล', sub: 'ร้านค้า · สินค้า · ยกเลิกบิล · แจ้งเตือน' }
   ];
 
   function draw() {
@@ -28,7 +30,7 @@
         ? '<button type="button" class="btn sm primary" id="btn-full">' + iconSvg('link') + '<span>เปิดแบบเต็มจอ</span></button>'
         : '<button type="button" class="btn sm" id="btn-logout">' + iconSvg('logout') + '<span>ออกจากระบบ</span></button>') + '</section>' +
       '<nav class="menu-grid" aria-label="เมนูหลัก">' + TILES.map(function (t) {
-        return '<a class="menu-tile ' + t.id + '" id="tile-' + t.id + '" href="' + t.href + '">' + iconSvg(t.icon) +
+        return '<a class="menu-tile ' + t.id + '" id="tile-' + t.id + '" href="' + esc(typeof t.href === 'function' ? t.href() : t.href) + '">' + iconSvg(t.icon) +
           '<span class="n">' + esc(t.name) + '</span><span class="s">' + esc(t.sub) + '</span></a>';
       }).join('') + '</nav>' +
       (inLine ? '' :
