@@ -11,6 +11,8 @@
  */
 (function () {
   var esc = LiffApp.esc;
+  // หน้าที่ไม่ผูกกับประเภทเอกสาร: action ของสต็อกอยู่กับใบกำกับเสมอ (เปิดต่อจากใบเงินสดในแอปเดียวกัน LiffApp.MODE ยังเป็น cash)
+  function tapi(action, payload) { return LiffApp.api(action, Object.assign({}, payload, { type: 'tax' })); }
   var scr = null;
   var view = null;
   var acts = null;
@@ -35,7 +37,7 @@
   // ---------- ข้อมูล
 
   function load() {
-    return LiffApp.api('stockData').then(function (r) {
+    return tapi('stockData').then(function (r) {
       if (!r.ok) return r;
       data = r;
       fetched = true;
@@ -243,7 +245,7 @@
       var btn = el('#move-save');
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner sm" aria-hidden="true"></span> กำลังบันทึก…';
-      var r = await LiffApp.api('stockMove', { kind: kind, lines: ls, reason: reason, requestId: requestId });
+      var r = await tapi('stockMove', { kind: kind, lines: ls, reason: reason, requestId: requestId });
       if (!r.ok) {
         if (LiffApp.isAuthFail(r.code)) { s.close(); return LiffApp.showApiError(r, scr); }
         btn.disabled = false;
@@ -274,7 +276,7 @@
     $('sub').textContent = '';
     LiffApp.loading('กำลังโหลดความเคลื่อนไหว…', view);
     Shell.scrollTop(scr);
-    var r = await LiffApp.api('stockHistory', { barcode: bc });
+    var r = await tapi('stockHistory', { barcode: bc });
     if (!Shell.isCurrent(scr) || scr.params.barcode !== bc) return;
     if (!r.ok) return LiffApp.showApiError(r, scr);
     p = r.product;
@@ -341,7 +343,7 @@
     }
     var btn = $('alert-save');
     btn.disabled = true;
-    var r = await LiffApp.api('setStockAlert', { barcode: p.barcode, alert: v === '' ? '' : Number(v) });
+    var r = await tapi('setStockAlert', { barcode: p.barcode, alert: v === '' ? '' : Number(v) });
     if (!Shell.isCurrent(scr) || scr.params.barcode !== p.barcode) return;
     btn.disabled = false;
     if (!r.ok) {
@@ -451,7 +453,7 @@
     var seq = ++repSeq;
     var body = $('rep-body');
     LiffApp.loading('กำลังทำรายงาน…', body);
-    var r = await LiffApp.api('stockReport', { period: rep.period, month: rep.month, from: rep.from, to: rep.to });
+    var r = await tapi('stockReport', { period: rep.period, month: rep.month, from: rep.from, to: rep.to });
     if (seq !== repSeq || !Shell.isCurrent(scr) || !$('rep-body')) return;
     if (!r.ok) {
       if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);

@@ -50,6 +50,24 @@
 
   // ---------- ข้อมูล
 
+  var RETRIES = 3;      // ติดต่อไม่สำเร็จชั่วคราว → ลองใหม่เงียบ ๆ ก่อนบอกผู้ใช้
+  var RETRY_MS = 1500;
+  /**
+   * action ของหน้าสรุปอยู่กับใบกำกับเสมอ (type tax) — เปิดต่อจากใบเงินสดในแอปเดียวกัน (เมนูหลัก → สรุป) LiffApp.MODE ยังเป็น cash
+   * ไม่สำเร็จแบบลองใหม่ได้ (เน็ต / ระบบขัดข้อง / มีคนออกบิลอยู่) → ลองใหม่สูงสุด RETRIES ครั้ง เว้น RETRY_MS
+   */
+  function tapi(action, payload) {
+    var tries = 0;
+    function once() {
+      return LiffApp.api(action, Object.assign({}, payload, { type: 'tax' })).then(function (r) {
+        if (r.ok || !LiffApp.isRetryable(r) || tries >= RETRIES) return r;
+        tries++;
+        return new Promise(function (res) { setTimeout(res, RETRY_MS); }).then(once);
+      });
+    }
+    return once();
+  }
+
   /** ข้อมูลของปี: จำไว้ → ทันที (อัปเดตเบื้องหลัง) / ไม่มี → รอเซิร์ฟเวอร์ */
   function ensure(year) {
     if (!data[year]) {
@@ -63,7 +81,7 @@
   function fetchYear(year) {
     if (pending[year]) return pending[year];
     if (data[year]) LiffApp.syncing(true, scr);
-    pending[year] = LiffApp.api('summaryData', { year: year }).then(function (r) {
+    pending[year] = tapi('summaryData', { year: year }).then(function (r) {
       delete pending[year];
       if (!Object.keys(pending).length) LiffApp.syncing(false, scr);
       if (!r.ok) {
@@ -118,7 +136,7 @@
   /** รอบ 29: ข้อมูลของวันเดียว (salesDay) — ไม่จำไว้ในเครื่อง (บิลของวันเก่าเปลี่ยนได้จากการยกเลิก) */
   function fetchDay(date) {
     if (dayPending[date]) return dayPending[date];
-    dayPending[date] = LiffApp.api('salesDay', { date: date }).then(function (r) {
+    dayPending[date] = tapi('salesDay', { date: date }).then(function (r) {
       delete dayPending[date];
       if (r.ok) days[date] = r;
       return r;
