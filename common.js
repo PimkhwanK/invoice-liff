@@ -714,7 +714,29 @@ var LiffApp = (function () {
     openSheets.slice().forEach(function (close) { close(); });
   }
 
+  // ---------- รอบ 30: ชื่อไฟล์ตอนพิมพ์ / บันทึก PDF
+
+  /** 'YYYY-MM-DD' → 'D-M-BBBB' (ปี พ.ศ. ไม่เติม 0 ไม่มี / — ใช้ในชื่อไฟล์) */
+  function fileDate(iso) {
+    var p = String(iso || '').split('-');
+    return Number(p[2]) + '-' + Number(p[1]) + '-' + (Number(p[0]) + 543);
+  }
+
+  var printTitle = null;   // ชื่อเดิมของหน้า ระหว่างพิมพ์
+  /** พิมพ์โดยตั้ง document.title (= ชื่อไฟล์ PDF ที่เบราว์เซอร์เสนอ) แล้วคืนชื่อเดิมหลังพิมพ์เสร็จ */
+  function printAs(title) {
+    if (printTitle === null) printTitle = document.title;
+    document.title = title;
+    window.addEventListener('afterprint', function done() {
+      window.removeEventListener('afterprint', done);
+      if (printTitle !== null) document.title = printTitle;
+      printTitle = null;
+    });
+    window.print();
+  }
+
   return {
+    printAs: printAs, fileDate: fileDate, // รอบ 30
     start: start, api: api, showError: showError, showApiError: showApiError, isRetryable: isRetryable,
     isDenied: isDenied, isAuthFail: isAuthFail, showDenied: showDenied, accessRequestText: accessRequestText,
     inClient: inClient, relogin: relogin, toast: toast, uuid: uuid, docNoText: docNoText, sheet: sheet, closeSheets: closeSheets, esc: esc, el: el, loading: loading,

@@ -299,7 +299,7 @@
     view.innerHTML = dailySheet(r) +
       '<div class="rep-acts no-print"><button type="button" class="btn" id="dsr-back">กลับ</button>' +
       '<button type="button" class="btn primary" id="dsr-print">พิมพ์ / PDF</button></div>';
-    $('dsr-print').addEventListener('click', function () { window.print(); });
+    $('dsr-print').addEventListener('click', function () { LiffApp.printAs('สรุปยอดขาย ' + LiffApp.fileDate(date)); });
     $('dsr-back').addEventListener('click', function () { Shell.go('summary', {}); });
     Shell.drawn(scr);
   }

@@ -488,7 +488,7 @@
       (rows.length ? '<div class="rep-acts no-print"><button type="button" class="btn primary" id="rep-print">พิมพ์ / PDF</button>' +
         '<button type="button" class="btn" id="rep-xlsx">ดาวน์โหลด Excel</button></div>' : '');
     if (!rows.length) return;
-    $('rep-print').addEventListener('click', function () { if (!toBrowser()) window.print(); });
+    $('rep-print').addEventListener('click', function () { if (!toBrowser()) LiffApp.printAs(repFileName(repData)); });
     $('rep-xlsx').addEventListener('click', function () { if (!toBrowser()) saveXlsx(); });
   }
 
@@ -499,6 +499,11 @@
     if (!LiffApp.openExternal(url)) { LiffApp.toast('เปิดเบราว์เซอร์ไม่สำเร็จ ลองอีกครั้ง', true); return true; }
     LiffApp.toast('เปิดในเบราว์เซอร์แล้ว กดพิมพ์หรือดาวน์โหลดที่นั่น');
     return true;
+  }
+
+  /** ชื่อไฟล์ (PDF และ Excel ใช้ชื่อเดียวกัน) เช่น "รายงานสต็อก 1-10-2569 ถึง 27-10-2569" */
+  function repFileName(r) {
+    return 'รายงานสต็อก ' + LiffApp.fileDate(r.from) + (r.from === r.to ? '' : ' ถึง ' + LiffApp.fileDate(r.to));
   }
 
   function saveXlsx() {
@@ -515,9 +520,7 @@
       return [{ v: x.name + (x.startedIn ? ' (เริ่มนับ ' + thDate(x.since) + ')' : ''), s: 'text' }, { v: x.unit, s: 'text' },
         x.open, x.inQty, x.sale, x.out, { v: x.adjust, s: 'signed' }, { v: x.close, s: 'bold' }];
     }), [[], [{ v: 'ไม่นับบิลที่ยกเลิกและบิลทดสอบ 0000 · แสดงเฉพาะสินค้าที่เริ่มนับสต็อกแล้ว', s: 'small' }]]);
-    var be = function (iso) { return (Number(iso.slice(0, 4)) + 543) + iso.slice(4); };
-    var name = 'รายงานสต็อก ' + be(r.from) + (r.from === r.to ? '' : ' ถึง ' + be(r.to)) + '.xlsx';
-    Xlsx.save(name, Xlsx.build({ sheet: 'รายงานสต็อก', cols: [34, 8, 11, 10, 11, 13, 12, 14], rows: rows, merges: ['A1:H1', 'A2:H2', 'A3:H3', 'A4:H4'] }));
+    Xlsx.save(repFileName(r) + '.xlsx', Xlsx.build({ sheet: 'รายงานสต็อก', cols: [34, 8, 11, 10, 11, 13, 12, 14], rows: rows, merges: ['A1:H1', 'A2:H2', 'A3:H3', 'A4:H4'] }));
     LiffApp.toast('ดาวน์โหลดแล้ว');
   }
 
