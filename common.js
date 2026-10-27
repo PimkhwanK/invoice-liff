@@ -723,20 +723,102 @@ var LiffApp = (function () {
   }
 
   var printTitle = null;   // ชื่อเดิมของหน้า ระหว่างพิมพ์
-  /** พิมพ์โดยตั้ง document.title (= ชื่อไฟล์ PDF ที่เบราว์เซอร์เสนอ) แล้วคืนชื่อเดิมหลังพิมพ์เสร็จ */
-  function printAs(title) {
+  var PRINT_WAIT_MS = 1500; // กดพิมพ์แล้วหน้าต่างพิมพ์ไม่ขึ้นภายในเวลานี้ = พิมพ์จากหน้านี้ไม่ได้
+  function restoreTitle() {
+    if (printTitle !== null) document.title = printTitle;
+    printTitle = null;
+  }
+  /**
+   * พิมพ์โดยตั้ง document.title (= ชื่อไฟล์ PDF ที่เบราว์เซอร์เสนอ) แล้วคืนชื่อเดิมหลังพิมพ์เสร็จ
+   * รอบ 31: บางที่ window.print() ไม่ทำอะไรเลยและไม่มี error (เบราว์เซอร์ในแอป LINE, แอปที่เพิ่มไว้บนหน้าจอโฮมของ iPad/iPhone บางรุ่น)
+   *   → หน้าต่างพิมพ์ไม่ขึ้น (ไม่มี beforeprint) ภายใน PRINT_WAIT_MS → onFail() ให้หน้าเว็บแสดงทางเลือก
+   */
+  function printAs(title, onFail) {
     if (printTitle === null) printTitle = document.title;
     document.title = title;
+    var opened = false;
+    function before() { opened = true; }
+    window.addEventListener('beforeprint', before);
     window.addEventListener('afterprint', function done() {
       window.removeEventListener('afterprint', done);
-      if (printTitle !== null) document.title = printTitle;
-      printTitle = null;
+      restoreTitle();
     });
-    window.print();
+    try { window.print(); } catch (e) { /* ถือว่าไม่ได้เปิด */ }
+    setTimeout(function () {
+      window.removeEventListener('beforeprint', before);
+      if (opened) return;
+      restoreTitle();
+      if (onFail) onFail();
+    }, PRINT_WAIT_MS);
+  }
+
+  /** iPad (iPadOS 13+ บอกตัวเองว่าเป็น Mac แต่มีจอสัมผัส) / iPhone */
+  function isIos() {
+    var ua = navigator.userAgent || '';
+    return /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  }
+  /** เบราว์เซอร์ในแอป LINE ที่ไม่ใช่ LIFF (เช่น แตะลิงก์ในแชท) — พิมพ์ / ดาวน์โหลดไม่ได้ */
+  function inLineBrowser() { return !inClient() && /\bLine\//i.test(navigator.userAgent || ''); }
+  /** แอปที่เพิ่มไว้บนหน้าจอโฮม */
+  function standalone() {
+    try { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; } catch (e) { return false; }
+  }
+  /** ลิงก์ที่ LINE เปิดในเบราว์เซอร์ของเครื่องเสมอ (openExternalBrowser=1) */
+  function externalUrl(url) {
+    var u = new URL(url, location.href);
+    u.searchParams.set('openExternalBrowser', '1');
+    return u.href;
+  }
+
+  /**
+   * รอบ 31: กล่องทางเลือกเมื่อพิมพ์ / ดาวน์โหลด / เปิดเบราว์เซอร์อาจไม่สำเร็จ (กดแล้วห้ามเงียบ)
+   *   ปุ่ม "เปิดในเบราว์เซอร์" (ลิงก์ openExternalBrowser=1) + "คัดลอกลิงก์" (คัดลอกไม่ได้ → แสดงลิงก์ให้กดค้างคัดลอกเอง)
+   *   host = ส่วนของหน้าจอที่จะใส่กล่องไว้บนสุด (กล่องเดิมถูกแทนที่) / ไม่พิมพ์ออกกระดาษ (no-print)
+   */
+  function outsideHelp(host, url, text) {
+    if (!host) return null;
+    var old = host.querySelector('#out-help');
+    if (old) old.remove();
+    var box = el('<section class="card alert warn no-print" id="out-help" role="alert"><p id="out-help-text"></p>' +
+      '<div class="rep-acts"><a class="btn primary" id="out-open" rel="noopener"' + (inClient() ? '' : ' target="_blank"') + '>เปิดในเบราว์เซอร์</a>' +
+      '<button type="button" class="btn" id="out-copy">' + iconSvg('copy') + '<span>คัดลอกลิงก์</span></button></div>' +
+      '<input type="text" readonly id="out-link" hidden aria-label="ลิงก์ของหน้านี้"></section>');
+    box.querySelector('#out-help-text').textContent = text;
+    box.querySelector('#out-open').href = externalUrl(url);
+    var link = box.querySelector('#out-link');
+    link.value = url;
+    box.querySelector('#out-copy').addEventListener('click', async function () {
+      try {
+        if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('no clipboard');
+        await navigator.clipboard.writeText(url);
+        toast('คัดลอกลิงก์แล้ว นำไปวางใน Safari หรือเบราว์เซอร์');
+      } catch (e) {
+        link.hidden = false;
+        try { link.focus(); link.select(); } catch (e2) { /* ไม่เป็นไร */ }
+        toast('คัดลอกเองไม่ได้ กดค้างที่ลิงก์แล้วเลือก "คัดลอก"', true);
+      }
+    });
+    host.insertBefore(box, host.firstChild);
+    try { box.scrollIntoView({ block: 'nearest' }); } catch (e) { /* ไม่เป็นไร */ }
+    return box;
+  }
+
+  /**
+   * รอบ 31: ในแอป LINE เปิดหน้าในเบราว์เซอร์ของเครื่อง — liff.openWindow ไม่บอกว่าสำเร็จไหม (บาง iPad ไม่เปิดและเงียบ)
+   *   จึงแสดงกล่องทางเลือกไว้ทุกครั้ง / คืน false ถ้าไม่ได้อยู่ในแอป LINE (ให้ทำต่อในหน้านี้)
+   */
+  function openOutside(url, host, what) {
+    if (!inClient()) return false;
+    var sent = openExternal(url);
+    toast(sent ? 'กำลังเปิดในเบราว์เซอร์ ' + what + 'ที่นั่น' : 'เปิดเบราว์เซอร์ไม่สำเร็จ กดปุ่มด้านล่าง', !sent);
+    outsideHelp(host, url, (sent ? 'ถ้าเบราว์เซอร์ไม่เปิดขึ้นมา ' : 'เปิดเบราว์เซอร์เองไม่ได้ ') +
+      'กด "เปิดในเบราว์เซอร์" หรือคัดลอกลิงก์ไปวางใน Safari แล้ว' + what + 'ที่นั่น');
+    return true;
   }
 
   return {
     printAs: printAs, fileDate: fileDate, // รอบ 30
+    isIos: isIos, inLineBrowser: inLineBrowser, standalone: standalone, externalUrl: externalUrl, outsideHelp: outsideHelp, openOutside: openOutside, // รอบ 31
     start: start, api: api, showError: showError, showApiError: showApiError, isRetryable: isRetryable,
     isDenied: isDenied, isAuthFail: isAuthFail, showDenied: showDenied, accessRequestText: accessRequestText,
     inClient: inClient, relogin: relogin, toast: toast, uuid: uuid, docNoText: docNoText, sheet: sheet, closeSheets: closeSheets, esc: esc, el: el, loading: loading,

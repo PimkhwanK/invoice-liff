@@ -270,13 +270,16 @@
   function printDaily() {
     var input = $('sum-daily-date');
     var date = input && input.value && input.value <= today() ? input.value : dailyDefault();
-    if (LiffApp.inClient()) {
-      // ในแอป LINE พิมพ์ / บันทึก PDF มักไม่ได้ → เปิดหน้าเดียวกันในเบราว์เซอร์ (แบบรายงานสต็อก)
-      if (!LiffApp.openExternal(LiffApp.appUrl('summary') + '?print=' + encodeURIComponent(date))) LiffApp.toast('เปิดเบราว์เซอร์ไม่สำเร็จ ลองอีกครั้ง', true);
-      else LiffApp.toast('เปิดในเบราว์เซอร์แล้ว กดพิมพ์ที่นั่น');
-      return;
-    }
+    // ในแอป LINE พิมพ์ / บันทึก PDF มักไม่ได้ → เปิดหน้าเดียวกันในเบราว์เซอร์ (แบบรายงานสต็อก) + กล่องทางเลือกถ้าไม่เปิด (รอบ 31)
+    if (LiffApp.openOutside(dailyUrl(date), $('sum-daily'), 'กดพิมพ์')) return;
     Shell.go('summary', { print: date });
+  }
+
+  function dailyUrl(date) { return LiffApp.appUrl('summary') + '?print=' + encodeURIComponent(date); }
+
+  /** รอบ 31: หน้าต่างพิมพ์ไม่ขึ้น (เบราว์เซอร์ในแอป LINE / แอปบนหน้าจอโฮม) → ทางเลือก */
+  function printFailed(date) {
+    LiffApp.outsideHelp(view, dailyUrl(date), 'หน้านี้เปิดหน้าต่างพิมพ์ไม่ได้ กด "เปิดในเบราว์เซอร์" หรือคัดลอกลิงก์ไปวางใน Safari แล้วกดพิมพ์ที่นั่น');
   }
 
   var DAILY_MIN_ROWS = 10;   // ตารางอย่างน้อย 10 แถว (บิลมากกว่านี้ → ตารางยาวขึ้น ขึ้นหน้าใหม่ได้ หัวตารางซ้ำ)
@@ -299,7 +302,7 @@
     view.innerHTML = dailySheet(r) +
       '<div class="rep-acts no-print"><button type="button" class="btn" id="dsr-back">กลับ</button>' +
       '<button type="button" class="btn primary" id="dsr-print">พิมพ์ / PDF</button></div>';
-    $('dsr-print').addEventListener('click', function () { LiffApp.printAs('สรุปยอดขาย ' + LiffApp.fileDate(date)); });
+    $('dsr-print').addEventListener('click', function () { LiffApp.printAs('สรุปยอดขาย ' + LiffApp.fileDate(date), function () { printFailed(date); }); });
     $('dsr-back').addEventListener('click', function () { Shell.go('summary', {}); });
     Shell.drawn(scr);
   }

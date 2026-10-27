@@ -488,17 +488,21 @@
       (rows.length ? '<div class="rep-acts no-print"><button type="button" class="btn primary" id="rep-print">พิมพ์ / PDF</button>' +
         '<button type="button" class="btn" id="rep-xlsx">ดาวน์โหลด Excel</button></div>' : '');
     if (!rows.length) return;
-    $('rep-print').addEventListener('click', function () { if (!toBrowser()) LiffApp.printAs(repFileName(repData)); });
+    $('rep-print').addEventListener('click', function () {
+      if (!toBrowser()) LiffApp.printAs(repFileName(repData), function () { repHelp('หน้านี้เปิดหน้าต่างพิมพ์ไม่ได้', 'กดพิมพ์'); });
+    });
     $('rep-xlsx').addEventListener('click', function () { if (!toBrowser()) saveXlsx(); });
   }
 
-  /** ในแอป LINE → เปิดหน้ารายงานช่วงเดียวกันในเบราว์เซอร์ (คืน true) */
+  function repUrl() { return LiffApp.appUrl('stock') + '?' + new URLSearchParams(repParams()).toString(); }
+  /** รอบ 31: ทางเลือกเมื่อพิมพ์ / ดาวน์โหลดจากหน้านี้ไม่ได้ (กล่องอยู่บนสุดของรายงาน) */
+  function repHelp(why, what) {
+    LiffApp.outsideHelp($('rep-body'), repUrl(), why + ' กด "เปิดในเบราว์เซอร์" หรือคัดลอกลิงก์ไปวางใน Safari แล้ว' + what + 'ที่นั่น');
+  }
+
+  /** ในแอป LINE → เปิดหน้ารายงานช่วงเดียวกันในเบราว์เซอร์ + กล่องทางเลือกถ้าไม่เปิด (คืน true) */
   function toBrowser() {
-    if (!LiffApp.inClient()) return false;
-    var url = LiffApp.appUrl('stock') + '?' + new URLSearchParams(repParams()).toString();
-    if (!LiffApp.openExternal(url)) { LiffApp.toast('เปิดเบราว์เซอร์ไม่สำเร็จ ลองอีกครั้ง', true); return true; }
-    LiffApp.toast('เปิดในเบราว์เซอร์แล้ว กดพิมพ์หรือดาวน์โหลดที่นั่น');
-    return true;
+    return LiffApp.openOutside(repUrl(), $('rep-body'), 'กดพิมพ์หรือดาวน์โหลด');
   }
 
   /** ชื่อไฟล์ (PDF และ Excel ใช้ชื่อเดียวกัน) เช่น "รายงานสต็อก 1-10-2569 ถึง 27-10-2569" */
@@ -520,8 +524,28 @@
       return [{ v: x.name + (x.startedIn ? ' (เริ่มนับ ' + thDate(x.since) + ')' : ''), s: 'text' }, { v: x.unit, s: 'text' },
         x.open, x.inQty, x.sale, x.out, { v: x.adjust, s: 'signed' }, { v: x.close, s: 'bold' }];
     }), [[], [{ v: 'ไม่นับบิลที่ยกเลิกและบิลทดสอบ 0000 · แสดงเฉพาะสินค้าที่เริ่มนับสต็อกแล้ว', s: 'small' }]]);
-    Xlsx.save(repFileName(r) + '.xlsx', Xlsx.build({ sheet: 'รายงานสต็อก', cols: [34, 8, 11, 10, 11, 13, 12, 14], rows: rows, merges: ['A1:H1', 'A2:H2', 'A3:H3', 'A4:H4'] }));
+    var name = repFileName(r) + '.xlsx';
+    var bytes = Xlsx.build({ sheet: 'รายงานสต็อก', cols: [34, 8, 11, 10, 11, 13, 12, 14], rows: rows, merges: ['A1:H1', 'A2:H2', 'A3:H3', 'A4:H4'] });
+    // รอบ 31: เบราว์เซอร์ในแอป LINE ดาวน์โหลดไม่ได้ (ไม่มี error) → ทางเลือกทันที
+    if (LiffApp.inLineBrowser()) return repHelp('หน้านี้ดาวน์โหลดไฟล์ไม่ได้', 'กดดาวน์โหลด');
+    // iPad / iPhone: ส่งไฟล์ผ่านแผ่นแชร์ (บันทึกลงไฟล์ / ส่งต่อ) — ดาวน์โหลดแบบลิงก์ในแอปบนหน้าจอโฮมอาจไม่ขึ้นอะไร
+    if (LiffApp.isIos() && typeof File === 'function' && navigator.canShare && navigator.share) {
+      var file = new File([bytes], name, { type: Xlsx.TYPE || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      var ok = false;
+      try { ok = navigator.canShare({ files: [file] }); } catch (e) { ok = false; }
+      if (ok) {
+        navigator.share({ files: [file], title: repFileName(r) }).catch(function (e) {
+          if (e && e.name === 'AbortError') return; // ผู้ใช้ปิดแผ่นแชร์เอง
+          Xlsx.save(name, bytes);
+          repHelp('ส่งไฟล์ไม่สำเร็จ ถ้าไฟล์ไม่ขึ้น', 'กดดาวน์โหลด');
+        });
+        return;
+      }
+    }
+    Xlsx.save(name, bytes);
     LiffApp.toast('ดาวน์โหลดแล้ว');
+    // แอปบนหน้าจอโฮมของ iPad / iPhone: ดาวน์โหลดอาจไม่ขึ้นอะไร → บอกทางเลือกไว้ด้วย
+    if (LiffApp.isIos() && LiffApp.standalone()) repHelp('ถ้าไฟล์ไม่ขึ้น', 'กดดาวน์โหลด');
   }
 
   function tap(e) {
