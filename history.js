@@ -7,7 +7,8 @@
  *   จำนวนเอกสารของแต่ละร้านมาจากเซิร์ฟเวอร์ (shopStats) / ร้านที่มีเอกสารมากกว่าที่ส่งมา → โหลดเพิ่มตอนแตะร้าน (listDocuments) แล้วจำไว้
  *   แตะร้าน = เพิ่มรายการใน history (ปุ่มย้อนกลับกลับไปหน้าค้นหา) / ?shopId= เปิดร้านนั้นตรง ๆ
  * รอบ 10: โหมดใบเงินสด = ร้านและเอกสารของไฟล์ใบเงินสด (เลขที่เป็นข้อความ เช่น 1069-15)
- * รอบ 33: ปุ่มมุมมอง 2 ปุ่มใต้หัวข้อ (#hist-mode) — "เลือกร้าน" (แบบเดิม) / "บิลล่าสุด 10 ใบ" (#recent ค่าเริ่มต้น)
+ * รอบ 33: ปุ่มมุมมอง 2 ปุ่มใต้หัวข้อ (#hist-mode) — "เลือกร้าน" (แบบเดิม) / "บิลล่าสุด 10 ใบ" (#recent)
+ *   รอบ 35: ค่าเริ่มต้น = เลือกร้าน ทุกครั้งที่เข้าหน้าประวัติ (ไม่จำมุมมอง) — ยกเว้นกดย้อนกลับ (เช่น จากหน้าดู PDF) = มุมมองเดิม
  *   บิลล่าสุด = เรียงตามเวลาที่ออก (created_at — เซิร์ฟเวอร์รุ่นก่อนรอบ 33 ไม่ส่ง → ลำดับเลขที่เดิม) / แตะแถว = ดู PDF เหมือนมุมมองเดิม
  *   ใบเสร็จที่เลขซ้ำกับใบกำกับ: หัวแถว "#25 ใบเสร็จรับเงิน" (docLabel) + data-dt
  */
@@ -15,7 +16,7 @@
   var esc = LiffApp.esc;
   var scr = null;
   var view = null;         // #hv (เนื้อหาใต้ปุ่มมุมมอง)
-  var mode = 'recent';     // รอบ 33: 'recent' | 'shops' (จำไว้จนปิดแอป)
+  var mode = 'shops';      // 'shops' | 'recent' — รอบ 35: เข้าหน้านี้ใหม่ = shops เสมอ (ย้อนกลับ = คงไว้)
   var RECENT_N = 10;
   var shops = [];
   var current = null;      // ร้านที่กำลังดู (null = หน้าค้นหา)
@@ -33,7 +34,8 @@
   }
 
   /** เข้าหน้าจอตาม URL: ?shopId= → เอกสารของร้าน / ไม่มี → ค้นหาร้าน (ข้อมูลเดิม + หน้าเดิม → ไม่ต้องวาดใหม่) */
-  async function show(s, params) {
+  async function show(s, params, how) {
+    if (!how || (how.nav !== 'pop' && how.nav !== 'replace')) mode = 'shops'; // replace = กดปุ่มมุมมองขณะดูบิลของร้าน
     frame();
     if (!AppData.has()) LiffApp.loading('กำลังโหลดข้อมูล…', view);
     var r = await AppData.ensure();
@@ -252,9 +254,9 @@
         '<div id="view" aria-live="polite"></div>';
       view = $('view');
     },
-    show: function (s, params) {
+    show: function (s, params, how) {
       if (failed) s.seen = -2; // โหลดไม่สำเร็จครั้งก่อน → วาดใหม่
-      return show(s, params);
+      return show(s, params, how);
     },
     update: update
   });

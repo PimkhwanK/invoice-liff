@@ -499,17 +499,14 @@ a.card:active { background: var(--theme-pressed); }
 .home-nums > div { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
 .home-nums .muted { font-size: 13px; }
 .home-nums b { font-size: 24px; line-height: 1.2; color: var(--theme-text); }
-.home-todo-row, .home-bill { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 0; text-decoration: none; color: var(--theme-text); }
+.home-todo-row { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 0; text-decoration: none; color: var(--theme-text); }
 .home-todo-row svg.icon { width: 22px; height: 22px; flex: 0 0 auto; }
 .home-todo-row svg.icon:last-child { width: 18px; height: 18px; color: var(--theme-text-2); }
 .home-todo-row .t { flex: 1; min-width: 0; font-weight: 700; }
 .home-todo-row .v { white-space: nowrap; font-size: 14px; color: var(--theme-text-2); }
 .home-todo-row.late > svg.icon:first-child { color: var(--theme-err-text); }
 .home-todo-row.near > svg.icon:first-child { color: var(--theme-warn-text); }
-.home-bill .nm { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.home-bill .n { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-bill b { white-space: nowrap; }
-.home-todo-row:active, .home-bill:active { background: var(--theme-pressed); }
+.home-todo-row:active { background: var(--theme-pressed); }
 .menu-more .btn { justify-content: flex-start; }
 .menu-more .btn + .btn { margin-top: 8px; }
 .menu-more:not(:has(.btn:not(.hidden))) { display: none; }
@@ -655,37 +652,46 @@ a.card:active { background: var(--theme-pressed); }
 .sum-kinds label + label { border-left: 0; }
 .sum-pick .date-box { flex: 1; min-width: 0; }
 
-/* ---------- รอบ 29: ใบเช็คยอดขายรายวัน (summary?print=) — ขาวดำทั้งบนจอและตอนพิมพ์ ---------- */
+/* ---------- รอบ 29 / รอบ 35: ใบเช็คยอดขายประจำวัน (summary?print=) — ขาวดำ ตามแบบฟอร์มของผู้ใช้ ---------- */
 .dsr { color: var(--theme-ink); background: var(--theme-card); }
-.dsr-head { text-align: center; margin-bottom: 10px; }
-.dsr-head h2 { margin: 2px 0 0; font-size: 20px; color: var(--theme-ink); }
-.dsr-co { font-weight: 700; }
-.dsr-en { font-size: 12px; letter-spacing: .08em; }
-.dsr-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-bottom: 8px; }
-.dsr-fill { display: flex; align-items: flex-end; gap: 6px; flex: 1; min-width: 180px; }
+.dsr-head { text-align: center; margin-bottom: 8px; }
+.dsr-co { font-weight: 700; font-size: 18px; }
+.dsr-head h2 { margin: 2px 0 0; font-size: 15px; font-weight: 400; font-style: italic; color: var(--theme-ink); }
+.dsr-meta { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 6px 16px; margin-bottom: 4px; font-size: 13px; }
 .dsr-meta > div:first-child { white-space: nowrap; }
-.dsr-line { display: block; flex: 1; min-width: 40px; height: 1.2em; border-bottom: 1px dotted var(--theme-ink); }
-.dsr-line.full { margin-top: 12px; }
-.dsr-table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--theme-ink); }
-.dsr-table th, .dsr-table td { border: 1px solid var(--theme-ink); padding: 5px 6px; height: 1.9em; vertical-align: middle; }
-.dsr-table th { font-weight: 700; text-align: center; line-height: 1.25; }
+.dsr-u { display: inline-block; min-width: 3.4em; text-align: center; border-bottom: 1px solid var(--theme-ink); }
+.dsr-fill { display: flex; align-items: flex-end; gap: 6px; flex: 0 1 46%; min-width: 180px; }
+.dsr-line { display: block; flex: 1; min-width: 40px; height: 1.2em; border-bottom: 1px solid var(--theme-ink); }
+.dsr-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; color: var(--theme-ink); }
+.dsr-table th, .dsr-table td { border: 1px solid var(--theme-ink); padding: 3px 5px; height: 2.6em; vertical-align: middle; overflow: hidden; }
+.dsr-table th { font-weight: 700; text-align: center; height: 2em; }
 .dsr-table td.c { text-align: center; }
 .dsr-table td.r { text-align: right; }
-.dsr-table td.nw { white-space: nowrap; }
-.dsr-table .w-no { width: 3.2em; }
-.dsr-table .w-bill { width: 8.5em; }
-.dsr-table .w-amt { width: 7.5em; }
-.dsr-end { margin-top: 14px; break-inside: avoid; }
-.dsr-cost { margin-bottom: 4px; }
-.dsr-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 34px; }
-.dsr-signer .dsr-fill { min-width: 0; }
-.dsr-paren { display: flex; align-items: flex-end; margin: 10px 0 0 3.2em; }
-.dsr-sign .dsr-line { margin: 0 4px; }
-.dsr-note { margin-top: 18px; font-size: 12px; line-height: 1.5; }
+.dsr-table td.nw { white-space: nowrap; text-overflow: ellipsis; }
+.dsr-table .fill { background: var(--theme-ink-fill); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.dsr-table .w-shop { width: 26%; }
+.dsr-table .w-bill { width: 16%; }
+.dsr-table .w-amt, .dsr-table .w-credit { width: 10%; }
+.dsr-table .w-cash, .dsr-table .w-coin { width: 9%; }
+.dsr-table .w-note { width: 20%; }
+.dsr-no { font-size: .8em; margin-right: 4px; }
+.dsr-exp td:first-child { vertical-align: top; height: 3.4em; padding-left: 10px; }
+.dsr-order td { height: 2em; font-size: .85em; }
+.dsr-net td { height: 3.4em; }
+.dsr-end { break-inside: avoid; }
+.dsr-cost { margin-top: -1px; }
 .dsr-foot { margin-top: 10px; }
 @media print {
   .dsr { box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; font-size: 11pt; }
-  .dsr-table { font-size: 10.5pt; }
+  .dsr-co { font-size: 15pt; }
+  .dsr-head h2 { font-size: 12pt; }
+  .dsr-meta { font-size: 10.5pt; }
+  .dsr-table { font-size: 10pt; }
+  .dsr-table td { height: 9mm; }
+  .dsr-table th { height: 6.5mm; }
+  .dsr-exp td:first-child { height: 10mm; }
+  .dsr-net td { height: 11mm; }
+  .dsr-order td { height: 5.5mm; }
   .dsr-table thead { display: table-header-group; }
   .dsr-table tr { break-inside: avoid; }
 }

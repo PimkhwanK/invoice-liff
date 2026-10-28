@@ -383,9 +383,11 @@
     LiffApp.outsideHelp(view, dailyUrl(date), 'หน้านี้เปิดหน้าต่างพิมพ์ไม่ได้ กด "เปิดในเบราว์เซอร์" หรือคัดลอกลิงก์ไปวางใน Safari แล้วกดพิมพ์ที่นั่น');
   }
 
-  var DAILY_MIN_ROWS = 10;   // ตารางอย่างน้อย 10 แถว (บิลมากกว่านี้ → ตารางยาวขึ้น ขึ้นหน้าใหม่ได้ หัวตารางซ้ำ)
-  // ส่วนหักค่าใช้จ่ายรายวัน: ชื่อรายการตามแบบฟอร์ม จำนวนเงินเขียนมือ
-  var DAILY_COSTS = ['ค่าเชื้อเพลิง/ค่าน้ำมัน', 'ค่าแรง/ค่าจ้าง', 'ค่าขนส่ง', 'ค่าน้ำ/ค่าไฟ/อินเทอร์เน็ต', 'ค่าใช้จ่ายอื่นๆ'];
+  // รอบ 35: แบบฟอร์มตาม Daily_Sales_Reconciliation.pdf ที่ผู้ใช้ให้มา — ตาราง 7 คอลัมน์ อย่างน้อย 15 แถว (บิลมากกว่านี้ → ตารางยาวขึ้น หน้าถัดไปพิมพ์หัวตารางซ้ำ)
+  var DAILY_MIN_ROWS = 15;
+  var DAILY_COST_ROWS = 5;   // หักค่าใช้จ่ายรายวัน 1–5 (เขียนมือ ไม่มีชื่อรายการสำเร็จรูป)
+  var DAILY_COLS = ['ชื่อร้าน', 'เลขที่บิล', 'ยอดเงิน', 'เงินสด', 'เหรียญ', 'เครดิต', 'หมายเหตุ/เช็ค'];
+  var DAILY_W = ['shop', 'bill', 'amt', 'cash', 'coin', 'credit', 'note'];
 
   async function showDaily(date) {
     if (!isIsoDate(date)) date = today();
@@ -408,43 +410,52 @@
     Shell.drawn(scr);
   }
 
+  /** ช่องเครดิต: บิลที่ชนิดการขายไม่ใช่เงินสด (เครดิต / สินเชื่อ) — บิลไม่ระบุชนิด (ใบเงินสดเก่า) = เงินสด */
+  function dailyCredit(b) { return !!b.sale && b.sale !== CASH_DOC_SALE_TYPES[0]; }
+
   function dailySheet(r) {
     var d = r.day;
     var bills = d.bills || [];
+    var hasSale = !bills.length || bills.some(function (b) { return 'sale' in b; }); // เซิร์ฟเวอร์ก่อนรอบ 35 ไม่ส่งชนิดการขาย
+    var credit = 0;
     var rows = '';
     var n = Math.max(DAILY_MIN_ROWS, bills.length);
     for (var i = 0; i < n; i++) {
       var b = bills[i];
-      rows += '<tr' + (b ? ' class="bill"' : '') + '><td class="c">' + (b ? i + 1 : '') + '</td><td>' + (b ? esc(b.shop) : '') + '</td>' +
-        '<td class="nw">' + (b ? esc(b.label) : '') + '</td><td class="r num">' + (b ? money(b.sat) : '') + '</td><td></td></tr>';
+      var cr = b && hasSale && dailyCredit(b);
+      if (cr) credit += b.sat;
+      rows += '<tr' + (b ? ' class="bill"' : '') + '><td class="shop"><span class="dsr-no">' + (i + 1) + '.</span>' + (b ? esc(b.shop) : '') + '</td>' +
+        '<td class="nw">' + (b ? esc(b.label) : '') + '</td><td class="r num">' + (b ? money(b.sat) : '') + '</td><td></td><td></td>' +
+        '<td class="r num">' + (cr ? money(b.sat) : '') + '</td><td></td></tr>';
     }
+    var cols = '<colgroup>' + DAILY_W.map(function (w) { return '<col class="w-' + w + '">'; }).join('') + '</colgroup>';
+    var blank4 = '<td></td><td></td><td></td><td></td>';
     var cost = '';
-    DAILY_COSTS.forEach(function (c, k) { cost += '<tr><td class="c">' + (k + 1) + '</td><td>' + esc(c) + '</td><td></td></tr>'; });
+    for (var k = 1; k <= DAILY_COST_ROWS; k++) cost += '<tr class="dsr-exp"><td colspan="3"><span class="dsr-no">' + k + '.</span></td>' + blank4 + '</tr>';
     var miss = [];
     if (d.missing && d.missing.tax) miss.push('ใบกำกับภาษี');
     if (d.missing && d.missing.cash) miss.push('ใบเงินสด');
-    // ลงชื่อ ..... ผู้จัดทำ / ผู้ตรวจสอบ แล้ววงเล็บใต้เส้นสำหรับเขียนชื่อ (ตามแบบฟอร์ม)
-    var signer = function (role) {
-      return '<div class="dsr-signer"><div class="dsr-fill">ลงชื่อ<span class="dsr-line"></span>' + role + '</div>' +
-        '<div class="dsr-paren">(<span class="dsr-line"></span>)</div></div>';
-    };
+    var p = String(d.date).split('-');
+    var dateCell = function (t) { return '<span class="dsr-u">' + esc(t) + '</span>'; };
     return '<section class="card dsr" id="dsr">' +
       (miss.length ? '<div class="alert warn no-print" id="dsr-missing">ยังไม่รวม' + miss.join(' และ ') + ' กรุณาแจ้งผู้ดูแลระบบ</div>' : '') +
-      '<div class="dsr-head">' + (r.company ? '<div class="dsr-co">' + esc(r.company) + '</div>' : '') +
-      '<h2>ใบเช็คยอดขายรายวัน</h2><div class="dsr-en">DAILY SALES RECONCILIATION</div></div>' +
-      '<div class="dsr-meta"><div>วันที่ <b id="dsr-date">' + esc(formatThaiDateLong(d.date)) + '</b></div>' +
-      '<div class="dsr-fill">ผู้ตรวจสอบ <span class="dsr-line"></span></div></div>' +
-      '<table class="dsr-table" id="dsr-table"><thead><tr><th class="w-no">ลำดับ</th><th>ชื่อร้าน</th><th class="w-bill">เลขที่บิล</th><th class="w-amt">ยอดเงิน</th><th class="w-amt">ยอดเงินที่ได้รับ</th></tr></thead>' +
+      (hasSale ? '' : '<div class="alert warn no-print" id="dsr-no-credit">ช่องเครดิตยังไม่แสดง กรุณาแจ้งผู้ดูแลระบบ</div>') +
+      '<div class="dsr-head">' + (r.company ? '<div class="dsr-co" id="dsr-co">' + esc(r.company) + '</div>' : '') +
+      '<h2>ใบเช็คยอดขายประจำวัน</h2></div>' +
+      '<div class="dsr-meta"><div><b>วันที่:</b> <span id="dsr-date">' + dateCell(Number(p[2])) + '/' + dateCell(Number(p[1])) + '/' + dateCell(Number(p[0]) + 543) + '</span></div>' +
+      '<div class="dsr-fill"><b>ผู้ตรวจสอบ:</b><span class="dsr-line"></span></div></div>' +
+      '<table class="dsr-table" id="dsr-table">' + cols + '<thead><tr>' + DAILY_COLS.map(function (c) { return '<th>' + c + '</th>'; }).join('') + '</tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
-      '<tbody class="dsr-sum"><tr><td colspan="3" class="r"><b>รวมยอดขายทุกร้าน</b> (' + bills.length + ' บิล)</td><td class="r num"><b id="dsr-total">' + money(d.total) + '</b></td><td></td></tr></tbody></table>' +
+      '<tbody class="dsr-sum"><tr><td colspan="2" class="c fill"><b>รวมยอดขายทุกร้าน</b></td><td class="r num"><b id="dsr-total">' + money(d.total) + '</b></td><td></td><td></td>' +
+      '<td class="r num"><b id="dsr-credit">' + (hasSale && credit ? money(credit) : '') + '</b></td><td></td></tr></tbody></table>' +
       '<div class="dsr-end" id="dsr-end">' +
-      '<table class="dsr-table dsr-cost" id="dsr-cost"><thead><tr><th class="w-no">ลำดับ</th><th>ส่วนหักค่าใช้จ่ายรายวัน</th><th class="w-amt">จำนวนเงิน</th></tr></thead>' +
-      '<tbody>' + cost +
-      '<tr><td colspan="2" class="r"><b>รวมค่าใช้จ่าย</b></td><td></td></tr>' +
-      '<tr><td colspan="2" class="r"><b>ยอดเงินสุทธิ</b></td><td></td></tr></tbody></table>' +
-      '<div class="dsr-sign" id="dsr-sign">' + signer('ผู้จัดทำ') + signer('ผู้ตรวจสอบ') + '</div>' +
-      '<div class="dsr-note" id="dsr-note">หมายเหตุ: สามารถเขียนรายละเอียดค่าใช้จ่าย เช่น ค่าน้ำมัน ค่าแรง ค่าขนส่ง หรือค่าใช้จ่ายอื่น ๆ ในช่องชื่อร้านของรายการหักค่าใช้จ่ายได้</div>' +
-      '</div><div class="small muted no-print dsr-foot">นับใบกำกับภาษี ใบเงินสด และใบเสร็จที่ไม่มีใบกำกับคู่ เรียงตามเวลาออกบิล ไม่นับใบเสร็จที่ออกคู่กับใบกำกับ บิลที่ยกเลิก และบิลทดสอบ 0000</div></section>';
+      '<table class="dsr-table dsr-cost" id="dsr-cost">' + cols + '<tbody>' +
+      '<tr><td colspan="3" class="c fill dsr-cost-h"><b><u>หักค่าใช้จ่ายรายวัน</u></b></td><td rowspan="2" class="fill"></td><td rowspan="2" class="fill"></td><td rowspan="2" class="fill"></td><td rowspan="2" class="fill"></td></tr>' +
+      '<tr class="dsr-order"><td colspan="3"><b>ลำดับ</b></td></tr>' + cost +
+      '<tr><td colspan="3" class="c fill"><b>รวมค่าใช้จ่ายรายวัน</b></td>' + blank4 + '</tr>' +
+      '<tr class="dsr-net"><td colspan="3" class="c fill"><b>ยอดเงินสุทธิหลังหักค่าใช้จ่าย</b></td>' + blank4 + '</tr>' +
+      '</tbody></table></div>' +
+      '<div class="small muted no-print dsr-foot">นับใบกำกับภาษี ใบเงินสด และใบเสร็จที่ไม่มีใบกำกับคู่ เรียงตามเวลาออกบิล ไม่นับใบเสร็จที่ออกคู่กับใบกำกับ บิลที่ยกเลิก และบิลทดสอบ 0000 / ช่องเครดิต = บิลเครดิตและสินเชื่อ</div></section>';
   }
 
   function tile(kind, label, p) {

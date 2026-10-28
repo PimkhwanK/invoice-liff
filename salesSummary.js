@@ -414,7 +414,7 @@ function salesBillLabel(kind, no, receipt) {
  * รอบ 29: บิลของวันเดียว (เซิร์ฟเวอร์ action salesDay) — กติกาเดียวกับ salesBuild (ไม่นับยกเลิก / 0000 / ใบเสร็จที่มีใบกำกับคู่ / ของแถมในสินค้า)
  * @param {object} input { tax: {docs, items} | null, cash: {docs, items} | null, date: 'YYYY-MM-DD' }
  * @returns {object} { date, bills, total, shops, products, names, pnames, missing }
- *   bills [{ kind 't'|'c', no, label, shop, sat, at }] เรียงตามเวลาที่ออก (created_at — ไม่มี = ลำดับแถว ต่อท้าย) / total = รวมสตางค์
+ *   bills [{ kind 't'|'c', no, label, shop, sat, at, sale }] (sale = ชนิดการขาย ว่าง = ไม่ระบุ — รอบ 35 ช่องเครดิตของใบเช็คยอด) เรียงตามเวลาที่ออก (created_at — ไม่มี = ลำดับแถว ต่อท้าย) / total = รวมสตางค์
  *   shops [[ร้าน, สตางค์, ใบ]] / products [[บาร์โค้ด, จำนวน, สตางค์]] (รูปแบบเดียวกับ shopsToday / productsToday)
  */
 function salesDay(input) {
@@ -440,7 +440,7 @@ function salesDay(input) {
       var shop = kind + ':' + (salesText(d.shop_id) === '' ? '?' : Number(d.shop_id));
       var name = salesText(d.shop_short_name) || salesText(d.shop_legal_name);
       if (name) names[shop] = name;
-      bills.push({ kind: kind, no: no, label: salesBillLabel(kind, no, salesIsReceipt(kind, d)), shop: salesText(d.shop_legal_name) || name, sat: sat, at: salesText(d.created_at), seq: seq++ });
+      bills.push({ kind: kind, no: no, label: salesBillLabel(kind, no, salesIsReceipt(kind, d)), shop: salesText(d.shop_legal_name) || name, sat: sat, at: salesText(d.created_at), sale: salesText(d.sale_type), seq: seq++ });
       var x = shopSum[shop] || (shopSum[shop] = [shop, 0, 0]);
       x[1] += sat; x[2]++;
       mine[owners ? 'd' + di : no] = true;

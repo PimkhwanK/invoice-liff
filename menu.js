@@ -1,8 +1,9 @@
 /*
  * menu.js — หน้าแรก (รอบ 21 เมนูหลัก / รอบ 34 ขั้น 2: หน้าแรกแบบสรุปสั้น)
  *   หน้าแรกของแอปทั้งใน LINE และนอก LINE (index.html → menu) / แถบล่าง "หน้าแรก" (shell.js)
- *   เรียงจากบน: ปุ่มใหญ่ ออกใบเงินสด / ออกใบกำกับภาษี → ตัวเลขวันนี้ (ยอดขาย เทียบเมื่อวาน จำนวนบิล) → สิ่งที่ต้องทำ
- *     (ลูกหนี้เลยกำหนด / ใกล้ครบกำหนด → แท็บลูกหนี้ของหน้าสรุป / สินค้าใกล้หมด — ไม่มีอะไรค้าง = ซ่อนทั้งส่วน) → บิลล่าสุด 5 ใบ → ปุ่มใหญ่ จัดการข้อมูล → ชื่อผู้ใช้ + ปุ่มเดิม
+ *   เรียงจากบน (รอบ 35): ปุ่มใหญ่ ออกใบเงินสด / ออกใบกำกับภาษี → ปุ่มใหญ่ จัดการข้อมูล → ตัวเลขวันนี้ (ยอดขาย เทียบเมื่อวาน จำนวนบิล)
+ *     → สิ่งที่ต้องทำ (ลูกหนี้เลยกำหนด / ใกล้ครบกำหนด → แท็บลูกหนี้ของหน้าสรุป / สินค้าใกล้หมด — ไม่มีอะไรค้าง = ซ่อนทั้งส่วน) → ชื่อผู้ใช้ + ปุ่มเดิม
+ *     (การ์ดบิลล่าสุดเอาออกแล้ว — ดูได้ที่หน้าประวัติ "บิลล่าสุด 10 ใบ")
  *   ข้อมูล: summaryData (ปีนี้ — ข้อมูลชุดเดียวกับหน้าสรุป จำไว้ที่ 'sales-<ปี>' ใช้ร่วมกัน) + debtData (จำไว้ที่ 'home-debt')
  *     แสดงตัวเลขที่จำไว้ก่อน แล้วอัปเดตเบื้องหลัง / ไม่สำเร็จชั่วคราว → ลองใหม่เงียบ ๆ 3 ครั้ง (แบบหน้าสรุป)
  *   ใน LINE: ปุ่ม "เปิดแบบเต็มจอ" (liff.openWindow external → เบราว์เซอร์ของเครื่องที่หน้านี้)
@@ -12,7 +13,6 @@
 (function () {
   var esc = LiffApp.esc;
   var scr = null;
-  var RECENT = 5;        // บิลล่าสุดกี่ใบ
   var RETRIES = 3;       // ติดต่อไม่สำเร็จชั่วคราว → ลองใหม่เงียบ ๆ ก่อนบอกผู้ใช้ (เหมือนหน้าสรุป)
   var RETRY_MS = 1500;
   var sales = null;      // ข้อมูลสรุปปีนี้ (salesBuild)
@@ -99,8 +99,8 @@
     var oa = LiffApp.lineChatUrl();
     $('view').innerHTML =
       '<nav class="menu-grid" aria-label="ออกบิล">' + TILES.map(tile).join('') + '</nav>' +
-      '<div id="home-stats"></div>' +
       '<nav class="menu-grid" aria-label="จัดการข้อมูล">' + tile({ id: 'manage', href: 'manage?type=' + Shell.lastMode(), icon: 'manage', name: 'จัดการข้อมูล', sub: 'ร้านค้า · สินค้า · ยกเลิกบิล · แจ้งเตือน' }) + '</nav>' +
+      '<div id="home-stats"></div>' +
       '<section class="card menu-hello"><div class="t"><div class="small muted">เข้าสู่ระบบเป็น</div><div><b id="menu-name"></b></div></div>' +
       (inLine
         ? '<button type="button" class="btn sm primary" id="btn-full">' + iconSvg('link') + '<span>เปิดแบบเต็มจอ</span></button>'
@@ -120,7 +120,7 @@
   function drawStats() {
     var box = $('home-stats');
     if (!box) return;
-    box.innerHTML = todayCard() + todoCard() + recentCard();
+    box.innerHTML = todayCard() + todoCard();
   }
 
   function delta(pct) {
@@ -155,23 +155,6 @@
       return '<li><a class="home-todo-row ' + r[5] + '" id="' + r[0] + '" href="' + r[1] + '">' + iconSvg(r[2]) +
         '<span class="t">' + esc(r[3]) + '</span><span class="v">' + esc(r[4]) + '</span>' + iconSvg('next') + '</a></li>';
     }).join('') + '</ul></section>';
-  }
-
-  /** บิลล่าสุด 5 ใบ ทั้งสองประเภท (รวมใบยกเลิก ไม่รวม 0000) — แตะ = ดู PDF */
-  function recentCard() {
-    if (!sales || !Array.isArray(sales.recent)) return '';
-    var list = sales.recent.slice(0, RECENT);
-    var today = sales.today;
-    return '<section class="card" id="home-recent"><h2>บิลล่าสุด <span class="count">' + RECENT + ' ใบ</span></h2><ul class="list">' + (list.length ? list.map(function (r) {
-      var kind = r[0], no = r[1], date = r[2], at = String(r[3] || ''), cancelled = !!r[6];
-      var receipt = kind === 't' && r[7] === TAX_RECEIPT_TYPE;
-      var when = (date === today ? 'วันนี้' : formatThaiDateShort(date)) + (at.length > 15 && date === today ? ' ' + at.slice(11, 16) : '');
-      var href = 'view?type=' + (kind === 'c' ? 'cash' : 'tax') + '&no=' + encodeURIComponent(String(no)) +
-        (receipt ? '&dt=rc' : kind === 't' && r[7] && r[7] !== DEFAULT_DOC_TYPES[0] ? '&dt=' + encodeURIComponent(r[7]) : '');
-      return '<li><a class="home-bill" href="' + esc(href) + '"><span class="nm"><span class="n">' + esc(r[4] || '-') + '</span>' +
-        '<span class="small muted">' + esc(kind === 'c' ? 'เงินสด ' + no : (receipt ? 'ใบเสร็จ ' : 'ใบกำกับ ') + no) + ' · ' + esc(when) + '</span></span>' +
-        (cancelled ? '<span class="badge red">ยกเลิก</span>' : '') + '<b class="num">' + money(r[5]) + '</b></a></li>';
-    }).join('') : '<li class="empty">ยังไม่มีบิล</li>') + '</ul></section>';
   }
 
   /** ชื่อจากแท็บผู้ใช้ + ตรวจสิทธิ์ (ไม่บังหน้าจอระหว่างรอ) */
