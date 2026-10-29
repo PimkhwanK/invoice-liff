@@ -364,22 +364,29 @@
   function openDaily() {
     var sh = LiffApp.sheet('ใบเช็คยอดขายรายวัน',
       '<div id="sum-daily"><label class="f" for="sum-daily-date">วันที่จะพิมพ์</label>' + dateBox('sum-daily-date', dailyDefault(), 'วันที่จะพิมพ์') +
-      // รอบ 36 แก้: ปุ่มส่งอยู่ในหน้าต่างนี้ (ในแอป LINE กด "พิมพ์" แล้วไปเปิดในเบราว์เซอร์ข้างนอก ไม่เคยเห็นหน้าใบเช็คยอดในแอป) / นอก LINE บอกเหตุผล
-      (LiffApp.inClient()
-        ? '<button type="button" class="btn block" id="sum-daily-send">' + iconSvg('send') + '<span>ส่งเข้าไลน์</span></button>'
-        : '<p class="small muted" id="sum-daily-send-hint">ส่งเข้าไลน์ได้เมื่อเปิดจากแอป LINE</p>') + '</div>',
+      // รอบ 36: ปุ่มส่งต่ออยู่ในหน้าต่างนี้ (ในแอป LINE กด "พิมพ์" แล้วไปเปิดในเบราว์เซอร์ข้างนอก ไม่เคยเห็นหน้าใบเช็คยอดในแอป)
+      shareBtn('sum-daily-share', 'btn block') + '</div>',
       '<button type="button" class="btn grow" data-close>ยกเลิก</button><button type="button" class="btn primary grow" id="sum-daily-go">' + iconSvg('file') + '<span>พิมพ์</span></button>');
     var input = sh.el.querySelector('#sum-daily-date');
     sh.el.addEventListener('click', pickerOpen);
-    input.addEventListener('change', function () { sh.el.querySelector('#sum-daily-date-th').textContent = input.value ? formatThaiDateShort(input.value) : 'เลือกวันที่'; });
-    var send = sh.el.querySelector('#sum-daily-send');
-    if (send) send.addEventListener('click', async function () {
-      var date = input.value && input.value <= today() ? input.value : dailyDefault();
-      send.disabled = true;
-      var r = await fetchDay(date); // ยอดรวม + จำนวนบิลของวันนั้นสำหรับการ์ด
-      send.disabled = false;
+    var pickedDate = function () { return input.value && input.value <= today() ? input.value : dailyDefault(); };
+    // ยอดของวันที่เลือกโหลดไว้ก่อน (การ์ดต้องมียอดรวม + จำนวนบิล) — แตะแล้วหน้าเลือกผู้รับขึ้นทันที
+    fetchDay(pickedDate());
+    input.addEventListener('change', function () {
+      sh.el.querySelector('#sum-daily-date-th').textContent = input.value ? formatThaiDateShort(input.value) : 'เลือกวันที่';
+      fetchDay(pickedDate());
+    });
+    var share = sh.el.querySelector('#sum-daily-share');
+    share.addEventListener('click', async function () {
+      var date = pickedDate();
+      var r = days[date];
+      if (!r) {
+        share.disabled = true;
+        r = await fetchDay(date);
+        share.disabled = false;
+      }
       if (!r.ok) return LiffApp.toast(r.error || 'โหลดยอดขายไม่สำเร็จ ลองอีกครั้ง', true);
-      sendDaily(date, r.day, send);
+      shareDaily(date, r.day, share);
     });
     sh.el.querySelector('#sum-daily-go').addEventListener('click', function () {
       var date = input.value && input.value <= today() ? input.value : dailyDefault();
@@ -425,14 +432,11 @@
     view.innerHTML = dailySheet(r) +
       '<div class="rep-acts no-print"><button type="button" class="btn" id="dsr-back">กลับ</button>' +
       '<button type="button" class="btn primary" id="dsr-print">พิมพ์ / PDF</button>' +
-      // รอบ 36: ส่งการ์ดเข้าแชทของผู้ใช้เอง (liff.sendMessages ใช้ได้เฉพาะในแอป LINE) / นอก LINE บอกให้เปิดจากไลน์
-      (LiffApp.inClient()
-        ? '<button type="button" class="btn" id="dsr-send">' + iconSvg('send') + '<span>ส่งเข้าไลน์</span></button>'
-        : '<span class="small muted" id="dsr-send-hint">ส่งเข้าไลน์ได้เมื่อเปิดจากแอป LINE</span>') + '</div>';
+      shareBtn('dsr-share', 'btn') + '</div>'; // รอบ 36
     dailyFitAll(view);
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { dailyFitAll(view); });
     $('dsr-print').addEventListener('click', function () { document.title = dailyTitle(date); LiffApp.printAs(dailyTitle(date), function () { printFailed(date); }); });
-    if ($('dsr-send')) $('dsr-send').addEventListener('click', function () { sendDaily(date, r.day, this); });
+    $('dsr-share').addEventListener('click', function () { shareDaily(date, r.day, this); });
     $('dsr-back').addEventListener('click', function () { Shell.go('summary', {}); });
     Shell.drawn(scr);
   }
@@ -450,15 +454,37 @@
     });
   }
 
-  async function sendDaily(date, d, btn) {
-    btn.disabled = true;
-    try {
-      await liff.sendMessages([dailyCard(date, d)]);
-      LiffApp.toast('ส่งเข้าแชทแล้ว');
-    } catch (e) {
-      LiffApp.toast('ส่งเข้าแชทไม่สำเร็จ ลองอีกครั้ง', true);
+  function shareBtn(id, cls) {
+    return '<button type="button" class="' + cls + '" id="' + id + '">' + iconSvg('send') + '<span>ส่งต่อทางไลน์</span></button>';
+  }
+
+  /**
+   * รอบ 36: ส่งต่อใบเช็คยอดให้คนอื่น (ลำดับเดียวกับปุ่มส่งต่อของบิล — ไม่ใช้ push / sendMessages)
+   *   shareTargetPicker (เลือกเพื่อน/กลุ่มเอง การ์ด Flex) → เมนูแชร์ของเครื่อง (ข้อความ + ลิงก์) → คัดลอก
+   *   การ์ดแสดงยอดรวม + จำนวนบิล / ปุ่มเปิดผ่าน LIFF: ผู้รับที่ไม่อยู่ในแท็บผู้ใช้เห็นแค่หน้าไม่มีสิทธิ์
+   */
+  async function shareDaily(date, d, btn) {
+    var card = dailyCard(date, d);
+    var picker = false;
+    try { picker = typeof liff.isApiAvailable === 'function' && liff.isApiAvailable('shareTargetPicker'); } catch (e) { picker = false; }
+    if (picker) {
+      btn.disabled = true;
+      try {
+        var res = await liff.shareTargetPicker([card], { isMultiple: true });
+        btn.disabled = false;
+        if (res) LiffApp.toast('ส่งแล้ว');
+        return;
+      } catch (e) { btn.disabled = false; /* ใช้วิธีถัดไป */ }
     }
-    btn.disabled = false;
+    var NL = String.fromCharCode(10);
+    var link = card.contents.footer.contents[0].action.uri;
+    var text = card.altText + NL + 'จำนวนบิล ' + (d.bills || []).length + ' ใบ' + NL + link;
+    if (navigator.share) {
+      try { await navigator.share({ title: 'ใบเช็คยอด ' + LiffApp.fileDate(date), text: text }); return; } catch (e) {
+        if (e && e.name === 'AbortError') return;
+      }
+    }
+    try { await navigator.clipboard.writeText(text); LiffApp.toast('คัดลอกข้อความและลิงก์แล้ว'); } catch (e) { LiffApp.toast('ส่งต่อไม่สำเร็จ ลองอีกครั้ง', true); }
   }
 
   /**
