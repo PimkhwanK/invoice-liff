@@ -429,11 +429,18 @@
   }
 
   function dailyFitAll(root) {
+    var nums = [];
+    var kMax = 0;
     Array.prototype.forEach.call(root.querySelectorAll('.dsr-table .fit > .t'), function (t) {
       var fs = parseFloat(getComputedStyle(t).fontSize);
       var w = t.getBoundingClientRect().width;
-      if (fs > 0 && w > 0) t.parentNode.style.setProperty('--k', (w / fs).toFixed(3));
+      if (!(fs > 0 && w > 0)) return;
+      var td = t.parentNode;
+      td.style.setProperty('--k', (w / fs).toFixed(3));
+      // ยอดเงิน / เครดิต ในแถวบิล: ขนาดเดียวกันทุกช่อง (คิดจากตัวเลขที่ยาวที่สุด ในช่องที่แคบที่สุด 13%)
+      if (td.classList.contains('num') && !td.closest('.dsr-sum')) { nums.push(td); kMax = Math.max(kMax, w / fs); }
     });
+    nums.forEach(function (td) { td.classList.add('num-same'); td.style.setProperty('--k', kMax.toFixed(3)); });
   }
 
   /** ช่องเครดิต: บิลที่ชนิดการขายไม่ใช่เงินสด (เครดิต / สินเชื่อ) — บิลไม่ระบุชนิด (ใบเงินสดเก่า) = เงินสด */
@@ -481,7 +488,9 @@
       '<tr class="dsr-order"><td colspan="3"><b>ลำดับ</b></td></tr>' + cost +
       '<tr><td colspan="3" class="c fill"><b>รวมค่าใช้จ่ายรายวัน</b></td>' + blank4 + '</tr>' +
       '<tr class="dsr-net"><td colspan="3" class="c fill"><b>ยอดเงินสุทธิหลังหักค่าใช้จ่าย</b></td>' + blank4 + '</tr>' +
-      '</tbody></table></div></div></div>' +
+      '</tbody></table></div>' +
+      (LiffApp.hooks.debugOn && LiffApp.hooks.debugOn() ? '<div class="dsr-ruler" id="dsr-ruler"><i></i>แถบนี้ยาว 100 มม. (วัดบน PDF — สั้นกว่า = เบราว์เซอร์ย่อหน้า)</div>' : '') +
+      '</div></div>' +
       '<div class="small muted no-print dsr-foot">นับใบกำกับภาษี ใบเงินสด และใบเสร็จที่ไม่มีใบกำกับคู่ เรียงตามเวลาออกบิล ไม่นับใบเสร็จที่ออกคู่กับใบกำกับ บิลที่ยกเลิก และบิลทดสอบ 0000 / ช่องเครดิต = บิลเครดิตและสินเชื่อ</div></section>';
   }
 

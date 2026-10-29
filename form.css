@@ -614,10 +614,13 @@ a.card:active { background: var(--theme-pressed); }
 .rep-acts { display: flex; gap: 8px; padding: 0 12px 16px; }
 .rep-acts .btn { flex: 1; }
 @media print {
-  @page { size: A4 portrait; margin: 10mm; }
+  @page { size: A4 portrait; margin: 6mm; }
   html, body, .wrap, #app, .screen, #view { background: none !important; }
+  /* แอปบนจอ: body เป็นกล่อง flex สูง 100vh ซ่อนส่วนเกิน (เลื่อนใน #app) — ตอนพิมพ์ต้องปลดให้เป็นเอกสารธรรมดา ไม่อย่างนั้น Safari จัดหน้าเพี้ยน */
+  html, body { height: auto !important; min-height: 0 !important; overflow: visible !important; display: block !important; }
+  #app { flex: none !important; min-height: 0 !important; width: 100% !important; }
   #tabbar, #dock, .topbar, .tabs, .no-print, .toast, #stock-pending-box { display: none !important; }
-  .wrap, #app, .screen, #view { padding: 0 !important; margin: 0 !important; max-width: none !important; height: auto !important; overflow: visible !important; }
+  .wrap, #app, .screen, #view { padding: 0 !important; margin: 0 !important; max-width: none !important; height: auto !important; min-height: 0 !important; overflow: visible !important; }
   .rep-sheet { box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; }
   .rep-scroll { overflow: visible; margin: 0; }
   .rep-table { font-size: 10pt; }
@@ -672,21 +675,19 @@ a.card:active { background: var(--theme-pressed); }
 .dsr-table .r { text-align: right; padding-right: 6px; }
 .dsr-table .fill { background: var(--theme-ink-fill); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 /* สัดส่วนที่ผู้ใช้กำหนด (หลังรอบ 35) รวม 100 — --col ใช้คำนวณขนาดตัวอักษรของช่อง .fit ต้องตรงกับ width
-   เลขที่บิล 15% (เดิม 12) ให้ "เงินสด 1069-155" พิมพ์ได้ไม่ต่ำกว่า 11pt — เอามาจากเงินสด / เหรียญ / เครดิต ช่องละ 1% */
-.dsr-table .w-shop { width: 22%; }
-.dsr-table .w-bill { width: 15%; }
-.dsr-table .w-amt { width: 14%; }
-.dsr-table .w-cash, .dsr-table .w-coin, .dsr-table .w-credit { width: 12%; }
-.dsr-table .w-note { width: 13%; }
-.dsr-table .k-shop { --col: 22; }
-.dsr-table .k-bill { --col: 15; padding-left: 2px; padding-right: 2px; }
+   ล่าสุด (ผู้ใช้ 2026-10-29): 20 / 14 / 14 / 13 / 13 / 13 / 13 — ช่องตัวเลขทุกช่องใช้ขนาดตัวอักษรเดียวกัน (.num-same คิดจากช่อง 13%) */
+.dsr-table .w-shop { width: 20%; }
+.dsr-table .w-bill, .dsr-table .w-amt { width: 14%; }
+.dsr-table .w-cash, .dsr-table .w-coin, .dsr-table .w-credit, .dsr-table .w-note { width: 13%; }
+.dsr-table .k-shop { --col: 20; }
+.dsr-table .k-bill { --col: 14; padding-left: 2px; padding-right: 2px; }
 .dsr-table .k-amt { --col: 14; }
-.dsr-table .k-cash, .dsr-table .k-coin, .dsr-table .k-credit { --col: 12; }
-.dsr-table .k-note { --col: 13; }
+.dsr-table .k-cash, .dsr-table .k-coin, .dsr-table .k-credit, .dsr-table .k-note, .dsr-table .num-same { --col: 13; }
 /* บรรทัดเดียวเสมอ: ย่อตัวอักษรให้พอดีช่อง (--k = ความกว้างข้อความต่อตัวอักษร 1px จาก summary.js) ตัวเลข/เลขที่บิลแสดงครบเสมอ
    ชื่อร้านย่อได้ถึง --dsr-min แล้วตัดด้วย … */
 .dsr-table .fit { white-space: nowrap; --pad: 6px; font-size: var(--dsr-fs); font-size: min(var(--dsr-fs), calc((var(--col) * 1cqw - 2 * var(--pad) - 3px) / var(--k, 1))); }
 .dsr-table .k-bill.fit { --pad: 2px; }
+.dsr-table .num-same.fit { --pad: 4.5px; } /* ช่องว่างจริง ซ้าย 5 + ขวา 6 = 11px (+1 กันปัดเศษ) */
 .dsr-table .k-shop.fit { text-overflow: ellipsis; font-size: max(var(--dsr-min), min(var(--dsr-fs), calc((var(--col) * 1cqw - 2 * var(--pad) - 3px) / var(--k, 1)))); }
 .dsr-table th.fit { white-space: normal; line-height: 1.15; font-size: var(--dsr-fs); }
 .dsr-sheet { --dsr-min: calc(var(--dsr-fs) * .8); }
@@ -698,6 +699,9 @@ a.card:active { background: var(--theme-pressed); }
 .dsr-short .dsr-end { break-inside: auto; } /* บิลไม่เกิน 10 ใบ: ห้ามดันส่วนค่าใช้จ่ายทั้งก้อนไปหน้า 2 (iPad เคยแตก 2 หน้า) */
 .dsr-cost { margin-top: -1px; }
 .dsr-foot { margin-top: 10px; }
+/* ?debug=1 เท่านั้น ตอนพิมพ์: แถบยาว 100 มม. — วัดบน PDF ถ้าสั้นกว่า 100 มม. = เบราว์เซอร์ย่อทั้งหน้า */
+.dsr-ruler { display: none; margin-top: 2mm; font-size: 8pt; }
+.dsr-ruler i { display: block; width: 100mm; height: 2mm; background: var(--theme-ink); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 /* ตอนพิมพ์: ทุกขนาดเป็นสัดส่วนของความกว้างกระดาษ (--mm = 1 มม. / --pt = 1pt ของพื้นที่พิมพ์ 190 มม. คิดจาก cqw ของ .dsr-sheet)
    ถ้าเบราว์เซอร์ (Safari บน iPad) จัดหน้าที่ความกว้างอื่นแล้วย่อทั้งหน้าลงกระดาษ ตัวอักษรและความสูงแถวยังเท่าเดิมเทียบกับกระดาษ
    A4 ขอบ 10 มม.: ตัวอักษร 12pt (ต่ำสุด 11pt) / บิล 10 แถว + ค่าใช้จ่าย 10 แถว หน้าเดียว
@@ -706,16 +710,20 @@ a.card:active { background: var(--theme-pressed); }
 @media print {
   .dsr { box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: none !important; }
   .dsr-scroll { overflow: visible; }
-  .dsr-sheet { min-width: 0; width: 100%; --mm: calc(100cqw / 190); --pt: calc(100cqw / 538.58); --dsr-fs: calc(12 * var(--pt)); --dsr-min: calc(11 * var(--pt)); }
+  .dsr-sheet { min-width: 0; width: 100%; --mm: calc(100cqw / 198); --pt: calc(100cqw / 561.26); --dsr-fs: calc(12 * var(--pt)); --dsr-min: calc(11 * var(--pt)); }
   .dsr-head { margin-bottom: calc(1.5 * var(--mm)); }
   .dsr-co { font-size: calc(16 * var(--pt)); line-height: 1.3; }
   .dsr-head h2 { font-size: calc(13 * var(--pt)); line-height: 1.3; }
   .dsr-meta { font-size: calc(12 * var(--pt)); margin-bottom: calc(1.5 * var(--mm)); }
   .dsr-fill { min-width: calc(60 * var(--mm)); }
-  .dsr-table th { height: min(calc(9 * var(--mm)), 9mm); padding-top: 1px; padding-bottom: 1px; }
-  .dsr-table td, .dsr-exp td:first-child, .dsr-net td { height: min(calc(var(--dsr-row) * var(--mm)), calc(var(--dsr-row) * 1mm)); padding-top: 1px; padding-bottom: 1px; }
-  .dsr-sheet { --dsr-row: 8.5; }
-  .dsr-order td, .dsr-cost-h { height: min(calc(6 * var(--mm)), 6mm) !important; }
+  .dsr-table th { height: calc(9 * var(--mm)); padding-top: 1px; padding-bottom: 1px; }
+  .dsr-table td, .dsr-exp td:first-child, .dsr-net td { height: var(--dsr-row); padding-top: 1px; padding-bottom: 1px; }
+  /* บิลเกิน 10 ใบ (หลายหน้า): แถวสูงคงที่ / ไม่เกิน 10 ใบ: 23 แถว (บิล 10 + รวม + ค่าใช้จ่าย 10 + รวม + สุทธิ) แบ่งความสูงหน้าที่เหลือ
+     100vh ตอนพิมพ์ = ความสูงพื้นที่พิมพ์ / หัวกระดาษ + หัวตาราง + หัวค่าใช้จ่าย ~45 มม. + เผื่อหัว-ท้ายของ Safari 15 มม. / ไม่เกิน 11 มม. */
+  .dsr-sheet { --dsr-row: calc(8.5 * var(--mm)); }
+  .dsr-short .dsr-sheet { --dsr-row: min(calc((100vh - 60 * var(--mm)) / 23), calc(11 * var(--mm))); }
+  .dsr-ruler { display: block !important; }
+  .dsr-order td, .dsr-cost-h { height: calc(6 * var(--mm)) !important; }
   .dsr-order td { font-size: calc(11 * var(--pt)); }
   .dsr-no { font-size: .92em; }
   .dsr-table thead { display: table-header-group; }
