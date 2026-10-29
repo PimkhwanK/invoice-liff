@@ -364,30 +364,17 @@
   function openDaily() {
     var sh = LiffApp.sheet('ใบเช็คยอดขายรายวัน',
       '<div id="sum-daily"><label class="f" for="sum-daily-date">วันที่จะพิมพ์</label>' + dateBox('sum-daily-date', dailyDefault(), 'วันที่จะพิมพ์') +
-      // รอบ 36: ปุ่มส่งต่ออยู่ในหน้าต่างนี้ (ในแอป LINE กด "พิมพ์" แล้วไปเปิดในเบราว์เซอร์ข้างนอก ไม่เคยเห็นหน้าใบเช็คยอดในแอป)
+      // รอบ 36–37: ปุ่มส่งต่อ (ไฟล์ PDF) อยู่ในหน้าต่างนี้ — ในแอป LINE กด "พิมพ์" แล้วไปเปิดในเบราว์เซอร์ข้างนอก ไม่เคยเห็นหน้าใบเช็คยอดในแอป
       shareBtn('sum-daily-share', 'btn block') + '</div>',
       '<button type="button" class="btn grow" data-close>ยกเลิก</button><button type="button" class="btn primary grow" id="sum-daily-go">' + iconSvg('file') + '<span>พิมพ์</span></button>');
     var input = sh.el.querySelector('#sum-daily-date');
     sh.el.addEventListener('click', pickerOpen);
     var pickedDate = function () { return input.value && input.value <= today() ? input.value : dailyDefault(); };
-    // ยอดของวันที่เลือกโหลดไว้ก่อน (การ์ดต้องมียอดรวม + จำนวนบิล) — แตะแล้วหน้าเลือกผู้รับขึ้นทันที
-    fetchDay(pickedDate());
     input.addEventListener('change', function () {
       sh.el.querySelector('#sum-daily-date-th').textContent = input.value ? formatThaiDateShort(input.value) : 'เลือกวันที่';
-      fetchDay(pickedDate());
     });
     var share = sh.el.querySelector('#sum-daily-share');
-    share.addEventListener('click', async function () {
-      var date = pickedDate();
-      var r = days[date];
-      if (!r) {
-        share.disabled = true;
-        r = await fetchDay(date);
-        share.disabled = false;
-      }
-      if (!r.ok) return LiffApp.toast(r.error || 'โหลดยอดขายไม่สำเร็จ ลองอีกครั้ง', true);
-      shareDaily(date, r.day, share);
-    });
+    share.addEventListener('click', function () { shareDaily(pickedDate(), share); });
     sh.el.querySelector('#sum-daily-go').addEventListener('click', function () {
       var date = input.value && input.value <= today() ? input.value : dailyDefault();
       // ในแอป LINE พิมพ์ / บันทึก PDF มักไม่ได้ → เปิดหน้าเดียวกันในเบราว์เซอร์ (แบบรายงานสต็อก) + กล่องทางเลือกถ้าไม่เปิด (รอบ 31)
@@ -436,55 +423,72 @@
     dailyFitAll(view);
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { dailyFitAll(view); });
     $('dsr-print').addEventListener('click', function () { document.title = dailyTitle(date); LiffApp.printAs(dailyTitle(date), function () { printFailed(date); }); });
-    $('dsr-share').addEventListener('click', function () { shareDaily(date, r.day, this); });
+    $('dsr-share').addEventListener('click', function () { shareDaily(date, this); });
     $('dsr-back').addEventListener('click', function () { Shell.go('summary', {}); });
     Shell.drawn(scr);
   }
 
-  /** รอบ 36: การ์ดใบเช็คยอดในแชท — ปุ่มเปิดผ่าน LIFF (ตรวจผู้ใช้ตามปกติ ลูกค้า/คนนอกเปิดไม่ได้) */
-  function dailyCard(date, d) {
-    var day = LiffApp.fileDate(date);
+  /** รอบ 37: การ์ดใบเช็คยอด — ยอดรวม + จำนวนบิล + ปุ่ม "เปิด PDF" (ลิงก์ Drive แบบ PDF บิล ผู้รับเปิดได้โดยไม่ต้องเข้าสู่ระบบ) */
+  function dailyCard(r) {
+    var day = LiffApp.fileDate(r.date);
     return LiffApp.cardFlex({
-      alt: 'ใบเช็คยอด ' + day + ' ยอดรวม ' + money(d.total) + ' บาท',
+      alt: 'ใบเช็คยอด ' + day + ' ยอดรวม ' + money(r.total) + ' บาท',
       title: 'ใบเช็คยอดขายประจำวัน',
       sub: day,
-      rows: [['ยอดรวม', money(d.total) + ' บาท'], ['จำนวนบิล', (d.bills || []).length + ' ใบ']],
-      button: 'เปิดใบเช็คยอด',
-      uri: LiffApp.liffUrl('summary?print=' + date)
+      rows: [['ยอดรวม', money(r.total) + ' บาท'], ['จำนวนบิล', r.bills + ' ใบ']],
+      button: 'เปิด PDF',
+      uri: r.pdfUrl
     });
   }
 
   function shareBtn(id, cls) {
-    return '<button type="button" class="' + cls + '" id="' + id + '">' + iconSvg('send') + '<span>ส่งต่อทางไลน์</span></button>';
+    return '<button type="button" class="' + cls + '" id="' + id + '">' + iconSvg('send') + '<span>ส่งต่อ</span></button>';
   }
 
   /**
-   * รอบ 36: ส่งต่อใบเช็คยอดให้คนอื่น (ลำดับเดียวกับปุ่มส่งต่อของบิล — ไม่ใช้ push / sendMessages)
-   *   shareTargetPicker (เลือกเพื่อน/กลุ่มเอง การ์ด Flex) → เมนูแชร์ของเครื่อง (ข้อความ + ลิงก์) → คัดลอก
-   *   การ์ดแสดงยอดรวม + จำนวนบิล / ปุ่มเปิดผ่าน LIFF: ผู้รับที่ไม่อยู่ในแท็บผู้ใช้เห็นแค่หน้าไม่มีสิทธิ์
+   * รอบ 37: ส่งต่อใบเช็คยอดเป็นไฟล์ PDF (ลำดับเดียวกับปุ่มส่งต่อของบิล — ไม่ใช้ push / sendMessages)
+   *   สร้าง PDF ที่ Apps Script (dailySheetPdf — วันเดียวกันเขียนทับไฟล์เดิม) แล้ว
+   *   แชร์ไฟล์ได้ → เมนูแชร์ของเครื่องพร้อมไฟล์ "สรุปยอดขาย D-M-พ.ศ..pdf" → ไม่ได้ → shareTargetPicker การ์ด Flex ปุ่ม "เปิด PDF" → คัดลอก
+   *   สร้าง PDF ใช้เวลาหลายวินาที เบราว์เซอร์อาจไม่ยอมเปิดเมนูแชร์ (ไม่นับเป็นการแตะ) → ไฟล์จำไว้ที่ปุ่ม แตะอีกครั้งส่งทันที
    */
-  async function shareDaily(date, d, btn) {
-    var card = dailyCard(date, d);
+  async function shareDaily(date, btn) {
+    var ready = btn.dailyPdf && btn.dailyPdf.r.date === date ? btn.dailyPdf : null;
+    if (!ready) {
+      var span = btn.querySelector('span');
+      var label = span.textContent;
+      btn.disabled = true;
+      span.textContent = 'กำลังสร้าง PDF…';
+      var r = await LiffApp.api('dailySheetPdf', { date: date, type: 'tax' });
+      btn.disabled = false;
+      span.textContent = label;
+      if (!r.ok) {
+        if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
+        return LiffApp.toast(r.error || 'สร้าง PDF ไม่สำเร็จ ลองอีกครั้ง', true);
+      }
+      ready = btn.dailyPdf = { r: r, file: r.pdfBase64 ? LiffApp.pdfFile(r.pdfBase64, r.fileName || dailyTitle(date) + '.pdf') : null };
+    }
+    if (ready.file && LiffApp.canShareFiles()) {
+      try {
+        await navigator.share({ files: [ready.file], title: ready.file.name });
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') return; // ผู้ใช้ปิดเอง
+        if (e && e.name === 'NotAllowedError') { LiffApp.toast('PDF พร้อมแล้ว กด "ส่งต่อ" อีกครั้ง'); return; }
+      }
+    }
+    var card = dailyCard(ready.r);
     var picker = false;
     try { picker = typeof liff.isApiAvailable === 'function' && liff.isApiAvailable('shareTargetPicker'); } catch (e) { picker = false; }
     if (picker) {
-      btn.disabled = true;
       try {
         var res = await liff.shareTargetPicker([card], { isMultiple: true });
-        btn.disabled = false;
         if (res) LiffApp.toast('ส่งแล้ว');
         return;
-      } catch (e) { btn.disabled = false; /* ใช้วิธีถัดไป */ }
+      } catch (e) { /* ใช้วิธีถัดไป */ }
     }
     var NL = String.fromCharCode(10);
-    var link = card.contents.footer.contents[0].action.uri;
-    var text = card.altText + NL + 'จำนวนบิล ' + (d.bills || []).length + ' ใบ' + NL + link;
-    if (navigator.share) {
-      try { await navigator.share({ title: 'ใบเช็คยอด ' + LiffApp.fileDate(date), text: text }); return; } catch (e) {
-        if (e && e.name === 'AbortError') return;
-      }
-    }
-    try { await navigator.clipboard.writeText(text); LiffApp.toast('คัดลอกข้อความและลิงก์แล้ว'); } catch (e) { LiffApp.toast('ส่งต่อไม่สำเร็จ ลองอีกครั้ง', true); }
+    var text = card.altText + NL + 'จำนวนบิล ' + ready.r.bills + ' ใบ' + NL + ready.r.pdfUrl;
+    try { await navigator.clipboard.writeText(text); LiffApp.toast('คัดลอกข้อความและลิงก์ PDF แล้ว'); } catch (e) { LiffApp.toast('ส่งต่อไม่สำเร็จ ลองอีกครั้ง', true); }
   }
 
   /**
