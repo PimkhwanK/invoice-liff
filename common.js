@@ -824,7 +824,69 @@ var LiffApp = (function () {
     return true;
   }
 
+  // ---------- รอบ 36: การ์ดเล็กในแชท (Flex) ส่งด้วย liff.sendMessages / shareTargetPicker — ส่งในนามผู้ใช้ ไม่ใช่ push ไม่กินโควตาข้อความของ OA
+
+  /** ลิงก์หน้า LIFF ที่เปิดในแอป LINE ได้ (ตรวจ idToken + แท็บผู้ใช้ตามปกติ) เช่น liffUrl('summary?print=2026-10-29') */
+  function liffUrl(path) { return 'https://liff.line.me/' + CFG.LIFF_ID + '/' + path; }
+
+  /** สีจาก theme.css ณ ตอนนี้ (โหมดใบเงินสดได้สีเขียว) — Flex รับเฉพาะ #RRGGBB / อ่านไม่ได้ → '' (ใช้สีเริ่มต้นของ LINE) */
+  function themeHex(name) {
+    var v = '';
+    try { v = getComputedStyle(document.body).getPropertyValue('--theme-' + name).trim(); } catch (e) { v = ''; }
+    return /^#[0-9a-fA-F]{6}$/.test(v) ? v : '';
+  }
+
+  /**
+   * การ์ด Flex ใบเล็ก: หัวสีหลัก (title + sub) / แถว [หัวข้อ, ค่า] / ปุ่มเดียว
+   * o = { alt, title, sub, rows: [[หัวข้อ, ค่า]], button, uri }
+   */
+  function cardFlex(o) {
+    var head = themeHex('primary');
+    var onHead = themeHex('on-primary');
+    var text = themeHex('text');
+    var text2 = themeHex('text-2');
+    var color = function (obj, c) { if (c) obj.color = c; return obj; };
+    var headBox = { type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'xs', contents: [
+      color({ type: 'text', text: o.title, weight: 'bold', size: 'lg', wrap: true }, onHead),
+      color({ type: 'text', text: o.sub || ' ', size: 'sm', wrap: true }, onHead)
+    ] };
+    if (head) headBox.backgroundColor = head;
+    var rows = (o.rows || []).map(function (r) {
+      return { type: 'box', layout: 'baseline', spacing: 'sm', contents: [
+        color({ type: 'text', text: r[0], size: 'sm', flex: 3 }, text2),
+        color({ type: 'text', text: String(r[1] === '' || r[1] == null ? '-' : r[1]), size: 'sm', weight: 'bold', align: 'end', wrap: true, flex: 5 }, text)
+      ] };
+    });
+    return {
+      type: 'flex',
+      altText: o.alt,
+      contents: {
+        type: 'bubble', size: 'kilo',
+        header: headBox,
+        body: { type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'sm', contents: rows.length ? rows : [{ type: 'filler' }] },
+        footer: { type: 'box', layout: 'vertical', contents: [color({ type: 'button', style: 'primary', height: 'sm', action: { type: 'uri', label: o.button, uri: o.uri } }, head)] }
+      }
+    };
+  }
+
+  /** เครื่องนี้แชร์ "ไฟล์" ผ่านเมนูแชร์ได้ไหม (Web Share API ระดับ 2 — Safari iOS 15+, Chrome Android / ไม่มีใน WebView ของ Android) */
+  function canShareFiles() {
+    try {
+      return typeof File === 'function' && !!navigator.share && !!navigator.canShare &&
+        navigator.canShare({ files: [new File(['x'], 'x.pdf', { type: 'application/pdf' })] });
+    } catch (e) { return false; }
+  }
+
+  /** base64 → File (PDF) */
+  function pdfFile(base64, name) {
+    var bin = atob(base64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], name, { type: 'application/pdf' });
+  }
+
   return {
+    liffUrl: liffUrl, themeHex: themeHex, cardFlex: cardFlex, canShareFiles: canShareFiles, pdfFile: pdfFile, // รอบ 36
     printAs: printAs, fileDate: fileDate, // รอบ 30
     isIos: isIos, inLineBrowser: inLineBrowser, standalone: standalone, externalUrl: externalUrl, outsideHelp: outsideHelp, openOutside: openOutside, // รอบ 31
     start: start, api: api, showError: showError, showApiError: showApiError, isRetryable: isRetryable,

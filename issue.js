@@ -967,7 +967,7 @@
         showSuccess(r, 'ส่งเข้าแชทไม่สำเร็จ พิมพ์ "' + cmd + '" ในแชทเพื่อดูบิล');
         return;
       }
-      showSuccess(r, 'ส่ง "' + cmd + '" เข้าแชทแล้ว กำลังปิดหน้า…');
+      showSuccess(r, 'ส่ง "' + cmd + '" เข้าแชทแล้ว กำลังปิดหน้า…', '', true);
       liff.closeWindow();
       return;
     }
@@ -976,7 +976,8 @@
     showSuccess(r, opened ? 'เปิดแชท LINE แล้ว กดส่ง "' + cmd + '" เพื่อดูการ์ดบิล' : 'กดปุ่ม "ส่งเข้าแชท LINE" แล้วกดส่ง "' + cmd + '" เพื่อดูการ์ดบิล', cmd);
   }
 
-  function showSuccess(r, note, chatCmd) {
+  /** closing = กำลังปิดหน้า (ส่งเข้าแชทแล้วในแอป LINE) — ไม่ต้องโหลดไฟล์ PDF ไว้ก่อน */
+  function showSuccess(r, note, chatCmd, closing) {
     S.screen = 'done';
     totalbar.classList.add('hidden');
     $('title').textContent = 'ออกบิลสำเร็จ';
@@ -992,38 +993,89 @@
       (r.pdfUrl
         // รอบ 21: ดู PDF ในแอป (นอก LINE ไม่มีการ์ดในแชทให้กด) + ส่งต่อ (ผู้ใช้เลือกปลายทางเอง ไม่ใช้ push message)
         ? '<a class="btn block" id="btn-pdf" href="' + esc(LiffApp.viewHref(LiffApp.docNoText(r.docNo), r.document ? r.document.doc_type : '')) + '">' + iconSvg('file') + '<span>ดู PDF</span></a>' +
-          '<button type="button" class="btn block" id="btn-share">' + iconSvg('send') + '<span>ส่งต่อ</span></button>'
+          // รอบ 36: แชร์ไฟล์ได้ (Safari/Chrome มือถือ) → "ส่งไฟล์ PDF" / ไม่ได้ (เช่น แอป LINE บน Android) → "ส่งต่อ" = การ์ด Flex
+          '<button type="button" class="btn block" id="btn-share" data-how="' + (LiffApp.canShareFiles() ? 'file' : 'card') + '">' + iconSvg('send') +
+          '<span>' + (LiffApp.canShareFiles() ? 'ส่งไฟล์ PDF' : 'ส่งต่อ') + '</span></button>'
         : '<div class="small muted" id="no-pdf">ยังไม่มี PDF สร้างได้ที่เมนู "ประวัติเอกสาร"</div>') +
       (chatCmd ? '<a class="btn block" id="btn-chat" href="' + esc(LiffApp.oaMessageUrl(chatCmd)) + '" target="_blank" rel="noopener">' + iconSvg('send') + '<span>ส่งเข้าแชท LINE</span></a>' : '') + // รอบ 29
       '<button type="button" class="btn primary block" id="btn-new">ออกบิลใหม่</button>' +
       '</div>';
     $('btn-new').addEventListener('click', load);
-    if ($('btn-share')) $('btn-share').addEventListener('click', function () { sharePdf(r); });
+    var share = $('btn-share');
+    if (share) {
+      var pdf = share.dataset.how === 'file' && !closing ? fetchPdfFile(r) : null; // โหลดไฟล์ไว้ก่อน: เมนูแชร์ต้องเปิดทันทีหลังแตะ (รอเน็ตนานเกินไป เบราว์เซอร์ไม่ยอม)
+      share.addEventListener('click', function () { sharePdf(r, pdf, share); });
+    }
     scrollTop();
   }
 
+  /** รอบ 36: ประเภทของบิลที่เพิ่งออก (ใบเสร็จรับเงินเลขที่ซ้ำกับใบกำกับได้) */
+  function doneDocType(r) { return r.document ? r.document.doc_type : S.doc && S.doc.doc_type; }
+
   /**
-   * รอบ 21: ส่งต่อบิล — เลือกแชท LINE เอง (shareTargetPicker) → เมนูแชร์ของเครื่อง → คัดลอกลิงก์
-   * ข้อความ = ประเภท เลขที่ ร้าน ยอด + ลิงก์ PDF (ลิงก์ PDF เปิดได้โดยไม่ต้องเข้าสู่ระบบอยู่แล้ว — กฎข้อ 9)
+   * รอบ 36: ไฟล์ PDF จากเซิร์ฟเวอร์ (getPdf ตรวจผู้ใช้แล้วคืน base64 — ไม่ fetch ลิงก์ Drive ตรง ๆ เพราะ Drive ไม่อนุญาต CORS)
+   * ชื่อไฟล์ = ชื่อใน Drive (INV-N.pdf / RC-N.pdf / CASH-N.pdf) / ไม่สำเร็จ → null
    */
-  async function sharePdf(r) {
-    var NL = String.fromCharCode(10);
-    var text = LiffApp.MODE_LABEL + ' เลขที่ ' + LiffApp.docNoText(r.docNo) + NL +
-      (r.legalName || (S.shop && (S.shop.legal_name || S.shop.short_name)) || '') + NL + 'ยอด ' + money(r.total) + ' บาท' + NL + r.pdfUrl;
+  async function fetchPdfFile(r) {
+    var no = LiffApp.docNoText(r.docNo);
+    try {
+      var res = await LiffApp.api('getPdf', { docNo: CASH ? no : r.docNo, docType: CASH ? '' : (doneDocType(r) || '') });
+      if (!res.ok || !res.pdfBase64) return null;
+      var fallback = (CASH ? 'CASH-' : doneDocType(r) === TAX_RECEIPT_TYPE ? 'RC-' : 'INV-') + no + '.pdf';
+      return LiffApp.pdfFile(res.pdfBase64, res.fileName || fallback);
+    } catch (e) { return null; }
+  }
+
+  /** การ์ด Flex ของบิล: ประเภท เลขที่ ร้าน ยอด + ปุ่ม "เปิด PDF" (ลิงก์ Drive — ลูกค้าเปิดได้โดยไม่ต้องเข้าสู่ระบบ กฎข้อ 9 / ไม่แสดงลิงก์ยาว) */
+  function billCard(r) {
+    var type = CASH ? LiffApp.MODE_LABEL : (doneDocType(r) || LiffApp.MODE_LABEL);
+    var no = LiffApp.docNoText(r.docNo);
+    var shop = r.legalName || (S.shop && (S.shop.legal_name || S.shop.short_name)) || '';
+    return LiffApp.cardFlex({
+      alt: type + ' เลขที่ ' + no + ' ยอด ' + money(r.total) + ' บาท',
+      title: type, sub: 'เลขที่ ' + no,
+      rows: [['ร้าน', shop], ['ยอด', money(r.total) + ' บาท']],
+      button: 'เปิด PDF', uri: r.pdfUrl
+    });
+  }
+
+  /**
+   * ส่งต่อบิล (รอบ 21 → รอบ 36):
+   *   ก) แชร์ไฟล์ได้ → เมนูแชร์ของเครื่องพร้อมไฟล์ PDF (เลือก LINE / อีเมล ได้เอง)
+   *   ข) ไม่ได้ / โหลดไฟล์ไม่สำเร็จ → การ์ด Flex: เลือกแชทเอง (shareTargetPicker) → ส่งเข้าแชทนี้ (sendMessages ในแอป LINE) → คัดลอกข้อความ
+   *   ทุกทางส่งในนามผู้ใช้ ไม่ใช้ push
+   */
+  async function sharePdf(r, pdf, btn) {
+    if (pdf) {
+      btn.disabled = true;
+      var file = await pdf;
+      btn.disabled = false;
+      if (file) {
+        try {
+          await navigator.share({ files: [file], title: file.name });
+          return;
+        } catch (e) {
+          if (e && e.name === 'AbortError') return; // ผู้ใช้ปิดเอง
+          // NotAllowedError = รอไฟล์นานจนเบราว์เซอร์ไม่นับว่าเป็นการแตะ → ไฟล์พร้อมแล้ว แตะอีกครั้งได้
+          if (e && e.name === 'NotAllowedError') { LiffApp.toast('ไฟล์พร้อมแล้ว กด "ส่งไฟล์ PDF" อีกครั้ง'); return; }
+        }
+      }
+    }
+    var card = billCard(r);
     var picker = false;
     try { picker = typeof liff.isApiAvailable === 'function' && liff.isApiAvailable('shareTargetPicker'); } catch (e) { picker = false; }
     if (picker) {
       try {
-        var res = await liff.shareTargetPicker([{ type: 'text', text: text }], { isMultiple: true });
+        var res = await liff.shareTargetPicker([card], { isMultiple: true });
         if (res) LiffApp.toast('ส่งแล้ว');
         return;
       } catch (e) { /* ใช้วิธีถัดไป */ }
     }
-    if (navigator.share) {
-      try { await navigator.share({ title: LiffApp.MODE_LABEL + ' ' + LiffApp.docNoText(r.docNo), text: text }); return; } catch (e) {
-        if (e && e.name === 'AbortError') return; // ผู้ใช้ปิดเอง
-      }
+    if (LiffApp.inClient()) {
+      try { await liff.sendMessages([card]); LiffApp.toast('ส่งการ์ดเข้าแชทแล้ว กดค้างที่การ์ดเพื่อส่งต่อ'); return; } catch (e) { /* ใช้วิธีถัดไป */ }
     }
+    var NL = String.fromCharCode(10);
+    var text = card.altText + NL + r.pdfUrl;
     try { await navigator.clipboard.writeText(text); LiffApp.toast('คัดลอกข้อความและลิงก์ PDF แล้ว'); } catch (e) { LiffApp.toast('ส่งต่อไม่สำเร็จ ลองอีกครั้ง', true); }
   }
 

@@ -729,3 +729,7 @@ a.card:active { background: var(--theme-pressed); }
   .dsr-table thead { display: table-header-group; }
   .dsr-table tr { break-inside: avoid; }
 }
+
+/* รอบ 36: ปุ่มส่งต่อบิล / ส่งใบเช็คยอดเข้าไลน์ สูงอย่างน้อย 48px (แตะง่าย) */
+#btn-share, #dsr-send { min-height: 48px; }
+#dsr-send-hint { align-self: center; }

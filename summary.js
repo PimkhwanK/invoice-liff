@@ -411,12 +411,41 @@
     }
     view.innerHTML = dailySheet(r) +
       '<div class="rep-acts no-print"><button type="button" class="btn" id="dsr-back">กลับ</button>' +
-      '<button type="button" class="btn primary" id="dsr-print">พิมพ์ / PDF</button></div>';
+      '<button type="button" class="btn primary" id="dsr-print">พิมพ์ / PDF</button>' +
+      // รอบ 36: ส่งการ์ดเข้าแชทของผู้ใช้เอง (liff.sendMessages ใช้ได้เฉพาะในแอป LINE) / นอก LINE บอกให้เปิดจากไลน์
+      (LiffApp.inClient()
+        ? '<button type="button" class="btn" id="dsr-send">' + iconSvg('send') + '<span>ส่งเข้าไลน์</span></button>'
+        : '<span class="small muted" id="dsr-send-hint">เปิดจากไลน์เพื่อส่ง</span>') + '</div>';
     dailyFitAll(view);
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { dailyFitAll(view); });
     $('dsr-print').addEventListener('click', function () { document.title = dailyTitle(date); LiffApp.printAs(dailyTitle(date), function () { printFailed(date); }); });
+    if ($('dsr-send')) $('dsr-send').addEventListener('click', function () { sendDaily(date, r.day, this); });
     $('dsr-back').addEventListener('click', function () { Shell.go('summary', {}); });
     Shell.drawn(scr);
+  }
+
+  /** รอบ 36: การ์ดใบเช็คยอดในแชท — ปุ่มเปิดผ่าน LIFF (ตรวจผู้ใช้ตามปกติ ลูกค้า/คนนอกเปิดไม่ได้) */
+  function dailyCard(date, d) {
+    var day = LiffApp.fileDate(date);
+    return LiffApp.cardFlex({
+      alt: 'ใบเช็คยอด ' + day + ' ยอดรวม ' + money(d.total) + ' บาท',
+      title: 'ใบเช็คยอดขายประจำวัน',
+      sub: day,
+      rows: [['ยอดรวม', money(d.total) + ' บาท'], ['จำนวนบิล', (d.bills || []).length + ' ใบ']],
+      button: 'เปิดใบเช็คยอด',
+      uri: LiffApp.liffUrl('summary?print=' + date)
+    });
+  }
+
+  async function sendDaily(date, d, btn) {
+    btn.disabled = true;
+    try {
+      await liff.sendMessages([dailyCard(date, d)]);
+      LiffApp.toast('ส่งเข้าแชทแล้ว');
+    } catch (e) {
+      LiffApp.toast('ส่งเข้าแชทไม่สำเร็จ ลองอีกครั้ง', true);
+    }
+    btn.disabled = false;
   }
 
   /**
