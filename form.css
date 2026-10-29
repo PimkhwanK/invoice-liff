@@ -733,3 +733,4 @@ a.card:active { background: var(--theme-pressed); }
 /* รอบ 36: ปุ่มส่งต่อบิล / ส่งใบเช็คยอดเข้าไลน์ สูงอย่างน้อย 48px (แตะง่าย) */
 #btn-share, #dsr-send { min-height: 48px; }
 #dsr-send-hint { align-self: center; }
+#sum-daily-send { min-height: 48px; margin-top: 12px; }
