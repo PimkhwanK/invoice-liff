@@ -405,9 +405,28 @@
     view.innerHTML = dailySheet(r) +
       '<div class="rep-acts no-print"><button type="button" class="btn" id="dsr-back">กลับ</button>' +
       '<button type="button" class="btn primary" id="dsr-print">พิมพ์ / PDF</button></div>';
+    dailyFitAll(view);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { dailyFitAll(view); });
     $('dsr-print').addEventListener('click', function () { LiffApp.printAs('สรุปยอดขาย ' + LiffApp.fileDate(date), function () { printFailed(date); }); });
     $('dsr-back').addEventListener('click', function () { Shell.go('summary', {}); });
     Shell.drawn(scr);
+  }
+
+  /**
+   * ช่องตัวหนังสือบรรทัดเดียวของใบเช็คยอด (หลังรอบ 35): ข้อความใน <span class="t"> — dailyFitAll วัดความกว้างต่อขนาดตัวอักษร 1px ใส่เป็น --k
+   * แล้ว form.css ย่อตัวอักษรให้พอดีคอลัมน์ (คิดจากความกว้างตาราง cqw จึงถูกทั้งบนจอและตอนพิมพ์)
+   */
+  function dailyFit(col, cls, html, tag) {
+    tag = tag || 'td';
+    return '<' + tag + ' class="fit k-' + col + (cls ? ' ' + cls : '') + '"><span class="t">' + html + '</span></' + tag + '>';
+  }
+
+  function dailyFitAll(root) {
+    Array.prototype.forEach.call(root.querySelectorAll('.dsr-table .fit > .t'), function (t) {
+      var fs = parseFloat(getComputedStyle(t).fontSize);
+      var w = t.getBoundingClientRect().width;
+      if (fs > 0 && w > 0) t.parentNode.style.setProperty('--k', (w / fs).toFixed(3));
+    });
   }
 
   /** ช่องเครดิต: บิลที่ชนิดการขายไม่ใช่เงินสด (เครดิต / สินเชื่อ) — บิลไม่ระบุชนิด (ใบเงินสดเก่า) = เงินสด */
@@ -424,9 +443,9 @@
       var b = bills[i];
       var cr = b && hasSale && dailyCredit(b);
       if (cr) credit += b.sat;
-      rows += '<tr' + (b ? ' class="bill"' : '') + '><td class="shop"><span class="dsr-no">' + (i + 1) + '.</span>' + (b ? esc(b.shop) : '') + '</td>' +
-        '<td class="nw">' + (b ? esc(b.label) : '') + '</td><td class="r num">' + (b ? money(b.sat) : '') + '</td><td></td><td></td>' +
-        '<td class="r num">' + (cr ? money(b.sat) : '') + '</td><td></td></tr>';
+      rows += '<tr' + (b ? ' class="bill"' : '') + '>' + dailyFit('shop', 'shop', '<span class="dsr-no">' + (i + 1) + '.</span>' + (b ? esc(b.shop) : '')) +
+        dailyFit('bill', '', b ? esc(b.label) : '') + dailyFit('amt', 'r num', b ? money(b.sat) : '') + '<td></td><td></td>' +
+        dailyFit('credit', 'r num', cr ? money(b.sat) : '') + '<td></td></tr>';
     }
     var cols = '<colgroup>' + DAILY_W.map(function (w) { return '<col class="w-' + w + '">'; }).join('') + '</colgroup>';
     var blank4 = '<td></td><td></td><td></td><td></td>';
@@ -440,21 +459,22 @@
     return '<section class="card dsr" id="dsr">' +
       (miss.length ? '<div class="alert warn no-print" id="dsr-missing">ยังไม่รวม' + miss.join(' และ ') + ' กรุณาแจ้งผู้ดูแลระบบ</div>' : '') +
       (hasSale ? '' : '<div class="alert warn no-print" id="dsr-no-credit">ช่องเครดิตยังไม่แสดง กรุณาแจ้งผู้ดูแลระบบ</div>') +
+      '<div class="dsr-scroll"><div class="dsr-sheet">' +
       '<div class="dsr-head">' + (r.company ? '<div class="dsr-co" id="dsr-co">' + esc(r.company) + '</div>' : '') +
       '<h2>ใบเช็คยอดขายประจำวัน</h2></div>' +
       '<div class="dsr-meta"><div><b>วันที่:</b> <span id="dsr-date">' + dateCell(Number(p[2])) + '/' + dateCell(Number(p[1])) + '/' + dateCell(Number(p[0]) + 543) + '</span></div>' +
       '<div class="dsr-fill"><b>ผู้ตรวจสอบ:</b><span class="dsr-line"></span></div></div>' +
-      '<table class="dsr-table" id="dsr-table">' + cols + '<thead><tr>' + DAILY_COLS.map(function (c) { return '<th>' + c + '</th>'; }).join('') + '</tr></thead>' +
+      '<table class="dsr-table" id="dsr-table">' + cols + '<thead><tr>' + DAILY_COLS.map(function (c, j) { return dailyFit(DAILY_W[j], '', c, 'th'); }).join('') + '</tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
-      '<tbody class="dsr-sum"><tr><td colspan="2" class="c fill"><b>รวมยอดขายทุกร้าน</b></td><td class="r num"><b id="dsr-total">' + money(d.total) + '</b></td><td></td><td></td>' +
-      '<td class="r num"><b id="dsr-credit">' + (hasSale && credit ? money(credit) : '') + '</b></td><td></td></tr></tbody></table>' +
+      '<tbody class="dsr-sum"><tr><td colspan="2" class="c fill"><b>รวมยอดขายทุกร้าน</b></td>' + dailyFit('amt', 'r num', '<b id="dsr-total">' + money(d.total) + '</b>') + '<td></td><td></td>' +
+      dailyFit('credit', 'r num', '<b id="dsr-credit">' + (hasSale && credit ? money(credit) : '') + '</b>') + '<td></td></tr></tbody></table>' +
       '<div class="dsr-end" id="dsr-end">' +
       '<table class="dsr-table dsr-cost" id="dsr-cost">' + cols + '<tbody>' +
       '<tr><td colspan="3" class="c fill dsr-cost-h"><b><u>หักค่าใช้จ่ายรายวัน</u></b></td><td rowspan="2" class="fill"></td><td rowspan="2" class="fill"></td><td rowspan="2" class="fill"></td><td rowspan="2" class="fill"></td></tr>' +
       '<tr class="dsr-order"><td colspan="3"><b>ลำดับ</b></td></tr>' + cost +
       '<tr><td colspan="3" class="c fill"><b>รวมค่าใช้จ่ายรายวัน</b></td>' + blank4 + '</tr>' +
       '<tr class="dsr-net"><td colspan="3" class="c fill"><b>ยอดเงินสุทธิหลังหักค่าใช้จ่าย</b></td>' + blank4 + '</tr>' +
-      '</tbody></table></div>' +
+      '</tbody></table></div></div></div>' +
       '<div class="small muted no-print dsr-foot">นับใบกำกับภาษี ใบเงินสด และใบเสร็จที่ไม่มีใบกำกับคู่ เรียงตามเวลาออกบิล ไม่นับใบเสร็จที่ออกคู่กับใบกำกับ บิลที่ยกเลิก และบิลทดสอบ 0000 / ช่องเครดิต = บิลเครดิตและสินเชื่อ</div></section>';
   }
 

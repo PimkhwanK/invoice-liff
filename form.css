@@ -662,18 +662,29 @@ a.card:active { background: var(--theme-pressed); }
 .dsr-u { display: inline-block; min-width: 3.4em; text-align: center; border-bottom: 1px solid var(--theme-ink); }
 .dsr-fill { display: flex; align-items: flex-end; gap: 6px; flex: 0 1 46%; min-width: 180px; }
 .dsr-line { display: block; flex: 1; min-width: 40px; height: 1.2em; border-bottom: 1px solid var(--theme-ink); }
-.dsr-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; color: var(--theme-ink); }
+/* จอเล็กเลื่อนแนวนอนในกรอบ (ตัวเลขยังอ่านได้) / ตอนพิมพ์เต็มความกว้างกระดาษ — ขนาดตัวอักษรในตารางคิดจากความกว้างแผ่น (cqw) */
+.dsr-scroll { overflow-x: auto; }
+.dsr-sheet { min-width: 580px; container-type: inline-size; --dsr-fs: 12px; }
+.dsr-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: var(--dsr-fs); color: var(--theme-ink); }
 .dsr-table th, .dsr-table td { border: 1px solid var(--theme-ink); padding: 3px 5px; height: 2.6em; vertical-align: middle; overflow: hidden; }
 .dsr-table th { font-weight: 700; text-align: center; height: 2em; }
 .dsr-table td.c { text-align: center; }
-.dsr-table td.r { text-align: right; }
-.dsr-table td.nw { white-space: nowrap; text-overflow: ellipsis; }
+.dsr-table .r { text-align: right; padding-right: 6px; }
 .dsr-table .fill { background: var(--theme-ink-fill); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-.dsr-table .w-shop { width: 26%; }
-.dsr-table .w-bill { width: 16%; }
-.dsr-table .w-amt, .dsr-table .w-credit { width: 10%; }
-.dsr-table .w-cash, .dsr-table .w-coin { width: 9%; }
-.dsr-table .w-note { width: 20%; }
+/* สัดส่วนที่ผู้ใช้กำหนด (หลังรอบ 35) รวม 100 — --col ใช้คำนวณขนาดตัวอักษรของช่อง .fit ต้องตรงกับ width */
+.dsr-table .w-shop { width: 22%; }
+.dsr-table .w-bill { width: 12%; }
+.dsr-table .w-amt { width: 14%; }
+.dsr-table .w-cash, .dsr-table .w-coin, .dsr-table .w-credit, .dsr-table .w-note { width: 13%; }
+.dsr-table .k-shop { --col: 22; }
+.dsr-table .k-bill { --col: 12; padding-left: 2px; padding-right: 2px; --pad: 2px; }
+.dsr-table .k-amt { --col: 14; }
+.dsr-table .k-cash, .dsr-table .k-coin, .dsr-table .k-credit, .dsr-table .k-note { --col: 13; }
+/* บรรทัดเดียวเสมอ: ย่อตัวอักษรให้พอดีช่อง (--k = ความกว้างข้อความต่อตัวอักษร 1px จาก summary.js) ตัวเลข/เลขที่บิลแสดงครบเสมอ
+   ชื่อร้านย่อได้ถึง 80% แล้วตัดด้วย … */
+.dsr-table .fit { white-space: nowrap; --pad: 6px; font-size: var(--dsr-fs); font-size: min(var(--dsr-fs), calc((var(--col) * 1cqw - 2 * var(--pad) - 3px) / var(--k, 1))); }
+.dsr-table .k-bill.fit { --pad: 2px; }
+.dsr-table .k-shop.fit { text-overflow: ellipsis; font-size: max(calc(var(--dsr-fs) * .8), min(var(--dsr-fs), calc((var(--col) * 1cqw - 2 * var(--pad) - 3px) / var(--k, 1)))); }
 .dsr-no { font-size: .8em; margin-right: 4px; }
 .dsr-exp td:first-child { vertical-align: top; height: 3.4em; padding-left: 10px; }
 .dsr-order td { height: 2em; font-size: .85em; }
@@ -686,7 +697,8 @@ a.card:active { background: var(--theme-pressed); }
   .dsr-co { font-size: 15pt; }
   .dsr-head h2 { font-size: 12pt; }
   .dsr-meta { font-size: 10.5pt; }
-  .dsr-table { font-size: 10pt; }
+  .dsr-scroll { overflow: visible; }
+  .dsr-sheet { min-width: 0; --dsr-fs: 10pt; }
   .dsr-table td { height: 9mm; }
   .dsr-table th { height: 6.5mm; }
   .dsr-exp td:first-child { height: 10mm; }
