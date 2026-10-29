@@ -695,11 +695,14 @@ a.card:active { background: var(--theme-pressed); }
 .dsr-order td { height: 2em; font-size: .85em; }
 .dsr-net td { height: 3.4em; }
 .dsr-end { break-inside: avoid; }
+.dsr-short .dsr-end { break-inside: auto; } /* บิลไม่เกิน 10 ใบ: ห้ามดันส่วนค่าใช้จ่ายทั้งก้อนไปหน้า 2 (iPad เคยแตก 2 หน้า) */
 .dsr-cost { margin-top: -1px; }
 .dsr-foot { margin-top: 10px; }
 /* ตอนพิมพ์: ทุกขนาดเป็นสัดส่วนของความกว้างกระดาษ (--mm = 1 มม. / --pt = 1pt ของพื้นที่พิมพ์ 190 มม. คิดจาก cqw ของ .dsr-sheet)
    ถ้าเบราว์เซอร์ (Safari บน iPad) จัดหน้าที่ความกว้างอื่นแล้วย่อทั้งหน้าลงกระดาษ ตัวอักษรและความสูงแถวยังเท่าเดิมเทียบกับกระดาษ
-   A4 ขอบ 10 มม.: ตัวอักษร 12pt (ต่ำสุด 11pt) / บิล 10 แถว + ค่าใช้จ่าย 10 แถว เต็มหน้าเดียว */
+   A4 ขอบ 10 มม.: ตัวอักษร 12pt (ต่ำสุด 11pt) / บิล 10 แถว + ค่าใช้จ่าย 10 แถว หน้าเดียว
+   ความสูง = min(สัดส่วนกระดาษ, มม. จริง) — Safari ย่อทั้งหน้า → มม. จริงเล็กกว่า แถวเตี้ยลงเท่าที่ตัวอักษรพอ / ไม่ย่อ → เท่ากัน
+   เผื่อที่ว่างท้ายหน้า ~35 มม. (Chrome) ให้หัว-ท้ายกระดาษที่ Safari พิมพ์เอง (ชื่อหน้า / URL) และความต่างของการวัดแถว */
 @media print {
   .dsr { box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: none !important; }
   .dsr-scroll { overflow: visible; }
@@ -709,10 +712,10 @@ a.card:active { background: var(--theme-pressed); }
   .dsr-head h2 { font-size: calc(13 * var(--pt)); line-height: 1.3; }
   .dsr-meta { font-size: calc(12 * var(--pt)); margin-bottom: calc(1.5 * var(--mm)); }
   .dsr-fill { min-width: calc(60 * var(--mm)); }
-  .dsr-table th { height: calc(11 * var(--mm)); }
-  .dsr-table td, .dsr-exp td:first-child, .dsr-net td { height: calc(var(--dsr-row) * var(--mm)); }
-  .dsr-sheet { --dsr-row: 9.6; }
-  .dsr-order td, .dsr-cost-h { height: calc(7 * var(--mm)) !important; }
+  .dsr-table th { height: min(calc(9 * var(--mm)), 9mm); padding-top: 1px; padding-bottom: 1px; }
+  .dsr-table td, .dsr-exp td:first-child, .dsr-net td { height: min(calc(var(--dsr-row) * var(--mm)), calc(var(--dsr-row) * 1mm)); padding-top: 1px; padding-bottom: 1px; }
+  .dsr-sheet { --dsr-row: 8.5; }
+  .dsr-order td, .dsr-cost-h { height: min(calc(6 * var(--mm)), 6mm) !important; }
   .dsr-order td { font-size: calc(11 * var(--pt)); }
   .dsr-no { font-size: .92em; }
   .dsr-table thead { display: table-header-group; }

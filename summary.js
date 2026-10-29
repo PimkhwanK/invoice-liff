@@ -463,7 +463,7 @@
     if (d.missing && d.missing.cash) miss.push('ใบเงินสด');
     var p = String(d.date).split('-');
     var dateCell = function (t) { return '<span class="dsr-u">' + esc(t) + '</span>'; };
-    return '<section class="card dsr" id="dsr">' +
+    return '<section class="card dsr' + (bills.length <= DAILY_MIN_ROWS ? ' dsr-short' : '') + '" id="dsr">' +
       (miss.length ? '<div class="alert warn no-print" id="dsr-missing">ยังไม่รวม' + miss.join(' และ ') + ' กรุณาแจ้งผู้ดูแลระบบ</div>' : '') +
       (hasSale ? '' : '<div class="alert warn no-print" id="dsr-no-credit">ช่องเครดิตยังไม่แสดง กรุณาแจ้งผู้ดูแลระบบ</div>') +
       '<div class="dsr-scroll"><div class="dsr-sheet">' +
