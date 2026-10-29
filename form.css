@@ -614,7 +614,7 @@ a.card:active { background: var(--theme-pressed); }
 .rep-acts { display: flex; gap: 8px; padding: 0 12px 16px; }
 .rep-acts .btn { flex: 1; }
 @media print {
-  @page { size: A4 portrait; margin: 12mm; }
+  @page { size: A4 portrait; margin: 10mm; }
   html, body, .wrap, #app, .screen, #view { background: none !important; }
   #tabbar, #dock, .topbar, .tabs, .no-print, .toast, #stock-pending-box { display: none !important; }
   .wrap, #app, .screen, #view { padding: 0 !important; margin: 0 !important; max-width: none !important; height: auto !important; overflow: visible !important; }
@@ -671,20 +671,25 @@ a.card:active { background: var(--theme-pressed); }
 .dsr-table td.c { text-align: center; }
 .dsr-table .r { text-align: right; padding-right: 6px; }
 .dsr-table .fill { background: var(--theme-ink-fill); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-/* สัดส่วนที่ผู้ใช้กำหนด (หลังรอบ 35) รวม 100 — --col ใช้คำนวณขนาดตัวอักษรของช่อง .fit ต้องตรงกับ width */
+/* สัดส่วนที่ผู้ใช้กำหนด (หลังรอบ 35) รวม 100 — --col ใช้คำนวณขนาดตัวอักษรของช่อง .fit ต้องตรงกับ width
+   เลขที่บิล 15% (เดิม 12) ให้ "เงินสด 1069-155" พิมพ์ได้ไม่ต่ำกว่า 11pt — เอามาจากเงินสด / เหรียญ / เครดิต ช่องละ 1% */
 .dsr-table .w-shop { width: 22%; }
-.dsr-table .w-bill { width: 12%; }
+.dsr-table .w-bill { width: 15%; }
 .dsr-table .w-amt { width: 14%; }
-.dsr-table .w-cash, .dsr-table .w-coin, .dsr-table .w-credit, .dsr-table .w-note { width: 13%; }
+.dsr-table .w-cash, .dsr-table .w-coin, .dsr-table .w-credit { width: 12%; }
+.dsr-table .w-note { width: 13%; }
 .dsr-table .k-shop { --col: 22; }
-.dsr-table .k-bill { --col: 12; padding-left: 2px; padding-right: 2px; --pad: 2px; }
+.dsr-table .k-bill { --col: 15; padding-left: 2px; padding-right: 2px; }
 .dsr-table .k-amt { --col: 14; }
-.dsr-table .k-cash, .dsr-table .k-coin, .dsr-table .k-credit, .dsr-table .k-note { --col: 13; }
+.dsr-table .k-cash, .dsr-table .k-coin, .dsr-table .k-credit { --col: 12; }
+.dsr-table .k-note { --col: 13; }
 /* บรรทัดเดียวเสมอ: ย่อตัวอักษรให้พอดีช่อง (--k = ความกว้างข้อความต่อตัวอักษร 1px จาก summary.js) ตัวเลข/เลขที่บิลแสดงครบเสมอ
-   ชื่อร้านย่อได้ถึง 80% แล้วตัดด้วย … */
+   ชื่อร้านย่อได้ถึง --dsr-min แล้วตัดด้วย … */
 .dsr-table .fit { white-space: nowrap; --pad: 6px; font-size: var(--dsr-fs); font-size: min(var(--dsr-fs), calc((var(--col) * 1cqw - 2 * var(--pad) - 3px) / var(--k, 1))); }
 .dsr-table .k-bill.fit { --pad: 2px; }
-.dsr-table .k-shop.fit { text-overflow: ellipsis; font-size: max(calc(var(--dsr-fs) * .8), min(var(--dsr-fs), calc((var(--col) * 1cqw - 2 * var(--pad) - 3px) / var(--k, 1)))); }
+.dsr-table .k-shop.fit { text-overflow: ellipsis; font-size: max(var(--dsr-min), min(var(--dsr-fs), calc((var(--col) * 1cqw - 2 * var(--pad) - 3px) / var(--k, 1)))); }
+.dsr-table th.fit { white-space: normal; line-height: 1.15; font-size: var(--dsr-fs); }
+.dsr-sheet { --dsr-min: calc(var(--dsr-fs) * .8); }
 .dsr-no { font-size: .8em; margin-right: 4px; }
 .dsr-exp td:first-child { vertical-align: top; height: 3.4em; padding-left: 10px; }
 .dsr-order td { height: 2em; font-size: .85em; }
@@ -692,18 +697,24 @@ a.card:active { background: var(--theme-pressed); }
 .dsr-end { break-inside: avoid; }
 .dsr-cost { margin-top: -1px; }
 .dsr-foot { margin-top: 10px; }
+/* ตอนพิมพ์: ทุกขนาดเป็นสัดส่วนของความกว้างกระดาษ (--mm = 1 มม. / --pt = 1pt ของพื้นที่พิมพ์ 190 มม. คิดจาก cqw ของ .dsr-sheet)
+   ถ้าเบราว์เซอร์ (Safari บน iPad) จัดหน้าที่ความกว้างอื่นแล้วย่อทั้งหน้าลงกระดาษ ตัวอักษรและความสูงแถวยังเท่าเดิมเทียบกับกระดาษ
+   A4 ขอบ 10 มม.: ตัวอักษร 12pt (ต่ำสุด 11pt) / บิล 10 แถว + ค่าใช้จ่าย 10 แถว เต็มหน้าเดียว */
 @media print {
-  .dsr { box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; font-size: 11pt; }
-  .dsr-co { font-size: 15pt; }
-  .dsr-head h2 { font-size: 12pt; }
-  .dsr-meta { font-size: 10.5pt; }
+  .dsr { box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: none !important; }
   .dsr-scroll { overflow: visible; }
-  .dsr-sheet { min-width: 0; --dsr-fs: 10pt; }
-  .dsr-table td { height: 9mm; }
-  .dsr-table th { height: 6.5mm; }
-  .dsr-exp td:first-child { height: 10mm; }
-  .dsr-net td { height: 11mm; }
-  .dsr-order td { height: 5.5mm; }
+  .dsr-sheet { min-width: 0; width: 100%; --mm: calc(100cqw / 190); --pt: calc(100cqw / 538.58); --dsr-fs: calc(12 * var(--pt)); --dsr-min: calc(11 * var(--pt)); }
+  .dsr-head { margin-bottom: calc(1.5 * var(--mm)); }
+  .dsr-co { font-size: calc(16 * var(--pt)); line-height: 1.3; }
+  .dsr-head h2 { font-size: calc(13 * var(--pt)); line-height: 1.3; }
+  .dsr-meta { font-size: calc(12 * var(--pt)); margin-bottom: calc(1.5 * var(--mm)); }
+  .dsr-fill { min-width: calc(60 * var(--mm)); }
+  .dsr-table th { height: calc(11 * var(--mm)); }
+  .dsr-table td, .dsr-exp td:first-child, .dsr-net td { height: calc(var(--dsr-row) * var(--mm)); }
+  .dsr-sheet { --dsr-row: 9.6; }
+  .dsr-order td, .dsr-cost-h { height: calc(7 * var(--mm)) !important; }
+  .dsr-order td { font-size: calc(11 * var(--pt)); }
+  .dsr-no { font-size: .92em; }
   .dsr-table thead { display: table-header-group; }
   .dsr-table tr { break-inside: avoid; }
 }

@@ -743,11 +743,13 @@ var LiffApp = (function () {
     if (printTitle === null) printTitle = document.title;
     document.title = title;
     var opened = false;
-    function before() { opened = true; }
+    function before() { opened = true; document.title = title; }
     window.addEventListener('beforeprint', before);
     window.addEventListener('afterprint', function done() {
       window.removeEventListener('afterprint', done);
-      restoreTitle();
+      // iPad/iPhone: afterprint มาทันทีหลัง window.print() ก่อนผู้ใช้กด "บันทึกเป็น PDF" จากหน้าแชร์ (ซึ่งใช้ชื่อหน้า ณ ตอนนั้น)
+      // → ไม่คืนชื่อ ปล่อยไว้จนเปลี่ยนหน้าจอ (shell.js ตั้งชื่อใหม่เอง)
+      if (isIos()) printTitle = null; else restoreTitle();
     });
     try { window.print(); } catch (e) { /* ถือว่าไม่ได้เปิด */ }
     setTimeout(function () {

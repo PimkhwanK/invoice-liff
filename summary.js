@@ -110,6 +110,7 @@
   async function show(params) {
     if (!pick.year) { pick.year = thisYear(); pick.month = Number(today().slice(5, 7)); yearPick = thisYear(); dayPick = today(); }
     if (params && params.print) return showDaily(params.print);
+    document.title = SUMMARY_TITLE; // กลับจากใบเช็คยอด (หน้าจอเดียวกัน shell ไม่ตั้งชื่อใหม่)
     setTab(params && params.tab, true);
     fetchDebt(); // รอบ 33: ลูกหนี้ (ทุกครั้งที่เข้าหน้า — ยอดเปลี่ยนตามวัน)
     var year = yearOf();
@@ -383,14 +384,20 @@
     LiffApp.outsideHelp(view, dailyUrl(date), 'หน้านี้เปิดหน้าต่างพิมพ์ไม่ได้ กด "เปิดในเบราว์เซอร์" หรือคัดลอกลิงก์ไปวางใน Safari แล้วกดพิมพ์ที่นั่น');
   }
 
-  // รอบ 35: แบบฟอร์มตาม Daily_Sales_Reconciliation.pdf ที่ผู้ใช้ให้มา — ตาราง 7 คอลัมน์ อย่างน้อย 15 แถว (บิลมากกว่านี้ → ตารางยาวขึ้น หน้าถัดไปพิมพ์หัวตารางซ้ำ)
-  var DAILY_MIN_ROWS = 15;
-  var DAILY_COST_ROWS = 5;   // หักค่าใช้จ่ายรายวัน 1–5 (เขียนมือ ไม่มีชื่อรายการสำเร็จรูป)
+  // รอบ 35: แบบฟอร์มตาม Daily_Sales_Reconciliation.pdf ที่ผู้ใช้ให้มา — ตาราง 7 คอลัมน์ อย่างน้อย 10 แถว (บิลมากกว่านี้ → ตารางยาวขึ้น หน้าถัดไปพิมพ์หัวตารางซ้ำ)
+  // หลังรอบ 35: 10 แถว + ค่าใช้จ่าย 10 แถว = A4 หน้าเดียวพอดี (ความสูงแถวใน form.css --dsr-row)
+  var DAILY_MIN_ROWS = 10;
+  var DAILY_COST_ROWS = 10;  // หักค่าใช้จ่ายรายวัน 1–10 (เขียนมือ ไม่มีชื่อรายการสำเร็จรูป)
   var DAILY_COLS = ['ชื่อร้าน', 'เลขที่บิล', 'ยอดเงิน', 'เงินสด', 'เหรียญ', 'เครดิต', 'หมายเหตุ/เช็ค'];
   var DAILY_W = ['shop', 'bill', 'amt', 'cash', 'coin', 'credit', 'note'];
 
+  var SUMMARY_TITLE = 'สรุปยอดขาย';
+  /** ชื่อไฟล์ PDF = ชื่อหน้า — Safari บน iPad ใช้ชื่อหน้า ณ ตอนสร้าง PDF จากหน้าแชร์ (หลัง window.print() คืนค่าไปแล้ว) จึงตั้งค้างไว้ตลอดที่เปิดใบเช็คยอด */
+  function dailyTitle(date) { return SUMMARY_TITLE + ' ' + LiffApp.fileDate(date); }
+
   async function showDaily(date) {
     if (!isIsoDate(date)) date = today();
+    document.title = dailyTitle(date);
     LiffApp.loading('กำลังเตรียมใบเช็คยอดขาย…', view);
     var r = await fetchDay(date);
     if (!Shell.isCurrent(scr) || scr.params.print !== date && isIsoDate(scr.params.print)) return;
@@ -407,7 +414,7 @@
       '<button type="button" class="btn primary" id="dsr-print">พิมพ์ / PDF</button></div>';
     dailyFitAll(view);
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { dailyFitAll(view); });
-    $('dsr-print').addEventListener('click', function () { LiffApp.printAs('สรุปยอดขาย ' + LiffApp.fileDate(date), function () { printFailed(date); }); });
+    $('dsr-print').addEventListener('click', function () { document.title = dailyTitle(date); LiffApp.printAs(dailyTitle(date), function () { printFailed(date); }); });
     $('dsr-back').addEventListener('click', function () { Shell.go('summary', {}); });
     Shell.drawn(scr);
   }
@@ -749,7 +756,7 @@
   }
 
   Shell.define('summary', {
-    title: 'สรุปยอดขาย',
+    title: SUMMARY_TITLE,
     build: function (s) {
       scr = s;
       s.root.innerHTML =
