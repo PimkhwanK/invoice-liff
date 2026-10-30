@@ -101,14 +101,24 @@
       $('btn-regen').addEventListener('click', regenerate);
       return;
     }
+    // รอบ 38: นอกแอป LINE (Safari / แอปบนหน้าจอโฮม / คอมพิวเตอร์) ลิงก์ Drive ของ LINE (openExternalBrowser=1) เปิดแล้วค้างจอขาว
+    //   → ใช้ไฟล์ที่โหลดมาแล้ว (iPhone/iPad = เมนูแชร์: พิมพ์ / บันทึก / ส่งต่อ, อื่น ๆ = เปิดไฟล์ในแท็บใหม่) / ไม่มีไฟล์ = หน้า Drive แบบเว็บ
+    var inLine = LiffApp.inClient();
+    S.dlLabel = inLine ? 'ดาวน์โหลด / ส่งต่อ' : 'พิมพ์ / ดาวน์โหลด';
     view.innerHTML =
       '<div class="pdf-bar" id="pdf-bar"><div class="zoom">' +
       '<button type="button" class="btn sm" id="zoom-out" aria-label="ย่อ">' + iconSvg('minus') + '</button><span id="zoom-label">พอดีจอ</span>' +
       '<button type="button" class="btn sm" id="zoom-in" aria-label="ขยาย">' + iconSvg('plus') + '</button></div><span class="grow"></span>' +
-      '<a class="btn sm primary" id="btn-download" href="' + esc(r.pdfUrl) + '" target="_blank" rel="noopener">' + iconSvg('download') + '<span>ดาวน์โหลด / ส่งต่อ</span></a></div>' +
+      '<a class="btn sm primary" id="btn-download" href="' + esc(inLine ? r.pdfUrl : webPdfUrl(r.pdfUrl)) + '" target="_blank" rel="noopener">' + iconSvg('download') + '<span>' + S.dlLabel + '</span></a></div>' +
       head(S.doc) + '<div class="pdf-pages" id="pages"></div>';
     $('btn-download').addEventListener('click', function (e) {
-      if (LiffApp.openExternal(r.pdfUrl)) e.preventDefault(); // ในแอป LINE: เปิดเบราว์เซอร์ภายนอก (ดาวน์โหลด/แชร์ได้)
+      if (inLine) {
+        if (LiffApp.openExternal(r.pdfUrl)) e.preventDefault(); // ในแอป LINE: เปิดเบราว์เซอร์ภายนอก (ดาวน์โหลด/แชร์ได้)
+        return;
+      }
+      if (!r.pdfBase64) return; // ไม่มีไฟล์ในมือ → ลิงก์หน้า Drive แบบเว็บ
+      e.preventDefault();
+      savePdf(r);
     });
     $('zoom-in').addEventListener('click', function () { setZoom(S.zoom + 1); });
     $('zoom-out').addEventListener('click', function () { setZoom(S.zoom - 1); });
@@ -119,7 +129,34 @@
   function showRenderError(msg) {
     $('pdf-bar').querySelector('.zoom').classList.add('hidden');
     $('pages').outerHTML = '<section class="card alert err" id="render-error">' + esc(msg) +
-      '<br>กด "ดาวน์โหลด / ส่งต่อ" แทน</section>';
+      '<br>กด "' + S.dlLabel + '" แทน</section>';
+  }
+
+  /** ลิงก์ Drive ของ LINE (drive.usercontent…&openExternalBrowser=1) → หน้าดูไฟล์ของ Drive ที่เปิดได้ในเบราว์เซอร์ทั่วไป */
+  function webPdfUrl(url) {
+    var m = String(url || '').match(/[?&]id=([A-Za-z0-9_-]+)/);
+    return m ? 'https://drive.google.com/file/d/' + m[1] + '/view' : url;
+  }
+
+  /** นอกแอป LINE: ไฟล์ PDF ที่โหลดมาแล้ว → iPhone/iPad เมนูแชร์ (มี "พิมพ์" / "บันทึกลงไฟล์") / อื่น ๆ เปิดในแท็บใหม่ (ตัวดู PDF ของเบราว์เซอร์มีปุ่มพิมพ์) */
+  function savePdf(r) {
+    var file;
+    try { file = LiffApp.pdfFile(r.pdfBase64, r.fileName || ('บิล ' + LiffApp.docNoText(S.no) + '.pdf')); } catch (e) { location.href = webPdfUrl(r.pdfUrl); return; }
+    if (LiffApp.isIos() && LiffApp.canShareFiles()) {
+      navigator.share({ files: [file] }).catch(function (err) {
+        if (!err || err.name !== 'AbortError') openBlob(file, r);
+      });
+      return;
+    }
+    openBlob(file, r);
+  }
+
+  function openBlob(file, r) {
+    var url = URL.createObjectURL(file);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+    var w = null;
+    try { w = window.open(url, '_blank'); } catch (e) { w = null; }
+    if (!w) location.href = webPdfUrl(r.pdfUrl); // เปิดแท็บใหม่ไม่ได้ → หน้า Drive แบบเว็บ
   }
 
   async function openPdf(b64, lib) {
@@ -212,7 +249,7 @@
     LiffApp.toast('สร้าง PDF ของบิล ' + LiffApp.docLabel(no, S.dt) + ' แล้ว');
     if (AppData.has()) AppData.patchDoc(no, { hasPdf: true, pdfUrl: r.pdfUrl }, S.dt);
     S.stale = false; // ไฟล์ที่ได้มาคือไฟล์ล่าสุดแล้ว
-    if (r.pdfBase64) return show({ document: S.doc, hasPdf: true, pdfUrl: r.pdfUrl, pdfBase64: r.pdfBase64 });
+    if (r.pdfBase64) return show({ document: S.doc, hasPdf: true, pdfUrl: r.pdfUrl, pdfBase64: r.pdfBase64, fileName: r.fileName });
     load(no, S.dt); // ได้ลิงก์แต่ไม่ได้ไฟล์มาด้วย → โหลดใหม่
   }
 
