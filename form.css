@@ -638,6 +638,15 @@ a.card:active { background: var(--theme-pressed); }
 
 /* ---------- รอบ 40: ยี่ห้อที่รู้จัก (หน้าจัดการสินค้า) — ปุ่มทุกอัน ≥ 48px ---------- */
 #brands-btn { min-height: 48px; margin-bottom: 8px; }
+/* รอบ 42: ปุ่มเติมยี่ห้อ (คู่กับรายชื่อยี่ห้อ) + แผ่นตัวอย่าง/สรุป */
+.bf-row { display: flex; gap: 8px; }
+.bf-row .btn { flex: 1; min-width: 0; min-height: 48px; justify-content: center; margin-bottom: 8px; }
+#kb-fill { min-height: 48px; margin-top: 12px; }
+.bf-sheet footer .btn { min-height: 48px; }
+.bf-h { font-size: 15px; margin: 14px 0 4px; }
+.bf-plan .item { padding-top: 6px; padding-bottom: 6px; }
+#bf-many li, #bf-none li { min-height: 48px; }
+#bf-counts .item { display: flex; align-items: center; }
 .kb-add { display: flex; gap: 8px; }
 .kb-add input { flex: 1; min-width: 0; }
 .kb-add .btn, .kb-del { min-height: 48px; min-width: 48px; justify-content: center; }

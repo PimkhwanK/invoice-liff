@@ -163,7 +163,8 @@
     view.innerHTML = '<section class="card"><p class="small muted" style="margin-top:0" id="products-note">สินค้าใช้ร่วมกันทั้งใบเงินสดและใบกำกับภาษี</p>' +
       '<div class="toolbar"><input type="search" id="q" placeholder="ค้นหาสินค้า" autocomplete="off">' +
       '<button type="button" class="btn primary" id="add">' + iconSvg('plus') + '<span>เพิ่มสินค้า</span></button></div>' +
-      '<button type="button" class="btn block" id="brands-btn">รายชื่อยี่ห้อ</button>' + // รอบ 40
+      '<div class="bf-row"><button type="button" class="btn" id="brands-btn">รายชื่อยี่ห้อ</button>' + // รอบ 40
+      '<button type="button" class="btn" id="bf-btn">เติมยี่ห้อให้สินค้า</button></div>' + // รอบ 42
       '<ul class="list" id="list"></ul></section>';
     var q = $('q');
     function draw() {
@@ -183,6 +184,7 @@
     });
     $('add').addEventListener('click', function () { productForm(null, rows); });
     $('brands-btn').addEventListener('click', knownBrandsForm);
+    $('bf-btn').addEventListener('click', brandFillFlow);
     draw();
   }
 
@@ -196,7 +198,8 @@
       '<p class="small muted" style="margin-top:0">เมนู "เติมยี่ห้อ" ในชีตจะหาชื่อเหล่านี้ในชื่อสินค้า แล้วใส่ยี่ห้อให้</p>' +
       '<div class="kb-add"><input type="text" id="kb-input" maxlength="50" autocomplete="off" placeholder="พิมพ์ชื่อยี่ห้อ" aria-label="ชื่อยี่ห้อที่จะเพิ่ม">' +
       '<button type="button" class="btn" id="kb-add">' + iconSvg('plus') + '<span>เพิ่ม</span></button></div>' +
-      '<ul class="list kb-list" id="kb-list"><li class="empty">กำลังโหลด…</li></ul><div id="kb-in"></div><div id="kb-msg"></div>',
+      '<ul class="list kb-list" id="kb-list"><li class="empty">กำลังโหลด…</li></ul><div id="kb-in"></div><div id="kb-msg"></div>' +
+      '<button type="button" class="btn block" id="kb-fill" disabled>เติมยี่ห้อให้สินค้า</button>', // รอบ 42: บันทึกรายชื่อ (ถ้าแก้) แล้วดูตัวอย่าง
       '<button type="button" class="btn grow" data-close>ยกเลิก</button><button type="button" class="btn primary grow" id="kb-save" disabled>บันทึก</button>');
     var el = function (sel) { return sh.el.querySelector(sel); };
     function draw() {
@@ -231,23 +234,110 @@
       return msg(r.error || 'โหลดไม่สำเร็จ ลองอีกครั้ง', true);
     }
     list = r.known.slice();
+    var loaded = JSON.stringify(list);
     draw();
     el('#kb-in').innerHTML = r.inProducts.length ? '<p class="small muted" id="kb-products">ยี่ห้อที่ใส่ในสินค้าแล้ว (รวมให้เอง ไม่ต้องเพิ่ม): ' + esc(r.inProducts.join(', ')) + '</p>' : '';
     el('#kb-save').disabled = false;
-    el('#kb-save').addEventListener('click', async function () {
-      var btn = this;
+    el('#kb-fill').disabled = false;
+    /** บันทึกรายชื่อ — true = สำเร็จ */
+    async function save(btn, label) {
       if (el('#kb-input').value.trim()) add(); // พิมพ์ค้างไว้แต่ยังไม่กดเพิ่ม
       btn.disabled = true;
       btn.textContent = 'กำลังบันทึก…';
       var s = await tapi('setKnownBrands', { brands: list });
       btn.disabled = false;
-      btn.textContent = 'บันทึก';
+      btn.textContent = label;
       if (!s.ok) {
-        if (fatal(s)) { sh.close(); return; }
-        return msg(s.error || 'บันทึกไม่สำเร็จ ลองอีกครั้ง', true);
+        if (fatal(s)) { sh.close(); return false; }
+        msg(s.error || 'บันทึกไม่สำเร็จ ลองอีกครั้ง', true);
+        return false;
       }
-      sh.close();
       LiffApp.toast('บันทึกรายชื่อยี่ห้อแล้ว ' + s.known.length + ' ยี่ห้อ');
+      return true;
+    }
+    el('#kb-save').addEventListener('click', async function () {
+      if (await save(this, 'บันทึก')) sh.close();
+    });
+    el('#kb-fill').addEventListener('click', async function () {
+      if (el('#kb-input').value.trim()) add();
+      if (JSON.stringify(list) !== loaded && !(await save(this, 'เติมยี่ห้อให้สินค้า'))) return;
+      sh.close();
+      brandFillFlow();
+    });
+  }
+
+  /**
+   * รอบ 42: เติมยี่ห้อให้สินค้า (เหมือนเมนูชีต "เติมยี่ห้อ") — ดูตัวอย่างก่อน (brandFill dryRun) → "ยืนยันเติม" → สรุปผล
+   * ตรงหลายยี่ห้อ / ยังไม่มียี่ห้อ แตะเพื่อเลือกเองในฟอร์มสินค้า / requestId ต่อการเปิดแผ่น (กดสองครั้ง = เติมครั้งเดียว)
+   */
+  async function brandFillFlow() {
+    var requestId = LiffApp.uuid();
+    var sh = LiffApp.sheet('เติมยี่ห้อให้สินค้า', '<div id="bf-body"></div><div id="bf-msg"></div>',
+      '<button type="button" class="btn grow" data-close id="bf-cancel">ยกเลิก</button><button type="button" class="btn primary grow" id="bf-ok" disabled>ยืนยันเติม</button>');
+    sh.el.classList.add('bf-sheet');
+    var el = function (sel) { return sh.el.querySelector(sel); };
+    var byName = function (a, b) { return a.localeCompare(b, 'th'); };
+    LiffApp.loading('กำลังตรวจชื่อสินค้า…', el('#bf-body'));
+    function item(x, extra) {
+      return '<li role="button" tabindex="0" class="tap item" data-bc="' + esc(x.barcode) + '"><div class="t"><div class="n">' + esc(x.name) + '</div>' +
+        (extra ? '<div class="s">' + esc(extra) + '</div>' : '') + '</div></li>';
+    }
+    function rest(r) {
+      return (r.many.length ? '<h3 class="bf-h" id="bf-many-h">ชื่อตรงหลายยี่ห้อ ' + r.many.length + ' รายการ (ไม่เติม แตะเพื่อเลือกเอง)</h3><ul class="list" id="bf-many">' +
+          r.many.map(function (x) { return item(x, x.brands.join(' / ')); }).join('') + '</ul>' : '') +
+        (r.noneItems.length ? '<h3 class="bf-h" id="bf-none-h">ยังไม่มียี่ห้อ ' + r.noneItems.length + ' รายการ (แตะเพื่อใส่เอง)</h3><ul class="list" id="bf-none">' +
+          r.noneItems.map(function (x) { return item(x); }).join('') + '</ul>' : '');
+    }
+    function fail(text) { el('#bf-msg').innerHTML = '<div class="alert err" id="bf-error">' + errText(text) + '</div>'; }
+    // แตะสินค้าที่ต้องเลือกเอง → ฟอร์มสินค้า / ปิดแผ่น → วาดรายการสินค้าใหม่ (ระหว่างแผ่นเปิดอยู่ update() ไม่วาด)
+    sh.el.addEventListener('click', function (e) {
+      if (e.target === sh.el || (e.target.closest && e.target.closest('[data-close]'))) { setTimeout(update, 0); return; }
+      var li = e.target.closest && e.target.closest('#bf-many li[data-bc], #bf-none li[data-bc]');
+      if (!li) return;
+      var p = AppData.products().find(function (x) { return x.barcode === li.dataset.bc; });
+      sh.close();
+      if (p) productForm(p, AppData.products());
+    });
+    var dry = await tapi('brandFill', { dryRun: true });
+    if (!dry.ok) {
+      if (fatal(dry)) { sh.close(); return; }
+      el('#bf-body').innerHTML = '';
+      return fail(dry.error || 'ตรวจไม่สำเร็จ ลองอีกครั้ง');
+    }
+    var groups = {};
+    dry.fills.forEach(function (x) { (groups[x.brand] = groups[x.brand] || []).push(x); });
+    el('#bf-body').innerHTML = '<p id="bf-sum" style="margin-top:0"><b>' + (dry.filled ? 'จะเติมยี่ห้อ ' + dry.filled + ' รายการ' : 'ไม่มีสินค้าที่เติมยี่ห้อได้') + '</b></p>' +
+      (dry.filled ? '<p class="small muted">เติมเฉพาะสินค้าที่ยังไม่มียี่ห้อ ไม่แก้ยี่ห้อที่ใส่ไว้แล้ว</p><div id="bf-plan">' + Object.keys(groups).sort(byName).map(function (b) {
+        return '<h3 class="bf-h">' + esc(b) + ' (' + groups[b].length + ')</h3><ul class="list bf-plan">' +
+          groups[b].map(function (x) { return '<li class="item" data-bc="' + esc(x.barcode) + '"><div class="n">' + esc(x.name) + '</div></li>'; }).join('') + '</ul>';
+      }).join('') + '</div>' : '') + rest(dry);
+    if (!dry.filled) { el('#bf-ok').classList.add('hidden'); el('#bf-cancel').textContent = 'ปิด'; }
+    else el('#bf-ok').disabled = false;
+    el('#bf-ok').addEventListener('click', async function () {
+      var btn = this;
+      btn.disabled = true;
+      btn.textContent = 'กำลังเติม…';
+      var r = await tapi('brandFill', { requestId: requestId });
+      if (!r.ok) {
+        btn.disabled = false;
+        btn.textContent = 'ยืนยันเติม';
+        if (fatal(r)) { sh.close(); return; }
+        return fail(r.error || 'เติมไม่สำเร็จ ลองอีกครั้ง');
+      }
+      // ข้อมูลในแอป + หน้าสต็อกดึงใหม่ (จัดกลุ่มตามยี่ห้อใหม่ทันที)
+      (r.products || []).forEach(function (p) {
+        var old = AppData.products().find(function (x) { return x.barcode === p.barcode; });
+        if (old && (old.brand || '') !== (p.brand || '')) AppData.putProduct(Object.assign({}, old, { brand: p.brand }));
+      });
+      document.dispatchEvent(new Event('app:stock-stale'));
+      btn.classList.add('hidden');
+      el('#bf-cancel').textContent = 'ปิด';
+      el('#bf-msg').innerHTML = '';
+      el('#bf-body').innerHTML = '<div class="alert ok" id="bf-done">' + (r.filled ? 'เติมยี่ห้อแล้ว ' + r.filled + ' รายการ' : 'ไม่มีสินค้าที่ต้องเติมแล้ว') + '</div>' +
+        (r.filled ? '<ul class="list" id="bf-counts">' + Object.keys(r.byBrand).sort(byName).map(function (b) {
+          return '<li class="item"><div class="n grow">' + esc(b) + '</div><b class="num">' + r.byBrand[b] + ' รายการ</b></li>';
+        }).join('') + '</ul>' : '') + rest(r);
+      sh.el.querySelector('.body').scrollTop = 0;
     });
   }
 

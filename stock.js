@@ -39,6 +39,9 @@
 
   // ---------- ข้อมูล
 
+  // รอบ 42: เติมยี่ห้อจากหน้าจัดการแล้ว → เปิดหน้าสต็อกครั้งถัดไปดึงใหม่ (จัดกลุ่มตามยี่ห้อใหม่)
+  document.addEventListener('app:stock-stale', function () { fetched = false; });
+
   function load() {
     return tapi('stockData').then(function (r) {
       if (!r.ok) return r;
