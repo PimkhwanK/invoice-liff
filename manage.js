@@ -162,7 +162,9 @@
     var rows = r.products;
     view.innerHTML = '<section class="card"><p class="small muted" style="margin-top:0" id="products-note">สินค้าใช้ร่วมกันทั้งใบเงินสดและใบกำกับภาษี</p>' +
       '<div class="toolbar"><input type="search" id="q" placeholder="ค้นหาสินค้า" autocomplete="off">' +
-      '<button type="button" class="btn primary" id="add">' + iconSvg('plus') + '<span>เพิ่มสินค้า</span></button></div><ul class="list" id="list"></ul></section>';
+      '<button type="button" class="btn primary" id="add">' + iconSvg('plus') + '<span>เพิ่มสินค้า</span></button></div>' +
+      '<button type="button" class="btn block" id="brands-btn">ยี่ห้อที่รู้จัก</button>' + // รอบ 40
+      '<ul class="list" id="list"></ul></section>';
     var q = $('q');
     function draw() {
       var term = q.value.trim().toLowerCase();
@@ -180,7 +182,73 @@
       if (li) productForm(rows.find(function (p) { return p.barcode === li.dataset.bc; }), rows);
     });
     $('add').addEventListener('click', function () { productForm(null, rows); });
+    $('brands-btn').addEventListener('click', knownBrandsForm);
     draw();
+  }
+
+  /**
+   * รอบ 40: ยี่ห้อที่รู้จัก (แท็บตั้งค่าของใบกำกับ ใช้ร่วมทั้งสองประเภท) — เมนู "เติมยี่ห้อ" ในชีตหาคำเหล่านี้ในชื่อสินค้า
+   * เพิ่ม: พิมพ์แล้วกด "เพิ่ม" (หรือ Enter) / ลบ: ปุ่ม × / บันทึกทั้งรายการครั้งเดียว (setKnownBrands)
+   */
+  async function knownBrandsForm() {
+    var list = [];
+    var sh = LiffApp.sheet('ยี่ห้อที่รู้จัก',
+      '<p class="small muted" style="margin-top:0">เมนู "เติมยี่ห้อ" ในชีตจะหาชื่อเหล่านี้ในชื่อสินค้า แล้วใส่ยี่ห้อให้</p>' +
+      '<div class="kb-add"><input type="text" id="kb-input" maxlength="50" autocomplete="off" placeholder="พิมพ์ชื่อยี่ห้อ" aria-label="ชื่อยี่ห้อที่จะเพิ่ม">' +
+      '<button type="button" class="btn" id="kb-add">' + iconSvg('plus') + '<span>เพิ่ม</span></button></div>' +
+      '<ul class="list kb-list" id="kb-list"><li class="empty">กำลังโหลด…</li></ul><div id="kb-in"></div><div id="kb-msg"></div>',
+      '<button type="button" class="btn grow" data-close>ยกเลิก</button><button type="button" class="btn primary grow" id="kb-save" disabled>บันทึก</button>');
+    var el = function (sel) { return sh.el.querySelector(sel); };
+    function draw() {
+      el('#kb-list').innerHTML = list.length ? list.map(function (b, i) {
+        return '<li class="kb-item"><span class="grow">' + esc(b) + '</span><button type="button" class="btn ghost kb-del" data-i="' + i + '" aria-label="ลบ ' + esc(b) + '">' + iconSvg('x') + '</button></li>';
+      }).join('') : '<li class="empty">ยังไม่มียี่ห้อที่รู้จัก</li>';
+    }
+    function msg(text, bad) { el('#kb-msg').innerHTML = text ? '<div class="alert ' + (bad ? 'err' : 'warn') + '" id="kb-error" style="margin-top:10px">' + errText(text) + '</div>' : ''; }
+    function add() {
+      var v = el('#kb-input').value.trim();
+      if (!v) return;
+      var key = v.toLowerCase().split(' ').join('');
+      if (list.some(function (b) { return b.toLowerCase().split(' ').join('') === key; })) { msg('มียี่ห้อ "' + v + '" อยู่แล้ว'); return; }
+      list.push(v);
+      el('#kb-input').value = '';
+      msg('');
+      draw();
+      el('#kb-input').focus();
+    }
+    el('#kb-add').addEventListener('click', add);
+    el('#kb-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+    el('#kb-list').addEventListener('click', function (e) {
+      var b = e.target.closest('.kb-del');
+      if (!b) return;
+      list.splice(Number(b.dataset.i), 1);
+      draw();
+    });
+    var r = await tapi('knownBrands', {});
+    if (!r.ok) {
+      if (fatal(r)) { sh.close(); return; }
+      el('#kb-list').innerHTML = '';
+      return msg(r.error || 'โหลดไม่สำเร็จ ลองอีกครั้ง', true);
+    }
+    list = r.known.slice();
+    draw();
+    el('#kb-in').innerHTML = r.inProducts.length ? '<p class="small muted" id="kb-products">ยี่ห้อที่ใส่ในสินค้าแล้ว (รวมให้เอง ไม่ต้องเพิ่ม): ' + esc(r.inProducts.join(', ')) + '</p>' : '';
+    el('#kb-save').disabled = false;
+    el('#kb-save').addEventListener('click', async function () {
+      var btn = this;
+      if (el('#kb-input').value.trim()) add(); // พิมพ์ค้างไว้แต่ยังไม่กดเพิ่ม
+      btn.disabled = true;
+      btn.textContent = 'กำลังบันทึก…';
+      var s = await tapi('setKnownBrands', { brands: list });
+      btn.disabled = false;
+      btn.textContent = 'บันทึก';
+      if (!s.ok) {
+        if (fatal(s)) { sh.close(); return; }
+        return msg(s.error || 'บันทึกไม่สำเร็จ ลองอีกครั้ง', true);
+      }
+      sh.close();
+      LiffApp.toast('บันทึกยี่ห้อที่รู้จักแล้ว ' + s.known.length + ' ยี่ห้อ');
+    });
   }
 
   /** รอบ 39: ยี่ห้อที่มีอยู่แล้ว (ไม่ซ้ำ ไม่สนตัวพิมพ์) เรียง ก-ฮ — ตัวเลือกของช่องยี่ห้อ (พิมพ์ใหม่ได้) */

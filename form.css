@@ -632,6 +632,16 @@ a.card:active { background: var(--theme-pressed); }
   .rep-bh .icon { display: none !important; }
 }
 
+/* ---------- รอบ 40: ยี่ห้อที่รู้จัก (หน้าจัดการสินค้า) — ปุ่มทุกอัน ≥ 48px ---------- */
+#brands-btn { min-height: 48px; margin-bottom: 8px; }
+.kb-add { display: flex; gap: 8px; }
+.kb-add input { flex: 1; min-width: 0; }
+.kb-add .btn, .kb-del { min-height: 48px; min-width: 48px; justify-content: center; }
+.kb-list { margin-top: 8px; }
+.sheet footer:has(#kb-save) .btn { min-height: 48px; }
+.kb-item { display: flex; align-items: center; gap: 8px; padding-top: 0; padding-bottom: 0; }
+.kb-item .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
 /* ---------- รอบ 39: กลุ่มตามยี่ห้อ (หน้าสต็อก / รายงานสต็อก) — หัวกลุ่มเป็นปุ่มพับ/กาง สูง ≥ 48px ---------- */
 .st-brand { border-top: 1px solid var(--theme-line); }
 .st-brand:first-of-type { border-top: 0; }

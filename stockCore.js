@@ -561,6 +561,58 @@ function stockBrandGuess(name) {
   return m ? m[1] : '';
 }
 
+// รอบ 40: ยี่ห้อที่รู้จัก — แท็บตั้งค่า (ไฟล์ใบกำกับ) ชื่อค่า known_brands = JSON array / ไม่มีแถวนี้ = ค่าเริ่มต้น / แก้ได้ในหน้าจัดการสินค้า
+var STOCK_KNOWN_BRANDS_KEY = 'known_brands';
+var STOCK_KNOWN_BRANDS_DEFAULT = ['เอ็มดี', 'คูลลี่', 'เจเล่', 'อาซ้อ', 'นาริตะ', 'จินยี่', 'เมจิ', 'ไร่ส้ม'];
+var STOCK_KNOWN_BRANDS_MAX = 200;
+
+/** ข้อความสำหรับเทียบ: ตัวเล็ก + ไม่มีช่องว่าง ("เอ็ม ดี" = "เอ็มดี") */
+function stockBrandKey(v) {
+  return stockText(v).toLowerCase().split(/\s+/).join('');
+}
+
+/** ตัดช่องว่างหัวท้าย / ตัดค่าว่าง / ตัดซ้ำ (ไม่สนตัวพิมพ์ ช่องว่าง — เก็บแบบที่พบก่อน) */
+function stockBrandUnique(list) {
+  var seen = {};
+  return (list || []).map(stockText).filter(function (b) {
+    var k = stockBrandKey(b);
+    if (!k || seen[k]) return false;
+    seen[k] = true;
+    return true;
+  });
+}
+
+/** ค่า known_brands จากแท็บตั้งค่า → รายการ (ไม่มีค่า = ค่าเริ่มต้น 8 ยี่ห้อ / [] = ไม่มียี่ห้อที่รู้จัก) */
+function stockKnownBrands(v) {
+  if (v === undefined || v === null || v === '') return STOCK_KNOWN_BRANDS_DEFAULT.slice();
+  return stockBrandUnique(Array.isArray(v) ? v : String(v).split(','));
+}
+
+/**
+ * ยี่ห้อในรายการที่ชื่อสินค้ามีอยู่ (ตำแหน่งใดก็ได้ ไม่สนตัวพิมพ์ / ช่องว่าง)
+ * ยี่ห้อที่เป็นส่วนหนึ่งของอีกยี่ห้อที่ตรงด้วย (เช่น "ส้ม" กับ "ไร่ส้ม") นับเฉพาะยี่ห้อที่ยาวกว่า
+ */
+function stockBrandMatches(name, brands) {
+  var n = stockBrandKey(name);
+  var hits = stockBrandUnique(brands).filter(function (b) { return n.indexOf(stockBrandKey(b)) >= 0; });
+  return hits.filter(function (b) {
+    var k = stockBrandKey(b);
+    return !hits.some(function (o) { var ok = stockBrandKey(o); return ok.length > k.length && ok.indexOf(k) >= 0; });
+  });
+}
+
+/**
+ * ยี่ห้อของสินค้าจากชื่อ (เมนู "เติมยี่ห้อ"): ยี่ห้อที่รู้จัก ก่อน คำหลัง "ตรา/ยี่ห้อ"
+ * @returns {{brand: string, from: 'known'|'mark'|'', many: string[]}} many = ตรงหลายยี่ห้อ (ไม่เติม ให้ผู้ใช้เลือกเอง)
+ */
+function stockBrandPick(name, brands) {
+  var m = stockBrandMatches(name, brands);
+  if (m.length === 1) return { brand: m[0], from: 'known', many: [] };
+  if (m.length > 1) return { brand: '', from: '', many: m };
+  var g = stockBrandGuess(name);
+  return { brand: g, from: g ? 'mark' : '', many: [] };
+}
+
 /**
  * สินค้า → กลุ่มตามยี่ห้อ (ลำดับสินค้าในกลุ่มตามที่ส่งมา) เรียงชื่อยี่ห้อ ก-ฮ / ไม่มียี่ห้อ = "ไม่ระบุยี่ห้อ" อยู่ท้ายสุด
  * ยี่ห้อเทียบแบบตัดช่องว่างหัวท้าย ไม่สนตัวพิมพ์เล็ก/ใหญ่ (ชื่อที่แสดง = แบบที่พบก่อน)
@@ -587,6 +639,14 @@ if (typeof module !== 'undefined' && module.exports) {
     STOCK_NO_BRAND: STOCK_NO_BRAND,
     stockBrandGuess: stockBrandGuess,
     stockBrandGroups: stockBrandGroups,
+    STOCK_KNOWN_BRANDS_KEY: STOCK_KNOWN_BRANDS_KEY,
+    STOCK_KNOWN_BRANDS_DEFAULT: STOCK_KNOWN_BRANDS_DEFAULT,
+    STOCK_KNOWN_BRANDS_MAX: STOCK_KNOWN_BRANDS_MAX,
+    stockBrandKey: stockBrandKey,
+    stockBrandUnique: stockBrandUnique,
+    stockKnownBrands: stockKnownBrands,
+    stockBrandMatches: stockBrandMatches,
+    stockBrandPick: stockBrandPick,
     STOCK_REPORT_MAX_DAYS: STOCK_REPORT_MAX_DAYS,
     stockReportRange: stockReportRange,
     stockReportRows: stockReportRows,
