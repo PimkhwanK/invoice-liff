@@ -163,7 +163,7 @@
     view.innerHTML = '<section class="card"><p class="small muted" style="margin-top:0" id="products-note">สินค้าใช้ร่วมกันทั้งใบเงินสดและใบกำกับภาษี</p>' +
       '<div class="toolbar"><input type="search" id="q" placeholder="ค้นหาสินค้า" autocomplete="off">' +
       '<button type="button" class="btn primary" id="add">' + iconSvg('plus') + '<span>เพิ่มสินค้า</span></button></div>' +
-      '<button type="button" class="btn block" id="brands-btn">ยี่ห้อที่รู้จัก</button>' + // รอบ 40
+      '<button type="button" class="btn block" id="brands-btn">รายชื่อยี่ห้อ</button>' + // รอบ 40
       '<ul class="list" id="list"></ul></section>';
     var q = $('q');
     function draw() {
@@ -192,7 +192,7 @@
    */
   async function knownBrandsForm() {
     var list = [];
-    var sh = LiffApp.sheet('ยี่ห้อที่รู้จัก',
+    var sh = LiffApp.sheet('รายชื่อยี่ห้อ',
       '<p class="small muted" style="margin-top:0">เมนู "เติมยี่ห้อ" ในชีตจะหาชื่อเหล่านี้ในชื่อสินค้า แล้วใส่ยี่ห้อให้</p>' +
       '<div class="kb-add"><input type="text" id="kb-input" maxlength="50" autocomplete="off" placeholder="พิมพ์ชื่อยี่ห้อ" aria-label="ชื่อยี่ห้อที่จะเพิ่ม">' +
       '<button type="button" class="btn" id="kb-add">' + iconSvg('plus') + '<span>เพิ่ม</span></button></div>' +
@@ -202,7 +202,7 @@
     function draw() {
       el('#kb-list').innerHTML = list.length ? list.map(function (b, i) {
         return '<li class="kb-item"><span class="grow">' + esc(b) + '</span><button type="button" class="btn ghost kb-del" data-i="' + i + '" aria-label="ลบ ' + esc(b) + '">' + iconSvg('x') + '</button></li>';
-      }).join('') : '<li class="empty">ยังไม่มียี่ห้อที่รู้จัก</li>';
+      }).join('') : '<li class="empty">ยังไม่มีรายชื่อยี่ห้อ</li>';
     }
     function msg(text, bad) { el('#kb-msg').innerHTML = text ? '<div class="alert ' + (bad ? 'err' : 'warn') + '" id="kb-error" style="margin-top:10px">' + errText(text) + '</div>' : ''; }
     function add() {
@@ -247,7 +247,7 @@
         return msg(s.error || 'บันทึกไม่สำเร็จ ลองอีกครั้ง', true);
       }
       sh.close();
-      LiffApp.toast('บันทึกยี่ห้อที่รู้จักแล้ว ' + s.known.length + ' ยี่ห้อ');
+      LiffApp.toast('บันทึกรายชื่อยี่ห้อแล้ว ' + s.known.length + ' ยี่ห้อ');
     });
   }
 
