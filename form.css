@@ -626,7 +626,27 @@ a.card:active { background: var(--theme-pressed); }
   .rep-table { font-size: 10pt; }
   .rep-table thead { display: table-header-group; }
   .rep-table tr { break-inside: avoid; }
+  /* รอบ 39: กลุ่มที่พับบนจอ พิมพ์ครบทุกแถว */
+  .rep-g.folded tr { display: table-row !important; }
+  .rep-bh { min-height: 0 !important; padding: 0 !important; }
+  .rep-bh .icon { display: none !important; }
 }
+
+/* ---------- รอบ 39: กลุ่มตามยี่ห้อ (หน้าสต็อก / รายงานสต็อก) — หัวกลุ่มเป็นปุ่มพับ/กาง สูง ≥ 48px ---------- */
+.st-brand { border-top: 1px solid var(--theme-line); }
+.st-brand:first-of-type { border-top: 0; }
+.st-bh { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 48px; padding: 8px 2px; margin: 0; background: none; border: 0; color: var(--theme-text); font: inherit; text-align: left; cursor: pointer; }
+.st-bh .icon { width: 18px; height: 18px; flex: none; color: var(--theme-text-2); transition: transform .15s; }
+.st-bh[aria-expanded="true"] .icon { transform: rotate(90deg); }
+.st-bh .bh-n { flex: 1; min-width: 0; font-weight: 700; font-size: 16px; overflow-wrap: anywhere; }
+.st-bh .bh-c, .st-bh .bh-t { font-size: 13px; color: var(--theme-text-2); white-space: nowrap; }
+.st-bh .bh-t b { font-size: 15px; color: var(--theme-text); }
+.rep-table .rep-gh th, .rep-table .rep-gh td { background: var(--theme-primary-soft); font-weight: 700; }
+.rep-table .rep-gh th { text-align: left; padding: 0 5px; }
+.rep-table .rep-bh { flex-wrap: wrap; column-gap: 6px; row-gap: 0; }
+.rep-table .rep-bh .bh-n { flex: none; font-size: 13px; white-space: nowrap; }
+.rep-table .rep-bh .bh-c { font-size: 12px; }
+.rep-g.folded tr:not(.rep-gh) { display: none; }
 
 /* รอบ 26: ความเคลื่อนไหวสต็อก — บรรทัดแรก (ประเภท อ้างอิง · ชื่อร้าน) บรรทัดเดียว ยาวตัดด้วย … */
 .mv .mv-h { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

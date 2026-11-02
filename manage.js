@@ -167,24 +167,35 @@
     function draw() {
       var term = q.value.trim().toLowerCase();
       $('list').innerHTML = rows.filter(function (p) {
-        return !term || (p.name + ' ' + printedBarcode(p.barcode)).toLowerCase().indexOf(term) >= 0;
+        return !term || (p.name + ' ' + printedBarcode(p.barcode) + ' ' + (p.brand || '')).toLowerCase().indexOf(term) >= 0;
       }).map(function (p) {
         return '<li role="button" tabindex="0" class="tap item" data-bc="' + esc(p.barcode) + '"><div class="t"><div class="n">' + esc(p.name) + '</div>' +
-          '<div class="s">' + esc(printedBarcode(p.barcode) || 'ไม่มีบาร์โค้ด') + ' · ' + esc(p.unit) + '</div></div><div class="right"><b class="num">' + formatMoney(p.price) + '</b><br>' +
+          '<div class="s">' + esc(printedBarcode(p.barcode) || 'ไม่มีบาร์โค้ด') + ' · ' + esc(p.unit) + (p.brand ? ' · ' + esc(p.brand) : '') + '</div></div><div class="right"><b class="num">' + formatMoney(p.price) + '</b><br>' +
           (p.active ? '' : '<span class="badge gray">เลิกขาย</span>') + '</div></li>';
       }).join('') || '<li class="empty">ไม่พบสินค้า</li>';
     }
     q.addEventListener('input', draw);
     $('list').addEventListener('click', function (e) {
       var li = e.target.closest('li[data-bc]');
-      if (li) productForm(rows.find(function (p) { return p.barcode === li.dataset.bc; }));
+      if (li) productForm(rows.find(function (p) { return p.barcode === li.dataset.bc; }), rows);
     });
-    $('add').addEventListener('click', function () { productForm(null); });
+    $('add').addEventListener('click', function () { productForm(null, rows); });
     draw();
   }
 
-  function productForm(p) {
-    var v = p || { barcode: '', name: '', unit: 'ลัง', price: '', active: true };
+  /** รอบ 39: ยี่ห้อที่มีอยู่แล้ว (ไม่ซ้ำ ไม่สนตัวพิมพ์) เรียง ก-ฮ — ตัวเลือกของช่องยี่ห้อ (พิมพ์ใหม่ได้) */
+  function brandsOf(rows) {
+    var seen = {};
+    return (rows || []).map(function (p) { return String(p.brand || '').trim(); }).filter(function (b) {
+      var k = b.toLowerCase();
+      if (!b || seen[k]) return false;
+      seen[k] = true;
+      return true;
+    }).sort(function (a, b) { return a.localeCompare(b, 'th'); });
+  }
+
+  function productForm(p, rows) {
+    var v = p || { barcode: '', name: '', unit: 'ลัง', price: '', active: true, brand: '' };
     var requestId = LiffApp.uuid(); // รอบ 24: กันเพิ่มสินค้าซ้ำ (สินค้าไม่มีบาร์โค้ดได้รหัส NB- ใหม่ทุกครั้ง)
     var shown = p ? printedBarcode(v.barcode) : '';
     var sh = LiffApp.sheet(p ? 'แก้ไขสินค้า' : 'เพิ่มสินค้าใหม่',
@@ -195,6 +206,10 @@
       '<div class="two"><div><label class="f" for="p-unit">หน่วย</label><input type="text" id="p-unit" value="' + esc(v.unit) + '" list="units"></div>' +
       '<div><label class="f" for="p-price">ราคา' + (CASH ? '' : ' (รวม VAT)') + '</label><input type="number" id="p-price" class="num" min="0" step="any" inputmode="decimal" placeholder="0.00" value="' + esc(v.price) + '"></div></div>' +
       '<datalist id="units"><option value="ลัง"><option value="กล่อง"><option value="แพ็ค"></datalist>' +
+      // รอบ 39: ยี่ห้อ/หมวด — เลือกจากที่มี หรือพิมพ์ใหม่ (หน้าสต็อกจัดกลุ่มตามช่องนี้ / เว้นว่าง = ไม่ระบุยี่ห้อ)
+      '<div class="field"><label class="f" for="p-brand">ยี่ห้อ/หมวด (ไม่บังคับ)</label><input type="text" id="p-brand" maxlength="50" list="brands" autocomplete="off" placeholder="เลือกหรือพิมพ์ใหม่" value="' + esc(v.brand || '') + '">' +
+      '<datalist id="brands">' + brandsOf(rows).map(function (b) { return '<option value="' + esc(b) + '">'; }).join('') + '</datalist>' +
+      '<div class="hint">หน้าสต็อกจัดกลุ่มสินค้าตามช่องนี้</div></div>' +
       '<div class="field"><label class="chk"><input type="checkbox" id="p-active"' + (v.active ? ' checked' : '') + '> ยังขายอยู่</label></div><div id="p-msg"></div>',
       '<button type="button" class="btn grow" data-close>ยกเลิก</button><button type="button" class="btn primary grow" id="p-save">บันทึก</button>');
     sh.el.querySelector('#p-save').addEventListener('click', async function () {
@@ -204,7 +219,8 @@
         name: sh.el.querySelector('#p-name').value,
         unit: sh.el.querySelector('#p-unit').value,
         price: sh.el.querySelector('#p-price').value.trim() || '0', // รอบ 13: ช่องว่าง = 0
-        active: sh.el.querySelector('#p-active').checked
+        active: sh.el.querySelector('#p-active').checked,
+        brand: sh.el.querySelector('#p-brand').value.trim()
       };
       btn.disabled = true;
       btn.textContent = 'กำลังบันทึก…';

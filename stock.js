@@ -170,17 +170,78 @@
 
   function drawLists() {
     var t = term.trim().toLowerCase();
-    var list = products().filter(function (p) { return !t || (p.name + ' ' + p.barcode).toLowerCase().indexOf(t) >= 0; });
+    var list = products().filter(function (p) { return !t || (p.name + ' ' + p.barcode + ' ' + (p.brand || '')).toLowerCase().indexOf(t) >= 0; });
     var watch = list.filter(function (p) { return p.level === 'neg' || p.level === 'low'; });
     var ok = sorted(list.filter(function (p) { return p.level === 'ok'; }), true);
     var off = sorted(list.filter(function (p) { return p.level === 'off'; }), false);
-    $('stock-lists').innerHTML =
-      (watch.length ? '<section class="card" id="stock-watch"><h2>ต้องดู <span class="count">' + watch.length + ' รายการ</span></h2><ul class="list">' + watch.map(row).join('') + '</ul></section>' : '') +
+    var watchHtml = watch.length ? '<section class="card" id="stock-watch"><h2>ต้องดู <span class="count">' + watch.length + ' รายการ</span></h2><ul class="list">' + watch.map(row).join('') + '</ul></section>' : '';
+    if (hasBrands()) {
+      $('stock-lists').innerHTML = watchHtml + brandListHtml(list, !!t);
+      drawLow();
+      return;
+    }
+    $('stock-lists').innerHTML = watchHtml +
       '<section class="card" id="stock-all"><h2>สินค้า <span class="count">' + (ok.length + off.length) + ' รายการ</span></h2>' +
       (ok.length ? '<ul class="list">' + ok.map(row).join('') + '</ul>' : '') +
       (off.length ? '<div class="st-grp">ยังไม่นับสต็อก (ไม่ตัดอัตโนมัติ) กด "แก้ยอดตามที่นับ" เพื่อเริ่ม</div><ul class="list" id="stock-off">' + off.map(row).join('') + '</ul>' : '') +
       (!list.length ? '<div class="empty">ไม่พบสินค้าที่ค้นหา</div>' : '') + '</section>';
     drawLow();
+  }
+
+  // ---------- รอบ 39: จัดกลุ่มตามยี่ห้อ (มีสินค้าที่ใส่ยี่ห้ออย่างน้อย 1 รายการ — ไม่มีเลย = รายการแบบเดิม)
+  //   หัวกลุ่มแตะเพื่อพับ/กาง (จำไว้ในเครื่อง 'stock-fold' ใช้ร่วมกับรายงาน) / ค้นหาอยู่ = กางทุกกลุ่มที่มีสินค้าตรง
+  //   ในกลุ่ม: สินค้าที่นับแล้วเรียงตามตัวเลือก (รวมติดลบ/ใกล้หมด ซึ่งอยู่ใน "ต้องดู" ด้วย) แล้วสินค้าที่ยังไม่นับ / ยอดรวม = คงเหลือของสินค้าที่นับแล้ว
+
+  var folded = null; // { key ยี่ห้อ: true } = พับอยู่
+
+  function foldMap() {
+    if (!folded) {
+      var kept = LiffApp.remember('stock-fold');
+      folded = kept && kept.data && typeof kept.data === 'object' && !Array.isArray(kept.data) ? kept.data : {};
+    }
+    return folded;
+  }
+
+  function isFolded(key) { return !!foldMap()[key]; }
+
+  function setFold(key, on) {
+    var f = foldMap();
+    if (on) f[key] = true; else delete f[key];
+    LiffApp.keep('stock-fold', f);
+  }
+
+  function hasBrands() { return products().some(function (p) { return String(p.brand || '').trim() !== ''; }); }
+
+  /** ยอดรวมคงเหลือของสินค้าที่นับแล้ว (หน่วยเดียวกันทั้งกลุ่ม → ต่อท้ายหน่วย) */
+  function totalText(items, qtyOf) {
+    var sum = 0;
+    var units = {};
+    items.forEach(function (p) { sum += qtyOf(p); units[p.unit] = true; });
+    var u = Object.keys(units);
+    return qtyText(Math.round(sum * 1000) / 1000) + (u.length === 1 && u[0] ? ' ' + u[0] : '');
+  }
+
+  /** ปุ่มหัวกลุ่ม (สูง ≥ 48px) — open = กางอยู่ */
+  function brandHead(g, open, count, total) {
+    return '<button type="button" class="st-bh" data-fold="' + esc(g.key) + '" aria-expanded="' + open + '">' + iconSvg('next') +
+      '<span class="bh-n">' + esc(g.label) + '</span><span class="bh-c">' + count + ' รายการ</span>' +
+      (total ? '<span class="bh-t">รวม <b class="num">' + esc(total) + '</b></span>' : '') + '</button>';
+  }
+
+  function brandListHtml(list, searching) {
+    var groups = stockBrandGroups(list);
+    var anyOff = list.some(function (p) { return p.level === 'off'; });
+    return '<section class="card" id="stock-all"><h2>สินค้า <span class="count">' + list.length + ' รายการ · ตามยี่ห้อ</span></h2>' +
+      groups.map(function (g) {
+        var counted = g.items.filter(function (p) { return p.tracked; });
+        var items = sorted(counted, true).concat(sorted(g.items.filter(function (p) { return !p.tracked; }), false));
+        var open = searching || !isFolded(g.key);
+        return '<div class="st-brand" data-brand="' + esc(g.key) + '">' +
+          brandHead(g, open, items.length, counted.length ? totalText(counted, function (p) { return p.qty; }) : '') +
+          (open ? '<ul class="list">' + items.map(row).join('') + '</ul>' : '') + '</div>';
+      }).join('') +
+      (anyOff ? '<div class="hint">สินค้าที่ "ยังไม่เริ่มนับ" ไม่ตัดอัตโนมัติ กด "แก้ยอดตามที่นับ" เพื่อเริ่ม</div>' : '') +
+      (!list.length ? '<div class="empty">ไม่พบสินค้าที่ค้นหา</div>' : '') + '</section>';
   }
 
   // ---------- ของเข้า / ของออก / แก้ยอดตามที่นับ
@@ -471,21 +532,52 @@
     return esc((signed && n > 0 ? '+' : '') + qtyText(n));
   }
 
+  /** รอบ 39: แถวรายงานแยกกลุ่มตามยี่ห้อ (ไม่มีแถวไหนมียี่ห้อ → null = ตารางแบบเดิม) + ยอดรวมของแต่ละคอลัมน์ */
+  var REP_SUM_KEYS = ['open', 'inQty', 'sale', 'out', 'adjust', 'close'];
+  function repGroups(rows) {
+    if (!rows.some(function (x) { return String(x.brand || '').trim() !== ''; })) return null;
+    return stockBrandGroups(rows).map(function (g) {
+      var sum = {};
+      REP_SUM_KEYS.forEach(function (k) {
+        sum[k] = Math.round(g.items.reduce(function (a, x) { return a + (Number(x[k]) || 0); }, 0) * 1000) / 1000;
+      });
+      var units = {};
+      g.items.forEach(function (x) { units[x.unit] = true; });
+      var u = Object.keys(units);
+      return { key: g.key, label: g.label, items: g.items, sum: sum, unit: u.length === 1 ? u[0] : '' };
+    });
+  }
+
+  function repRow(x) {
+    return '<tr data-bc="' + esc(x.barcode) + '"><td class="nm">' + esc(x.name) + (x.startedIn ? '<div class="small muted">เริ่มนับ ' + esc(thDate(x.since)) + '</div>' : '') + '</td>' +
+      '<td>' + esc(x.unit) + '</td><td class="num">' + repNum(x.open) + '</td><td class="num">' + repNum(x.inQty) + '</td>' +
+      '<td class="num">' + repNum(x.sale) + '</td><td class="num">' + repNum(x.out) + '</td><td class="num">' + repNum(x.adjust, true) + '</td>' +
+      '<td class="num"><b>' + repNum(x.close) + '</b></td></tr>';
+  }
+
+  /** หัวกลุ่ม = แถวยอดรวมของกลุ่ม (ปุ่มพับ/กาง) / พับ = ซ่อนแถวสินค้าบนจอ (พิมพ์แสดงทุกแถวเสมอ) */
+  function repGroupBody(g) {
+    var open = !isFolded(g.key);
+    var s = g.sum;
+    return '<tbody class="rep-g' + (open ? '' : ' folded') + '" data-brand="' + esc(g.key) + '"><tr class="rep-gh">' +
+      '<th scope="rowgroup" class="nm"><button type="button" class="st-bh rep-bh" data-fold="' + esc(g.key) + '" aria-expanded="' + open + '">' +
+      iconSvg('next') + '<span class="bh-n">' + esc(g.label) + '</span><span class="bh-c">' + g.items.length + ' รายการ</span></button></th>' +
+      '<td>' + esc(g.unit) + '</td><td class="num">' + repNum(s.open) + '</td><td class="num">' + repNum(s.inQty) + '</td>' +
+      '<td class="num">' + repNum(s.sale) + '</td><td class="num">' + repNum(s.out) + '</td><td class="num">' + repNum(s.adjust, true) + '</td>' +
+      '<td class="num"><b>' + repNum(s.close) + '</b></td></tr>' + g.items.map(repRow).join('') + '</tbody>';
+  }
+
   function drawReport() {
     var r = repData;
     var rows = r.rows || [];
+    var groups = repGroups(rows);
     $('rep-body').innerHTML =
       '<section class="card rep-sheet" id="rep-sheet">' +
       '<div class="rep-head"><div class="rep-co" id="rep-company">' + esc(r.company || '') + '</div><h2>รายงานสต็อก</h2>' +
       '<div id="rep-range">ช่วงวันที่ ' + esc(repRangeText(r)) + '</div>' +
       '<div class="small muted" id="rep-printed">พิมพ์เมื่อ ' + esc(repPrintedText(r)) + '</div></div>' +
-      (rows.length ? '<div class="rep-scroll"><table class="rep-table" id="rep-table"><thead><tr>' + REP_COLS.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') +
-        '</tr></thead><tbody>' + rows.map(function (x) {
-          return '<tr data-bc="' + esc(x.barcode) + '"><td class="nm">' + esc(x.name) + (x.startedIn ? '<div class="small muted">เริ่มนับ ' + esc(thDate(x.since)) + '</div>' : '') + '</td>' +
-            '<td>' + esc(x.unit) + '</td><td class="num">' + repNum(x.open) + '</td><td class="num">' + repNum(x.inQty) + '</td>' +
-            '<td class="num">' + repNum(x.sale) + '</td><td class="num">' + repNum(x.out) + '</td><td class="num">' + repNum(x.adjust, true) + '</td>' +
-            '<td class="num"><b>' + repNum(x.close) + '</b></td></tr>';
-        }).join('') + '</tbody></table></div>' : '<div class="empty" id="rep-empty">ยังไม่มีสินค้าที่นับสต็อกในช่วงนี้</div>') +
+      (rows.length ? '<div class="rep-scroll"><table class="rep-table' + (groups ? ' grouped' : '') + '" id="rep-table"><thead><tr>' + REP_COLS.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') +
+        '</tr></thead>' + (groups ? groups.map(repGroupBody).join('') : '<tbody>' + rows.map(repRow).join('') + '</tbody>') + '</table></div>' : '<div class="empty" id="rep-empty">ยังไม่มีสินค้าที่นับสต็อกในช่วงนี้</div>') +
       '<div class="small muted rep-note">' + rows.length + ' รายการ · ไม่นับบิลที่ยกเลิกและบิลทดสอบ 0000 · แสดงเฉพาะสินค้าที่เริ่มนับสต็อกแล้ว</div></section>' +
       (rows.length ? '<div class="rep-acts no-print"><button type="button" class="btn primary" id="rep-print">พิมพ์ / PDF</button>' +
         '<button type="button" class="btn" id="rep-xlsx">ดาวน์โหลด Excel</button></div>' : '');
@@ -522,10 +614,22 @@
       ['พิมพ์เมื่อ ' + repPrintedText(r)],
       [],
       head
-    ].concat(r.rows.map(function (x) {
+    ];
+    var line = function (x) {
       return [{ v: x.name + (x.startedIn ? ' (เริ่มนับ ' + thDate(x.since) + ')' : ''), s: 'text' }, { v: x.unit, s: 'text' },
         x.open, x.inQty, x.sale, x.out, { v: x.adjust, s: 'signed' }, { v: x.close, s: 'bold' }];
-    }), [[], [{ v: 'ไม่นับบิลที่ยกเลิกและบิลทดสอบ 0000 · แสดงเฉพาะสินค้าที่เริ่มนับสต็อกแล้ว', s: 'small' }]]);
+    };
+    // รอบ 39: แยกกลุ่มตามยี่ห้อ — แถวหัวกลุ่ม (ตัวหนา) = ยอดรวมของกลุ่ม แล้วตามด้วยสินค้าในกลุ่ม (ไฟล์มีทุกกลุ่มเสมอ ไม่ขึ้นกับที่พับบนจอ)
+    var groups = repGroups(r.rows);
+    if (groups) {
+      groups.forEach(function (g) {
+        var s = g.sum;
+        rows.push([{ v: g.label + ' (' + g.items.length + ' รายการ)', s: 'bold' }, { v: g.unit, s: 'bold' },
+          { v: s.open, s: 'bold' }, { v: s.inQty, s: 'bold' }, { v: s.sale, s: 'bold' }, { v: s.out, s: 'bold' }, { v: s.adjust, s: 'signed' }, { v: s.close, s: 'bold' }]);
+        g.items.forEach(function (x) { rows.push(line(x)); });
+      });
+    } else rows = rows.concat(r.rows.map(line));
+    rows = rows.concat([[], [{ v: 'ไม่นับบิลที่ยกเลิกและบิลทดสอบ 0000 · แสดงเฉพาะสินค้าที่เริ่มนับสต็อกแล้ว', s: 'small' }]]);
     var name = repFileName(r) + '.xlsx';
     var bytes = Xlsx.build({ sheet: 'รายงานสต็อก', cols: [34, 8, 11, 10, 11, 13, 12, 14], rows: rows, merges: ['A1:H1', 'A2:H2', 'A3:H3', 'A4:H4'] });
     // รอบ 31: เบราว์เซอร์ในแอป LINE ดาวน์โหลดไม่ได้ (ไม่มี error) → ทางเลือกทันที
@@ -551,6 +655,19 @@
   }
 
   function tap(e) {
+    // รอบ 39: หัวกลุ่มยี่ห้อ (ปุ่ม — Enter ของปุ่มเกิด click เองอยู่แล้ว จึงรับเฉพาะ click)
+    var fold = e.type === 'click' && e.target.closest && e.target.closest('[data-fold]');
+    if (fold) {
+      var key = fold.dataset.fold;
+      var inReport = !!fold.closest('#rep-table');
+      if (!inReport && term.trim()) return; // ค้นหาอยู่ = กางทุกกลุ่ม
+      setFold(key, fold.getAttribute('aria-expanded') === 'true');
+      if (inReport) drawReport(); else drawLists();
+      var again = $(inReport ? 'rep-table' : 'stock-all');
+      var b = again && Array.from(again.querySelectorAll('[data-fold]')).find(function (x) { return x.dataset.fold === key; });
+      if (b) b.focus();
+      return;
+    }
     var li = e.target.closest && e.target.closest('li[data-bc].st-row');
     if (li) Shell.go('stock', { barcode: li.dataset.bc });
   }

@@ -119,7 +119,8 @@ function stockProducts(products, stockRows) {
     return {
       barcode: bc, name: stockText(p.name), unit: stockText(p.unit), active: p.active !== false,
       tracked: tracked, qty: tracked ? stockRound(Number(s.stock_qty) || 0) : 0, since: tracked ? stockText(s.stock_since) : '',
-      lowAlert: stockAlertValue(s.low_alert) // รอบ 22: null = ไม่เตือน (รอบ 23)
+      lowAlert: stockAlertValue(s.low_alert), // รอบ 22: null = ไม่เตือน (รอบ 23)
+      brand: stockText(p.brand) // รอบ 39: ยี่ห้อ/หมวด ('' = ไม่ระบุ)
     };
   });
 }
@@ -541,14 +542,51 @@ function stockReportRows(o) {
     var a = acc[bc];
     var p = info[bc] || {};
     return {
-      barcode: bc, name: stockText(p.name) || a.name, unit: stockText(p.unit), since: a.since, startedIn: a.startedIn,
+      barcode: bc, name: stockText(p.name) || a.name, unit: stockText(p.unit), brand: stockText(p.brand), since: a.since, startedIn: a.startedIn,
       open: a.open, inQty: a.inQty, sale: a.sale, out: a.out, adjust: a.adjust, close: a.close
     };
   }).sort(function (x, y) { return String(x.name).localeCompare(String(y.name), 'th'); });
 }
 
+// ---------- รอบ 39: ยี่ห้อ/หมวด (จัดกลุ่มหน้าสต็อก / รายงานสต็อก)
+
+var STOCK_NO_BRAND = 'ไม่ระบุยี่ห้อ';
+
+/**
+ * เดายี่ห้อจากชื่อสินค้า (เมนู "เติมยี่ห้อ") — คำที่ตามหลัง "ตรา" หรือ "ยี่ห้อ" จนถึงช่องว่าง / ตัวเลข / วงเล็บ
+ * เช่น "น้ำส้ม ตราลิซ่า 1 ลิตร" → "ลิซ่า" / เดาไม่ได้ → ''
+ */
+function stockBrandGuess(name) {
+  var m = /(?:ตรา|ยี่ห้อ)\s*([^\s\d()\[\]{}<>,.;:'"/|+*&#%@!?-]+)/.exec(stockText(name));
+  return m ? m[1] : '';
+}
+
+/**
+ * สินค้า → กลุ่มตามยี่ห้อ (ลำดับสินค้าในกลุ่มตามที่ส่งมา) เรียงชื่อยี่ห้อ ก-ฮ / ไม่มียี่ห้อ = "ไม่ระบุยี่ห้อ" อยู่ท้ายสุด
+ * ยี่ห้อเทียบแบบตัดช่องว่างหัวท้าย ไม่สนตัวพิมพ์เล็ก/ใหญ่ (ชื่อที่แสดง = แบบที่พบก่อน)
+ * @param {object[]} list สินค้า { brand, ... }
+ * @returns {Array<{key:string, label:string, items:object[]}>} key '' = ไม่ระบุยี่ห้อ
+ */
+function stockBrandGroups(list) {
+  var by = {};
+  var keys = [];
+  (list || []).forEach(function (p) {
+    var label = stockText(p.brand);
+    var key = label.toLowerCase();
+    if (!by[key]) { by[key] = { key: key, label: label || STOCK_NO_BRAND, items: [] }; keys.push(key); }
+    by[key].items.push(p);
+  });
+  return keys.sort(function (a, b) {
+    if (!a !== !b) return a ? -1 : 1;
+    return by[a].label.localeCompare(by[b].label, 'th');
+  }).map(function (k) { return by[k]; });
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    STOCK_NO_BRAND: STOCK_NO_BRAND,
+    stockBrandGuess: stockBrandGuess,
+    stockBrandGroups: stockBrandGroups,
     STOCK_REPORT_MAX_DAYS: STOCK_REPORT_MAX_DAYS,
     stockReportRange: stockReportRange,
     stockReportRows: stockReportRows,
