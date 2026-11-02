@@ -211,6 +211,9 @@ var Shell = (function () {
   function back() { if (depth > 0) history.back(); }
   function isCurrent(s) { return current === s; }
   function scrollTop(s) { if (current === s) appEl.scrollTop = 0; else s.scroll = 0; }
+  // รอบ 41: ตำแหน่งเลื่อนของหน้าจอ (หน้าสต็อกจำไว้ก่อนเข้าหน้าสินค้า แล้วคืนตอนกลับ)
+  function scrollY(s) { return current === s ? appEl.scrollTop : s.scroll || 0; }
+  function scrollTo(s, y) { if (current === s) appEl.scrollTop = y; else s.scroll = y; }
 
   window.addEventListener('popstate', function () {
     if (!ready) return;
@@ -225,8 +228,14 @@ var Shell = (function () {
     var b = e.target.closest('button[data-go]');
     if (!b) return;
     var name = b.dataset.go;
-    if (current && current.name === name) { appEl.scrollTop = 0; return; }
+    if (current && current.name === name) {
+      if (current.def.tabAgain && current.def.tabAgain(current)) return; // รอบ 41: เช่น หน้าสินค้าในสต็อก → กลับรายการสินค้า
+      appEl.scrollTop = 0;
+      return;
+    }
     var params = screens[name] ? screens[name].params : {};
+    // รอบ 41: หน้าจอเลือกได้ว่าจะกลับมาที่ไหน (สต็อก: ไม่พากลับเข้าหน้าสินค้าที่ค้างไว้ — เดิมวนกลับเข้าหน้าสินค้าเดิมทุกครั้ง ออกไม่ได้)
+    if (screens[name] && screens[name].def.resume) params = screens[name].def.resume(params);
     // รอบ 34: ออกบิล / ประวัติ → โหมดของหน้าจอที่อยู่ (ถ้ามี) หรือโหมดที่ใช้ล่าสุด
     if (MODED[name]) return goMode(name, params, current && MODED[current.name] ? LiffApp.MODE : lastMode());
     go(name, params);
@@ -375,7 +384,7 @@ var Shell = (function () {
 
   return {
     define: define, has: has, go: go, back: back, canBack: canBack, setParams: setParams, drawn: drawn, isCurrent: isCurrent,
-    scrollTop: scrollTop, boot: boot, debug: Debug,
+    scrollTop: scrollTop, scrollY: scrollY, scrollTo: scrollTo, boot: boot, debug: Debug,
     lastMode: lastMode, goMode: goMode // รอบ 34
   };
 })();

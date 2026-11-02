@@ -28,6 +28,9 @@
   // การเรียงรายการ "สินค้า" (กลุ่ม "ต้องดู" อยู่บนสุดเสมอ ไม่เรียงตามนี้) จำไว้ในเครื่อง ('stock-sort')
   var SORTS = { desc: 'คงเหลือ มากสุด → น้อยสุด', asc: 'คงเหลือ น้อยสุด → มากสุด', name: 'ชื่อ ก-ฮ' };
   var sortBy = null;
+  // รอบ 41: กลับจากหน้าสินค้า (stock?barcode=) → รายการสินค้าเสมอ + ตำแหน่งเลื่อนเดิม
+  var fromList = false;   // เข้าหน้าสินค้าจากรายการในหน้านี้ (รายการก่อนหน้าใน history = รายการสินค้า)
+  var listScroll = null;  // ตำแหน่งเลื่อนของรายการตอนแตะสินค้า
   function $(id) { return scr.$(id); }
   function qtyText(n) { return formatQty(n); }
 
@@ -53,8 +56,10 @@
       if (kept && kept.data && Array.isArray(kept.data.products)) data = kept.data;
     }
     if (params.barcode) return showHistory(params.barcode);
+    fromList = false;
     if (data) {
       drawList();
+      if (listScroll !== null) { Shell.scrollTo(scr, listScroll); listScroll = null; }
       if (!fetched) {
         LiffApp.syncing(true, scr);
         var r0 = await load();
@@ -345,6 +350,7 @@
     $('sub').textContent = p.tracked ? 'เริ่มนับ ' + formatThaiDateShort(String(p.since).slice(0, 10)) : 'ยังไม่เริ่มนับสต็อก';
     var level = p.tracked ? stockLevel({ stock_qty: p.qty, stock_since: p.since, low_alert: p.lowAlert === null || p.lowAlert === undefined ? '' : p.lowAlert }) : 'off';
     view.innerHTML =
+      '<div class="hist-up"><button type="button" class="btn ghost" id="hist-up">' + iconSvg('back') + '<span>รายการสินค้า</span></button></div>' + // รอบ 41: ปุ่มกลับบนสุด (ไม่ต้องเลื่อนหา)
       '<section class="card"><div class="row"><span class="grow">คงเหลือ</span>' +
       (p.tracked ? '<span class="st-big ' + level + '"><b class="num" id="hist-qty">' + esc(qtyText(p.qty)) + '</b> ' + esc(p.unit) + '</span>' : '<span class="muted">ยังไม่เริ่มนับ</span>') + '</div>' +
       '<div id="alert-box" class="alert-box"></div></section>' +
@@ -360,9 +366,8 @@
       }).join('') : '<li class="empty">ยังไม่มีความเคลื่อนไหว</li>') + '</ul></section>' +
       '<div class="card" style="background:transparent;box-shadow:none;padding:0"><button type="button" class="btn block" id="hist-back">' + iconSvg('back') + '<span>กลับไปรายการสินค้า</span></button></div>';
     drawAlert(p);
-    $('hist-back').addEventListener('click', function () {
-      if (Shell.canBack()) Shell.back(); else Shell.go('stock', {}, { replace: true });
-    });
+    $('hist-back').addEventListener('click', backToList);
+    $('hist-up').addEventListener('click', backToList);
     Shell.drawn(scr);
   }
 
@@ -654,6 +659,19 @@
     if (LiffApp.isIos() && LiffApp.standalone()) repHelp('ถ้าไฟล์ไม่ขึ้น', 'กดดาวน์โหลด');
   }
 
+  /** รอบ 41: รายการสินค้า (ค่าในหน้าสต็อกเดิม เช่น แท็บ ของใกล้หมด ยกเว้นสินค้าที่ดูอยู่) */
+  function listParams(p) {
+    var q = {};
+    Object.keys(p || {}).forEach(function (k) { if (k !== 'barcode') q[k] = p[k]; });
+    return q;
+  }
+
+  /** รอบ 41: หน้าสินค้า → รายการสินค้าเสมอ (เข้ามาจากรายการ = ย้อน history / เปิดมาตรง ๆ หรือจากหน้าอื่น = แทนที่ ไม่พาไปหน้าอื่น) */
+  function backToList() {
+    if (fromList && Shell.canBack()) Shell.back();
+    else Shell.go('stock', listParams(scr.params), { replace: true });
+  }
+
   function tap(e) {
     // รอบ 39: หัวกลุ่มยี่ห้อ (ปุ่ม — Enter ของปุ่มเกิด click เองอยู่แล้ว จึงรับเฉพาะ click)
     var fold = e.type === 'click' && e.target.closest && e.target.closest('[data-fold]');
@@ -669,7 +687,10 @@
       return;
     }
     var li = e.target.closest && e.target.closest('li[data-bc].st-row');
-    if (li) Shell.go('stock', { barcode: li.dataset.bc });
+    if (!li) return;
+    listScroll = Shell.scrollY(scr);
+    fromList = true;
+    Shell.go('stock', Object.assign(listParams(scr.params), { barcode: li.dataset.bc }));
   }
 
   Shell.define('stock', {
@@ -689,6 +710,13 @@
       $('btn-out').addEventListener('click', function () { openMove('out'); });
       $('btn-count').addEventListener('click', function () { openMove('count'); });
     },
-    show: function (s, params) { return show(s, params); }
+    show: function (s, params) { return show(s, params); },
+    // รอบ 41: แถบเมนูล่าง "สต็อก" — จากหน้าอื่นกลับมาที่รายการสินค้า (ไม่ใช่หน้าสินค้าที่ค้างไว้) / แตะซ้ำบนหน้าสินค้า = กลับรายการ
+    resume: listParams,
+    tabAgain: function (s) {
+      if (!s.params.barcode) return false;
+      backToList();
+      return true;
+    }
   });
 })();
