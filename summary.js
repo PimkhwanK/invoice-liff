@@ -31,6 +31,12 @@
   var tab = '';                      // แท็บที่แสดง
   var TOP_SHOW = 5;                  // ร้านค้า / สินค้า: แสดงกี่อันดับก่อนกด "ดูทั้งหมด"
   var showAll = {};                  // 'shops' / 'products' → กดดูทั้งหมดแล้ว
+  // รอบ 44: กำไร/ขาดทุน — คำนวณที่เซิร์ฟเวอร์ตามช่วงเวลา (profitData) จำไว้ในหน่วยความจำต่อช่วง+การเรียง / ปุ่มตาซ่อนตัวเลข (จำในเครื่อง ค่าเริ่มต้น = แสดง)
+  var profits = {};      // key ของช่วง → คำตอบ profitData
+  var profitWait = {};   // key → Promise
+  var shopBy = 'sat';    // แท็บร้านค้า: ตามยอดขาย / ตามกำไร
+  var eyeOff = (function () { var k = LiffApp.remember('profit-eye'); return !!(k && k.data === 'off'); })();
+  var COST_HINT = 'กรอกต้นทุนที่หน้าสต็อก (ปุ่มของเข้า) หรือคอลัมน์ "ต้นทุนเริ่มต้น (บาท)" ในชีต';
   var MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
   function $(id) { return scr.$(id); }
 
@@ -110,6 +116,8 @@
   async function show(params) {
     if (!pick.year) { pick.year = thisYear(); pick.month = Number(today().slice(5, 7)); yearPick = thisYear(); dayPick = today(); }
     if (params && params.print) return showDaily(params.print);
+    if (params && params.bills) return showProfitBills(); // รอบ 44: กำไรรายบิล
+    profits = {}; // รอบ 44: เข้าหน้าใหม่ = คำนวณกำไรใหม่ (มีบิลใหม่ / แก้ต้นทุนแล้ว)
     document.title = SUMMARY_TITLE; // กลับจากใบเช็คยอด (หน้าจอเดียวกัน shell ไม่ตั้งชื่อใหม่)
     setTab(params && params.tab, true);
     fetchDebt(); // รอบ 33: ลูกหนี้ (ทุกครั้งที่เข้าหน้า — ยอดเปลี่ยนตามวัน)
@@ -206,6 +214,7 @@
     $('sum-period').addEventListener('change', onPeriod);
     $('sum-body').addEventListener('change', function (e) {
       if (e.target.name === 'prod-by') { prodBy = e.target.value; drawBody(); }
+      if (e.target.name === 'shop-by') { shopBy = e.target.value; drawBody(); } // รอบ 44
     });
   }
 
@@ -272,6 +281,7 @@
     if (v.missing.tax) miss.push('ใบกำกับภาษี');
     if (v.missing.cash) miss.push('ใบเงินสด');
     lastView = v;
+    needProfit();
     drawKey();
     markTab();
     var miss1 = miss.length ? '<div class="alert warn" id="sum-missing" style="margin:12px">ยังไม่รวม' + miss.join(' และ ') + ' กรุณาแจ้งผู้ดูแลระบบ</div>' : '';
@@ -320,14 +330,96 @@
     box.innerHTML =
       '<div class="key"><span class="l">ยอดขาย (บาท)</span><b class="num" id="sum-all">' + money(a.sat) + '</b>' + delta(a.pct) +
       '<span class="small muted">ช่วงก่อน ' + money(a.psat) + '</span></div>' +
+      profitKey() +
       '<div class="key"><span class="l">จำนวนบิล</span><b class="num" id="sum-count">' + a.n.toLocaleString('th-TH') + '</b>' +
+      '<span class="small muted">เฉลี่ย <span class="num" id="sum-avg">' + money(a.avg) + '</span> / บิล</span>' +
       '<span class="small muted">ช่วงก่อน ' + a.pn.toLocaleString('th-TH') + '</span></div>' +
-      '<div class="key"><span class="l">เฉลี่ยต่อบิล</span><b class="num" id="sum-avg">' + money(a.avg) + '</b>' +
-      '<span class="small muted">ช่วงก่อน ' + money(a.pavg) + '</span></div>' +
       '<button type="button" class="key key-debt" id="sum-owe" data-tab-go="debt"><span class="l">ลูกหนี้ค้าง (บาท)</span>' +
       '<b class="num" id="sum-owe-amt">' + (owe ? money(oweSat) : '…') + '</b>' +
       '<span class="small' + (dd && dd.overdue.length ? ' late' : ' muted') + '" id="sum-owe-sub">' +
-      (owe ? owe.length + ' บิล' + (dd.overdue.length ? ' · เลยกำหนด ' + dd.overdue.length : '') : 'กำลังโหลด') + '</span></button>';
+      (owe ? owe.length + ' บิล' + (dd.overdue.length ? ' · เลยกำหนด ' + dd.overdue.length : '') : 'กำลังโหลด') + '</span></button>' +
+      profitFoot();
+    var eye = $('sum-eye');
+    if (eye) eye.addEventListener('click', function () { eyeOff = !eyeOff; LiffApp.keep('profit-eye', eyeOff ? 'off' : 'on'); drawKey(); if (tab === 'shops' || tab === 'products') drawBody(); });
+    var pb = $('sum-profit-bills');
+    if (pb) pb.addEventListener('click', function () { Shell.go('summary', { bills: '1' }); });
+  }
+
+  // ---------- รอบ 44: กำไร/ขาดทุน
+
+  function profitKeyOf() { return JSON.stringify([periodArg(), shopBy, prodBy]); }
+  function profitNow() { return profits[profitKeyOf()] || null; }
+
+  /** ขอกำไรของช่วงที่เลือก (ครั้งเดียวต่อช่วง+การเรียง) แล้ววาดตัวเลข / แท็บใหม่ */
+  function needProfit() {
+    var key = profitKeyOf();
+    if (profits[key] || profitWait[key]) return;
+    profitWait[key] = tapi('profitData', { period: periodArg(), shopSort: shopBy, prodSort: prodBy }).then(function (r) {
+      delete profitWait[key];
+      profits[key] = r.ok ? r : { ok: false, error: r.error };
+      if (!Shell.isCurrent(scr) || profitKeyOf() !== key || !$('sum-total')) return;
+      drawKey();
+      if (tab === 'shops' || tab === 'products') drawBody();
+    });
+  }
+
+  /** จำนวนเงินกำไร: +/− คำกำกับ สีเขียว/แดง/เทา (ซ่อนด้วยปุ่มตา) — null = ต้นทุนไม่ครบ (ไม่แสดง 0) */
+  function pfText(sat) {
+    if (sat === null || sat === undefined) return { cls: 'miss', label: 'ต้นทุนไม่ครบ', num: '' };
+    var cls = sat > 0 ? 'up' : sat < 0 ? 'down' : 'zero';
+    var label = sat > 0 ? 'กำไร' : sat < 0 ? 'ขาดทุน' : 'เท่าทุน';
+    return { cls: cls, label: label, num: eyeOff ? '••••' : (sat > 0 ? '+' : sat < 0 ? '−' : '') + money(Math.abs(sat)) };
+  }
+  function pfHtml(sat, id) {
+    var t = pfText(sat);
+    return '<span class="pf ' + t.cls + '"' + (id ? ' id="' + id + '"' : '') + '>' + t.label + (t.num ? ' <span class="num">' + t.num + '</span>' : '') + '</span>';
+  }
+
+  /** ตัวเลขกำไร/ขาดทุนในการ์ดหลัก (ช่องที่ 2) */
+  function profitKey() {
+    var p = profitNow();
+    var head = '<span class="l">กำไร/ขาดทุน (บาท)</span>';
+    if (!p) return '<div class="key key-profit" id="sum-profit-key">' + head + '<b class="num" id="sum-profit">…</b><span class="small muted">กำลังคำนวณ</span></div>';
+    if (!p.ok) return '<div class="key key-profit" id="sum-profit-key">' + head + '<b id="sum-profit" class="pf-big miss">คำนวณไม่สำเร็จ</b><span class="small muted">' + esc(p.error || 'ลองเปิดหน้าใหม่') + '</span></div>';
+    if (!p.ready) return '<div class="key key-profit" id="sum-profit-key">' + head + '<b id="sum-profit" class="pf-big miss">ยังไม่ได้ตั้งค่าต้นทุน</b><span class="small muted">กรุณาแจ้งผู้ดูแลระบบ</span></div>';
+    var c = p.cur;
+    if (c.profit === null) {
+      return '<div class="key key-profit" id="sum-profit-key">' + head + '<b id="sum-profit" class="pf-big miss">ต้นทุนไม่ครบ</b>' +
+        '<span class="small muted" id="sum-profit-hint">' + esc(COST_HINT) + '</span></div>';
+    }
+    var t = pfText(c.profit);
+    var prev = p.prev && p.prev.profit !== null ? p.prev.profit : null;
+    var pct = prev !== null && prev > 0 ? salesPct(c.profit, prev) : null;
+    return '<div class="key key-profit" id="sum-profit-key"><span class="l">' + (c.profit < 0 ? 'ขาดทุน' : c.profit > 0 ? 'กำไร' : 'เท่าทุน') + ' (บาท)</span>' +
+      '<b class="num pf-big ' + t.cls + '" id="sum-profit">' + t.num + '</b>' +
+      (c.pct !== null && !eyeOff ? '<span class="small muted" id="sum-profit-pct">' + c.pct.toLocaleString('th-TH', { maximumFractionDigits: 1 }) + '% ของยอดขาย</span>' : '') +
+      (prev !== null ? delta(pct) : '') +
+      '<span class="small muted">ช่วงก่อน ' + (prev === null ? 'ไม่มีข้อมูล' : eyeOff ? '••••' : (prev < 0 ? '−' : '') + money(Math.abs(prev))) + '</span></div>';
+  }
+
+  /** ใต้ตัวเลข 4 ตัว: ต้นทุนไม่ครบ N บิล + ปุ่มตา + ดูกำไรรายบิล */
+  function profitFoot() {
+    var p = profitNow();
+    var miss = p && p.ok && p.ready && p.cur.incomplete && p.cur.profit !== null
+      ? '<div class="small sum-pf-miss" id="sum-profit-miss">ต้นทุนไม่ครบ ' + p.cur.incomplete.toLocaleString('th-TH') + ' บิล (ไม่รวมในกำไร)</div>' : '';
+    if (!p || !p.ok || !p.ready) return miss;
+    return miss + '<div class="sum-pf-acts">' +
+      '<button type="button" class="btn" id="sum-eye" aria-pressed="' + (eyeOff ? 'true' : 'false') + '">' + iconSvg(eyeOff ? 'eyeOff' : 'eye') + '<span>' + (eyeOff ? 'แสดงกำไร' : 'ซ่อนกำไร') + '</span></button>' +
+      '<button type="button" class="btn" id="sum-profit-bills">' + iconSvg('file') + '<span>ดูกำไรรายบิล</span></button></div>';
+  }
+
+  /** กำไรของร้าน/สินค้าในแท็บ (จากคำตอบ profitData) { key: แถว } */
+  function profitMap(kind) {
+    var p = profitNow();
+    var out = {};
+    if (!p || !p.ok || !p.ready) return null;
+    (kind === 'shops' ? p.shops : p.products).forEach(function (x) { out[kind === 'shops' ? x.key : x.barcode] = x; });
+    return out;
+  }
+  function profitCell(map, key) {
+    if (!map) return '';
+    var x = map[key];
+    return '<span class="small sum-pf-row">' + pfHtml(x ? (x.incomplete && x.profit === null ? null : x.profit) : null) + '</span>';
   }
 
   /** ภาพรวม: ยอดตามประเภท (ใบเงินสด / ใบกำกับภาษี) */
@@ -655,23 +747,39 @@
   }
 
   function shopsCard(v, pending) {
-    return '<section class="card" id="sum-shops"><h2>ร้านซื้อเยอะสุด <span class="count">' + v.shops.length + ' อันดับ</span></h2>' +
-      '<ul class="list">' + rankRows(topOf('shops', v.shops), function (x) {
-        return '<b class="num">' + money(x.sat) + '</b><span class="small muted">' + x.n.toLocaleString('th-TH') + ' บิล</span>';
-      }, function (x) { return x.sat; }, function (x) { return ' data-href="' + esc(historyHref(x)) + '" role="link" tabindex="0"'; }, pending) + '</ul>' + moreBtn('shops', v.shops) + '</section>';
+    var pm = profitMap('shops');
+    var list = v.shops;
+    // รอบ 44: เรียงตามกำไร → ลำดับจากเซิร์ฟเวอร์ (ร้านที่ต้นทุนไม่ครบอยู่ท้าย)
+    if (pm && shopBy === 'profit') {
+      list = profitNow().shops.map(function (x) {
+        var i = x.key.indexOf(':');
+        return { key: x.key, kind: x.key.slice(0, i), id: x.key.slice(i + 1), name: x.name, sat: x.sat, n: x.n };
+      }).slice(0, 10);
+    }
+    return '<section class="card" id="sum-shops"><h2>' + (pm && shopBy === 'profit' ? 'ร้านกำไรสูงสุด' : 'ร้านซื้อเยอะสุด') + ' <span class="count">' + list.length + ' อันดับ</span></h2>' +
+      (pm ? '<div class="seg-choice sum-mini" role="radiogroup" aria-label="เรียงตาม">' +
+        '<label><input type="radio" name="shop-by" value="sat"' + (shopBy === 'sat' ? ' checked' : '') + '>ตามยอดขาย</label>' +
+        '<label><input type="radio" name="shop-by" value="profit"' + (shopBy === 'profit' ? ' checked' : '') + '>ตามกำไร</label></div>' : '') +
+      '<ul class="list" id="sum-shop-list">' + rankRows(topOf('shops', list), function (x) {
+        return '<b class="num">' + money(x.sat) + '</b>' + profitCell(pm, x.key) + '<span class="small muted">' + x.n.toLocaleString('th-TH') + ' บิล</span>';
+      }, function (x) { return x.sat; }, function (x) { return ' data-href="' + esc(historyHref(x)) + '" role="link" tabindex="0"'; }, pending) + '</ul>' + moreBtn('shops', list) + '</section>';
   }
 
   function productsCard(v, pending) {
     var qty = prodBy === 'qty';
-    var list = qty ? v.productsQty : v.productsAmt;
+    var pm = profitMap('products');
+    var list = qty || prodBy === 'profit' ? v.productsQty : v.productsAmt;
+    if (prodBy === 'profit' && !pm) { prodBy = 'qty'; qty = true; }
+    if (pm && prodBy === 'profit') list = profitNow().products.map(function (x) { return { barcode: x.barcode, name: x.name, unit: x.unit, qty: x.qty, sat: x.sat }; }).slice(0, 10);
     return '<section class="card" id="sum-products"><h2>สินค้าขายดี <span class="count">ไม่นับของแถม</span></h2>' +
       '<div class="seg-choice sum-mini" role="radiogroup" aria-label="เรียงตาม">' +
       '<label><input type="radio" name="prod-by" value="qty"' + (qty ? ' checked' : '') + '>ตามจำนวน</label>' +
-      '<label><input type="radio" name="prod-by" value="amt"' + (qty ? '' : ' checked') + '>ตามยอดเงิน</label></div>' +
+      '<label><input type="radio" name="prod-by" value="amt"' + (prodBy === 'amt' ? ' checked' : '') + '>ตามยอดเงิน</label>' +
+      (pm ? '<label><input type="radio" name="prod-by" value="profit"' + (prodBy === 'profit' ? ' checked' : '') + '>ตามกำไร</label>' : '') + '</div>' +
       '<ul class="list" id="sum-prod-list">' + rankRows(topOf('products', list), function (x) {
         var q = '<span class="num">' + formatQty(x.qty) + '</span> ' + esc(x.unit);
         var m = '<span class="num">' + money(x.sat) + '</span>';
-        return qty ? '<b>' + q + '</b><span class="small muted">' + m + '</span>' : '<b>' + m + '</b><span class="small muted">' + q + '</span>';
+        return (qty ? '<b>' + q + '</b><span class="small muted">' + m + '</span>' : '<b>' + m + '</b><span class="small muted">' + q + '</span>') + profitCell(pm, x.barcode);
       }, function (x) { return qty ? x.qty : x.sat; }, null, pending) + '</ul>' + moreBtn('products', list) + '</section>';
   }
 
@@ -834,6 +942,79 @@
     if (el.closest && el.closest('#debt-retry')) { debtErr = null; drawDebt(); return fetchDebt(); }
     var row = el.closest && el.closest('[data-href]');
     if (row) location.assign(row.getAttribute('data-href'));
+  }
+
+  // ---------- รอบ 44: กำไรรายบิล (summary?bills=1) — การ์ดแบบหน้าประวัติ "บิลล่าสุด" + กำไร/ขาดทุนต่อบิล / แตะ = รายสินค้า
+
+  var pbList = [];      // บิลที่โหลดแล้ว
+  var pbTotal = 0;
+  var PB_PAGE = 10;
+
+  async function showProfitBills() {
+    document.title = SUMMARY_TITLE;
+    pbList = [];
+    LiffApp.loading('กำลังคำนวณกำไรรายบิล…', view);
+    var r = await tapi('profitBills', { offset: 0, limit: PB_PAGE });
+    if (!Shell.isCurrent(scr) || !scr.params.bills) return;
+    if (!r.ok) return LiffApp.showApiError(r, scr);
+    view.innerHTML = '<div class="hist-up"><button type="button" class="btn ghost" id="pb-back">' + iconSvg('back') + '<span>สรุปยอดขาย</span></button></div>' +
+      '<section class="card" id="pb-card"><h2>กำไรรายบิล <span class="count">ล่าสุดก่อน · ทั้ง 2 ประเภท</span></h2>' +
+      (r.ready ? '' : '<div class="alert warn" id="pb-not-ready">ยังไม่ได้ตั้งค่าต้นทุน กรุณาแจ้งผู้ดูแลระบบ</div>') +
+      '<p class="small muted" id="pb-hint">แตะบิลเพื่อดูรายสินค้า · ต้นทุนไม่ครบ = ' + esc(COST_HINT) + '</p>' +
+      '<ul class="list" id="pb-list"></ul><div id="pb-foot"></div></section>';
+    $('pb-back').addEventListener('click', function () { Shell.go('summary', {}); });
+    $('pb-list').addEventListener('click', function (e) { var li = e.target.closest('li.doc'); if (li) pbToggle(li); });
+    $('pb-list').addEventListener('keydown', function (e) { var li = e.target.closest('li.doc'); if (li && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); pbToggle(li); } });
+    pbAdd(r);
+    Shell.drawn(scr);
+  }
+
+  function pbAdd(r) {
+    pbTotal = r.total || 0;
+    var start = pbList.length;
+    pbList = pbList.concat(r.bills || []);
+    var ul = $('pb-list');
+    if (!pbList.length) ul.innerHTML = '<li class="empty">ยังไม่มีบิล</li>';
+    else ul.insertAdjacentHTML('beforeend', (r.bills || []).map(function (b, i) { return pbRow(b, start + i); }).join(''));
+    var foot = $('pb-foot');
+    foot.innerHTML = pbList.length < pbTotal ? '<button type="button" class="btn block" id="pb-more">โหลดบิลเพิ่ม</button>' : '';
+    var more = $('pb-more');
+    if (more) more.addEventListener('click', async function () {
+      more.disabled = true;
+      more.textContent = 'กำลังโหลด…';
+      var n = await tapi('profitBills', { offset: pbList.length, limit: PB_PAGE });
+      if (!Shell.isCurrent(scr) || !scr.params.bills) return;
+      if (!n.ok) { more.disabled = false; more.textContent = 'ลองอีกครั้ง'; return LiffApp.toast(n.error || 'โหลดไม่สำเร็จ', true); }
+      pbAdd(n);
+    });
+  }
+
+  /** การ์ดบิล — โครงเดียวกับ docRow ของหน้าประวัติ (เลขที่ ร้าน วันที่ ประเภท ยอด) + กำไร/ขาดทุน */
+  function pbRow(b, i) {
+    var label = b.kind === 'c' ? b.no : LiffApp.docLabel(b.no, b.docType);
+    var why = b.cancelled ? '<span class="pf miss">ยกเลิก ไม่นับกำไร</span>' : b.paired ? '<span class="pf miss">ไม่นับซ้ำ (มีใบกำกับคู่)</span>' : pfHtml(b.profit);
+    return '<li class="doc pb-doc" role="button" tabindex="0" aria-expanded="false" data-i="' + i + '">' +
+      '<div class="no' + (b.cancelled ? ' cancel' : '') + '">' + esc(label) + ' ' + kindBadge(b.kind) + (b.cancelled ? ' <span class="badge red">ยกเลิก</span>' : '') + '</div>' +
+      '<div class="amt num">' + money(b.total) + '</div>' +
+      '<div class="shop-n">' + esc(b.shopName || '-') + '</div>' +
+      '<div class="meta">' + formatThaiDate(b.date) + ' · ' + esc(b.kind === 'c' ? CASH_DOC_TITLE : b.docType) + (b.saleType ? ' · ' + esc(b.saleType) : '') +
+      (b.issuedBy ? '<br>ออกโดย ' + esc(b.issuedBy) : '') + '</div>' +
+      '<div class="pb-pf">' + why + '</div><div class="pb-lines hidden"></div></li>';
+  }
+
+  function pbToggle(li) {
+    var box = li.querySelector('.pb-lines');
+    var open = box.classList.contains('hidden');
+    li.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) { box.classList.add('hidden'); return; }
+    var b = pbList[Number(li.dataset.i)];
+    var cell = function (sat) { return sat === null || sat === undefined ? '<span class="pf miss">ไม่ครบ</span>' : eyeOff ? '••••' : money(sat); };
+    box.innerHTML = '<table class="pb-table"><thead><tr><th>สินค้า</th><th>ขาย*</th><th>ต้นทุน*</th><th>กำไร</th></tr></thead><tbody>' +
+      b.lines.map(function (l) {
+        return '<tr><td>' + esc(l.name) + (l.free ? ' <span class="badge">แถม</span>' : '') + '<div class="small muted">' + formatQty(l.qty) + ' ' + esc(l.unit) + '</div></td>' +
+          '<td class="num">' + (eyeOff ? '••••' : money(l.sale)) + '</td><td class="num">' + cell(l.cost) + '</td><td class="num">' + (l.profit === null ? cell(null) : pfHtml(l.profit).replace(/กำไร |ขาดทุน |เท่าทุน /, '')) + '</td></tr>';
+      }).join('') + '</tbody></table><div class="small muted">* ก่อน VAT</div>';
+    box.classList.remove('hidden');
   }
 
   Shell.define('summary', {

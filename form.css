@@ -780,3 +780,25 @@ a.card:active { background: var(--theme-pressed); }
 #btn-share, #dsr-share { min-height: 48px; }
 
 #sum-daily-share { min-height: 48px; margin-top: 12px; }
+/* รอบ 44: ผลตรวจระบบต้นทุนล่าสุด (หน้าจัดการ → สินค้า) */
+#cost-audit { margin: 8px 0 0; }
+.audit-ok { color: var(--theme-ok-text); }
+.audit-bad { color: var(--theme-err-text); }
+
+/* รอบ 44: กำไร/ขาดทุน (หน้าสรุป) — เขียว = กำไร / แดง = ขาดทุน / เทา = เท่าทุน / เทาอ่อน = ต้นทุนไม่ครบ */
+.pf.up, .pf-big.up { color: var(--theme-ok-text); }
+.pf.down, .pf-big.down { color: var(--theme-err-text); }
+.pf.zero, .pf-big.zero { color: var(--theme-text-2); }
+.pf.miss, .pf-big.miss { color: var(--theme-text-2); font-weight: 400; font-style: italic; }
+.sum-key .key b.pf-big.miss { font-size: 17px; }
+.sum-pf-miss { grid-column: 1 / -1; color: var(--theme-warn-text); padding: 0 4px; }
+.sum-pf-acts { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.sum-pf-acts .btn { min-height: 48px; }
+.sum-pf-row { display: block; }
+.pb-doc { cursor: pointer; }
+.pb-pf { grid-column: 1 / -1; font-weight: 700; }
+.pb-lines { grid-column: 1 / -1; margin-top: 6px; }
+.pb-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.pb-table th, .pb-table td { padding: 6px 4px; border-top: 1px solid var(--theme-line); text-align: right; vertical-align: top; }
+.pb-table th:first-child, .pb-table td:first-child { text-align: left; }
+.pb-table th { font-size: 12px; color: var(--theme-text-2); font-weight: 400; }

@@ -166,6 +166,7 @@
       '<div class="bf-row"><button type="button" class="btn" id="brands-btn">รายชื่อยี่ห้อ</button>' + // รอบ 40
       '<button type="button" class="btn" id="bf-btn">เติมยี่ห้อให้สินค้า</button></div>' + // รอบ 42
       '<div class="bf-row"><button type="button" class="btn" id="cost-btn">ตั้งค่าต้นทุน</button></div>' + // รอบ 43
+      '<p class="small muted hidden" id="cost-audit"></p>' + // รอบ 44: ผลตรวจระบบต้นทุนล่าสุด
       '<ul class="list" id="list"></ul></section>';
     var q = $('q');
     function draw() {
@@ -188,6 +189,20 @@
     $('bf-btn').addEventListener('click', brandFillFlow);
     $('cost-btn').addEventListener('click', costSettingsForm);
     draw();
+    auditLine();
+  }
+
+  /** รอบ 44: "ตรวจต้นทุนล่าสุด: ปกติ / ผิดปกติ N รายการ (วันที่)" — ยังไม่ได้ตั้งค่า / ยังไม่เคยตรวจ / โหลดไม่ได้ = ไม่แสดง */
+  var auditOnce = null; // ขอครั้งเดียวต่อการเปิดแอป (สลับแท็บไม่ขอซ้ำ)
+  async function auditLine() {
+    if (!auditOnce) auditOnce = tapi('costSettings', {}).then(function (x) { if (!x.ok) auditOnce = null; return x; });
+    var r = await auditOnce;
+    var p = $('cost-audit');
+    if (!p || !r.ok || !r.ready || !r.lastAudit) return;
+    var a = r.lastAudit;
+    p.innerHTML = 'ตรวจต้นทุนล่าสุด: <b class="' + (a.ok ? 'audit-ok' : 'audit-bad') + '">' + (a.ok ? 'ปกติ' : 'ผิดปกติ ' + a.count + ' รายการ') + '</b> (' +
+      esc(formatThaiDateShort(String(a.at).slice(0, 10))) + ')';
+    p.classList.remove('hidden');
   }
 
   /**
