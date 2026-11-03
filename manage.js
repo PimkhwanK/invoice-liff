@@ -165,6 +165,7 @@
       '<button type="button" class="btn primary" id="add">' + iconSvg('plus') + '<span>เพิ่มสินค้า</span></button></div>' +
       '<div class="bf-row"><button type="button" class="btn" id="brands-btn">รายชื่อยี่ห้อ</button>' + // รอบ 40
       '<button type="button" class="btn" id="bf-btn">เติมยี่ห้อให้สินค้า</button></div>' + // รอบ 42
+      '<div class="bf-row"><button type="button" class="btn" id="cost-btn">ตั้งค่าต้นทุน</button></div>' + // รอบ 43
       '<ul class="list" id="list"></ul></section>';
     var q = $('q');
     function draw() {
@@ -185,7 +186,47 @@
     $('add').addEventListener('click', function () { productForm(null, rows); });
     $('brands-btn').addEventListener('click', knownBrandsForm);
     $('bf-btn').addEventListener('click', brandFillFlow);
+    $('cost-btn').addEventListener('click', costSettingsForm);
     draw();
+  }
+
+  /**
+   * รอบ 43: ตั้งค่าต้นทุน (แท็บตั้งค่าของใบกำกับ) — วันเริ่มคิดต้นทุน + ต้นทุนที่กรอกรวม VAT ไหม
+   * เปลี่ยนวันเริ่ม → เซิร์ฟเวอร์คำนวณต้นทุนใหม่ทั้งหมด (costSettingsSet)
+   */
+  async function costSettingsForm() {
+    var sh = LiffApp.sheet('ตั้งค่าต้นทุน', '<div id="cs-body"><span class="spinner sm" aria-hidden="true"></span> กำลังโหลด…</div>', '');
+    var el = function (sel) { return sh.el.querySelector(sel); };
+    var r = await tapi('costSettings', {});
+    if (!sh.el.isConnected) return;
+    if (!r.ok || !r.ready) {
+      if (!r.ok && fatal(r)) { sh.close(); return; }
+      el('#cs-body').innerHTML = '<div class="alert warn" id="cs-not-ready">' + errText(r.error || r.message || 'ยังไม่ได้ตั้งค่าต้นทุน') + '</div>';
+      return;
+    }
+    el('#cs-body').innerHTML =
+      '<div class="field"><label class="f" for="cs-start">วันเริ่มคิดต้นทุน</label><input type="date" id="cs-start" value="' + esc(r.start) + '">' +
+      '<div class="small" id="cs-start-th">' + esc(formatThaiDateShort(r.start)) + '</div></div>' +
+      '<div class="field"><label class="chk"><input type="checkbox" id="cs-vat"' + (r.includesVat ? ' checked' : '') + '> ต้นทุนที่กรอกรวม VAT แล้ว</label></div>' +
+      '<p class="small muted" id="cs-note">บิลตั้งแต่วันนี้ไปคิดต้นทุนแบบของเข้าก่อนออกก่อน เปลี่ยนวันแล้วระบบคำนวณใหม่ทั้งหมด</p>' +
+      '<div id="cs-msg"></div><button type="button" class="btn primary block" id="cs-save">บันทึก</button>';
+    el('#cs-start').addEventListener('input', function (e) { el('#cs-start-th').textContent = /^\d{4}-\d{2}-\d{2}$/.test(e.target.value) ? formatThaiDateShort(e.target.value) : ''; });
+    el('#cs-save').addEventListener('click', async function () {
+      var btn = el('#cs-save');
+      btn.disabled = true;
+      btn.textContent = 'กำลังบันทึก…';
+      var s = await tapi('costSettingsSet', { start: el('#cs-start').value, includesVat: el('#cs-vat').checked });
+      if (!sh.el.isConnected) return;
+      if (!s.ok) {
+        if (fatal(s)) { sh.close(); return; }
+        btn.disabled = false;
+        btn.textContent = 'ลองอีกครั้ง';
+        el('#cs-msg').innerHTML = '<div class="alert err" id="cs-error">' + errText(s.error || 'บันทึกไม่สำเร็จ') + '</div>';
+        return;
+      }
+      sh.close();
+      LiffApp.toast(s.warning || (s.replayed ? 'บันทึกแล้ว คำนวณต้นทุนใหม่แล้ว' : 'บันทึกการตั้งค่าต้นทุนแล้ว'));
+    });
   }
 
   /**

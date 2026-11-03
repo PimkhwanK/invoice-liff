@@ -257,12 +257,16 @@
   function openMove(kind) {
     var K = KIND[kind];
     var choices = products().filter(function (p) { return kind === 'count' ? p.tracked || p.active : p.tracked; });
+    // รอบ 43: ของเข้า / แก้ยอดตามที่นับ → ช่องต้นทุนต่อหน่วย (บาท) โผล่เมื่อใส่จำนวน (เว้นว่างได้) — เฉพาะเมื่อตั้งค่าต้นทุนแล้ว
+    var withCost = !!(data && data.costReady) && kind !== 'out';
     var body =
       '<input type="search" id="move-q" placeholder="ค้นหาสินค้า" autocomplete="off">' +
+      (withCost ? '<p class="small muted" id="move-cost-hint">ต้นทุนต่อหน่วย (บาท ตามที่ซื้อ) เว้นว่างได้ถ้ายังไม่รู้' + (kind === 'count' ? ' ใช้เมื่อยอดเพิ่มขึ้น' : '') + '</p>' : '') +
       '<ul class="list move-list" id="move-list">' + (choices.length ? choices.map(function (p) {
         return '<li class="move-line" data-bc="' + esc(p.barcode) + '"><div class="t"><div class="n">' + esc(p.name) + '</div>' +
           '<div class="s" data-now>' + (p.tracked ? 'คงเหลือ ' + esc(qtyText(p.qty)) + ' ' + esc(p.unit) : 'ยังไม่เริ่มนับ') + '</div></div>' +
-          '<input type="number" inputmode="decimal" min="0" step="any" data-qty aria-label="' + esc(K.qty + ' ' + p.name) + '"></li>';
+          '<input type="number" inputmode="decimal" min="0" step="any" data-qty aria-label="' + esc(K.qty + ' ' + p.name) + '">' +
+          (withCost ? '<input type="text" inputmode="decimal" class="move-cost hidden" data-cost placeholder="ต้นทุน/' + esc(p.unit || 'หน่วย') + '" aria-label="' + esc('ต้นทุนต่อหน่วย (บาท) ' + p.name) + '">' : '') + '</li>';
       }).join('') : '<li class="empty">ยังไม่มีสินค้าที่นับสต็อก กด "แก้ยอดตามที่นับ" ใส่ยอดเริ่มต้นก่อน</li>') + '</ul>' +
       '<label class="f" for="move-reason" style="margin-top:10px">' + esc(K.note) + '</label>' +
       '<input type="text" id="move-reason" maxlength="200" placeholder="' + esc(K.hint) + '">' +
@@ -275,7 +279,10 @@
     var requestId = LiffApp.uuid();
     function lines() {
       return Array.from(s.el.querySelectorAll('.move-line')).map(function (li) {
-        return { barcode: li.dataset.bc, qty: li.querySelector('[data-qty]').value.trim() };
+        var l = { barcode: li.dataset.bc, qty: li.querySelector('[data-qty]').value.trim() };
+        var c = li.querySelector('[data-cost]');
+        if (c && c.value.trim() !== '') l.cost = c.value.trim(); // รอบ 43
+        return l;
       }).filter(function (l) { return l.qty !== ''; });
     }
     function stockOf() {
@@ -293,6 +300,8 @@
         var now = p.tracked ? 'คงเหลือ ' + qtyText(p.qty) + ' ' + p.unit : 'ยังไม่เริ่มนับ';
         li.querySelector('[data-now]').textContent = v !== '' && m ? now + ' → ' + qtyText(m.balance) : now;
         li.classList.toggle('picked-line', v !== '');
+        var c = li.querySelector('[data-cost]');
+        if (c) c.classList.toggle('hidden', v === '' && c.value.trim() === '');
       });
       el('#move-save').disabled = !ls.length;
       el('#move-save').textContent = 'บันทึก' + K.title + (ls.length ? ' ' + ls.length + ' รายการ' : '');
@@ -304,7 +313,7 @@
         li.classList.toggle('hidden', !!t && (p.name + ' ' + p.barcode).toLowerCase().indexOf(t) < 0);
       });
     });
-    s.el.addEventListener('input', function (e) { if (e.target.matches('[data-qty], #move-reason')) refresh(); });
+    s.el.addEventListener('input', function (e) { if (e.target.matches('[data-qty], [data-cost], #move-reason')) refresh(); });
     el('#move-save').addEventListener('click', async function () {
       var ls = lines();
       var reason = el('#move-reason').value;
@@ -356,7 +365,7 @@
       '<div class="hist-up"><button type="button" class="btn ghost" id="hist-up">' + iconSvg('back') + '<span>รายการสินค้า</span></button></div>' + // รอบ 41: ปุ่มกลับบนสุด (ไม่ต้องเลื่อนหา)
       '<section class="card"><div class="row"><span class="grow">คงเหลือ</span>' +
       (p.tracked ? '<span class="st-big ' + level + '"><b class="num" id="hist-qty">' + esc(qtyText(p.qty)) + '</b> ' + esc(p.unit) + '</span>' : '<span class="muted">ยังไม่เริ่มนับ</span>') + '</div>' +
-      '<div id="alert-box" class="alert-box"></div></section>' +
+      '<div id="alert-box" class="alert-box"></div>' + costRows(find(bc)) + '</section>' +
       '<section class="card"><h2>ความเคลื่อนไหว <span class="count">' + r.total + ' รายการ</span></h2><ul class="list" id="hist-list">' +
       (r.moves.length ? r.moves.map(function (m) {
         var when = formatThaiDateShort(m.at.slice(0, 10)) + (m.at.length > 15 ? ' ' + m.at.slice(11, 16) : '');
@@ -372,6 +381,14 @@
     $('hist-back').addEventListener('click', backToList);
     $('hist-up').addEventListener('click', backToList);
     Shell.drawn(scr);
+  }
+
+  /** รอบ 43: ต้นทุนเริ่มต้น + ต้นทุนล็อตล่าสุด (บาทต่อหน่วย ตามที่กรอก) — ยังไม่ได้ตั้งค่าต้นทุน = ไม่แสดง */
+  function costRows(p) {
+    if (!data || !data.costReady || !p) return '';
+    var baht = function (s) { return s === null || s === undefined ? '<span class="muted">ยังไม่กรอก</span>' : '<b class="num">' + esc(formatMoney(fromSatang(s))) + '</b> บาท'; };
+    return '<div class="row cost-row" id="cost-start"><span class="grow">ต้นทุนเริ่มต้น</span><span>' + baht(p.costStart) + '</span></div>' +
+      '<div class="row cost-row" id="cost-last"><span class="grow">ต้นทุนล็อตล่าสุด</span><span>' + baht(p.costLast) + '</span></div>';
   }
 
   // ---------- รอบ 22: เตือนเมื่อเหลือ ของสินค้านี้ (ปุ่มเล็ก "แก้" → ช่องเดียว + บันทึก)

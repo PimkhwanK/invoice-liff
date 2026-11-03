@@ -446,6 +446,9 @@ body.has-tabbar .toast { bottom: 140px; }
 .move-line .t .n { font-weight: 700; }
 .move-line .t .s { font-size: 12px; color: var(--theme-text-2); }
 .move-line input { width: 96px; flex: none; text-align: right; }
+.move-line { flex-wrap: wrap; }
+.move-line .move-cost { flex: 1 0 100%; width: 100%; min-height: 48px; } /* รอบ 43: ต้นทุนต่อหน่วย (บรรทัดของตัวเอง ใต้ชื่อ) */
+.cost-row { margin-top: 8px; }
 .move-line.picked-line .t .s { color: var(--theme-text); font-weight: 700; }
 .mv { display: flex; gap: 10px; }
 .mv .t { flex: 1; min-width: 0; }
