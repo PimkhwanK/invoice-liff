@@ -165,7 +165,6 @@
       '<button type="button" class="btn primary" id="add">' + iconSvg('plus') + '<span>เพิ่มสินค้า</span></button></div>' +
       '<div class="bf-row"><button type="button" class="btn" id="brands-btn">รายชื่อยี่ห้อ</button>' + // รอบ 40
       '<button type="button" class="btn" id="bf-btn">เติมยี่ห้อให้สินค้า</button></div>' + // รอบ 42
-      '<div class="bf-row"><button type="button" class="btn" id="cost-btn">ตั้งค่าต้นทุน</button></div>' + // รอบ 43
       '<p class="small muted hidden" id="cost-audit"></p>' + // รอบ 44: ผลตรวจระบบต้นทุนล่าสุด
       '<ul class="list" id="list"></ul></section>';
     var q = $('q');
@@ -187,12 +186,11 @@
     $('add').addEventListener('click', function () { productForm(null, rows); });
     $('brands-btn').addEventListener('click', knownBrandsForm);
     $('bf-btn').addEventListener('click', brandFillFlow);
-    $('cost-btn').addEventListener('click', costSettingsForm);
     draw();
     auditLine();
   }
 
-  /** รอบ 44: "ตรวจต้นทุนล่าสุด: ปกติ / ผิดปกติ N รายการ (วันที่)" — ยังไม่ได้ตั้งค่า / ยังไม่เคยตรวจ / โหลดไม่ได้ = ไม่แสดง */
+  /** รอบ 44: "ตรวจต้นทุนล่าสุด: ปกติ / ผิดปกติ N รายการ (วันที่)" — ยังไม่ได้เปิดระบบต้นทุน / ยังไม่เคยตรวจ / โหลดไม่ได้ = ไม่แสดง */
   var auditOnce = null; // ขอครั้งเดียวต่อการเปิดแอป (สลับแท็บไม่ขอซ้ำ)
   async function auditLine() {
     if (!auditOnce) auditOnce = tapi('costSettings', {}).then(function (x) { if (!x.ok) auditOnce = null; return x; });
@@ -205,46 +203,7 @@
     p.classList.remove('hidden');
   }
 
-  /**
-   * รอบ 43: ตั้งค่าต้นทุน (แท็บตั้งค่าของใบกำกับ) — วันเริ่มคิดต้นทุน + รอบ 52: ใช้ต้นทุนตามที่กรอก (ค่าเริ่มต้น) / หัก VAT ออกจากต้นทุน
-   * เปลี่ยนวันเริ่ม → เซิร์ฟเวอร์คำนวณต้นทุนใหม่ทั้งหมด (costSettingsSet)
-   */
-  async function costSettingsForm() {
-    var sh = LiffApp.sheet('ตั้งค่าต้นทุน', '<div id="cs-body"><span class="spinner sm" aria-hidden="true"></span> กำลังโหลด…</div>', '');
-    var el = function (sel) { return sh.el.querySelector(sel); };
-    var r = await tapi('costSettings', {});
-    if (!sh.el.isConnected) return;
-    if (!r.ok || !r.ready) {
-      if (!r.ok && fatal(r)) { sh.close(); return; }
-      el('#cs-body').innerHTML = '<div class="alert warn" id="cs-not-ready">' + errText(r.error || r.message || 'ยังไม่ได้ตั้งค่าต้นทุน') + '</div>';
-      return;
-    }
-    el('#cs-body').innerHTML =
-      '<div class="field"><label class="f" for="cs-start">วันเริ่มคิดต้นทุน</label><input type="date" id="cs-start" value="' + esc(r.start) + '">' +
-      '<div class="small" id="cs-start-th">' + esc(formatThaiDateShort(r.start)) + '</div></div>' +
-      '<fieldset class="field" id="cs-vat"><legend class="f">ต้นทุนที่ใช้คิดกำไร</legend>' +
-      '<label class="chk"><input type="radio" name="cs-vat" id="cs-vat-asis" value="asis"' + (r.includesVat ? '' : ' checked') + '> ใช้ตามที่กรอก ไม่หัก VAT</label>' +
-      '<label class="chk"><input type="radio" name="cs-vat" id="cs-vat-deduct" value="deduct"' + (r.includesVat ? ' checked' : '') + '> หัก VAT 7% ออกจากต้นทุนก่อน</label></fieldset>' +
-      '<p class="small muted" id="cs-note">บิลตั้งแต่วันนี้ไปคิดต้นทุนแบบของเข้าก่อนออกก่อน เปลี่ยนวันแล้วระบบคำนวณใหม่ทั้งหมด</p>' +
-      '<div id="cs-msg"></div><button type="button" class="btn primary block" id="cs-save">บันทึก</button>';
-    el('#cs-start').addEventListener('input', function (e) { el('#cs-start-th').textContent = /^\d{4}-\d{2}-\d{2}$/.test(e.target.value) ? formatThaiDateShort(e.target.value) : ''; });
-    el('#cs-save').addEventListener('click', async function () {
-      var btn = el('#cs-save');
-      btn.disabled = true;
-      btn.textContent = 'กำลังบันทึก…';
-      var s = await tapi('costSettingsSet', { start: el('#cs-start').value, includesVat: el('#cs-vat-deduct').checked });
-      if (!sh.el.isConnected) return;
-      if (!s.ok) {
-        if (fatal(s)) { sh.close(); return; }
-        btn.disabled = false;
-        btn.textContent = 'ลองอีกครั้ง';
-        el('#cs-msg').innerHTML = '<div class="alert err" id="cs-error">' + errText(s.error || 'บันทึกไม่สำเร็จ') + '</div>';
-        return;
-      }
-      sh.close();
-      LiffApp.toast(s.warning || (s.replayed ? 'บันทึกแล้ว คำนวณต้นทุนใหม่แล้ว' : 'บันทึกการตั้งค่าต้นทุนแล้ว'));
-    });
-  }
+  // รอบ 53: ส่วน "ตั้งค่าต้นทุน" ในหน้านี้ลบแล้ว — วันเริ่มคิดต้นทุน / cost_vat_mode / profit_sales_vat_mode แก้ที่ชีตแท็บ "ตั้งค่า" เท่านั้น
 
   /**
    * รอบ 40: ยี่ห้อที่รู้จัก (แท็บตั้งค่าของใบกำกับ ใช้ร่วมทั้งสองประเภท) — เมนู "เติมยี่ห้อ" ในชีตหาคำเหล่านี้ในชื่อสินค้า

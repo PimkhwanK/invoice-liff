@@ -996,6 +996,7 @@
   var PB_PAGE = 10;
   var pbList = [];
   var pbTotal = 0;
+  var pbBeforeVat = false; // รอบ 53: ยอดขายใบกำกับในกำไร = ก่อน VAT (จากเซิร์ฟเวอร์)
   var pbSeq = 0;      // กันคำตอบเก่ามาวาดทับ (สลับมุมมองเร็ว ๆ)
 
   function setView(v) {
@@ -1086,6 +1087,7 @@
 
   function billsAdd(r) {
     pbTotal = r.total || 0;
+    pbBeforeVat = r.salesBeforeVat === true;
     var start = pbList.length;
     pbList = pbList.concat(r.bills || []);
     var ul = $('pb-list');
@@ -1130,7 +1132,7 @@
     if (!open) { box.classList.add('hidden'); return; }
     var b = pbList[Number(li.dataset.i)];
     var cell = function (sat) { return sat === null || sat === undefined ? '<span class="pf miss">ไม่ครบ</span>' : eyeOff ? '••••' : money(sat); };
-    var tax = b.kind !== 'c'; // รอบ 52: ต้นทุนตามที่กรอก (ไม่มี * ) / ยอดขายใบกำกับ = ก่อน VAT / ใบเงินสด = ยอดเต็ม
+    var tax = b.kind !== 'c' && pbBeforeVat; // รอบ 53: หมายเหตุเฉพาะใบกำกับเมื่อตั้งยอดขายก่อน VAT (ค่าเริ่มต้น = ยอดบิลรวม VAT ไม่มีหมายเหตุ)
     box.innerHTML = '<table class="pb-table"><thead><tr><th>สินค้า</th><th>ขาย' + (tax ? '*' : '') + '</th><th>ต้นทุน</th><th>กำไร</th></tr></thead><tbody>' +
       b.lines.map(function (l) {
         return '<tr><td>' + esc(l.name) + (l.free ? ' <span class="badge">แถม</span>' : '') + '<div class="small muted">' + formatQty(l.qty) + ' ' + esc(l.unit) + '</div></td>' +
