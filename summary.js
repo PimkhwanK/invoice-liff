@@ -1130,12 +1130,13 @@
     if (!open) { box.classList.add('hidden'); return; }
     var b = pbList[Number(li.dataset.i)];
     var cell = function (sat) { return sat === null || sat === undefined ? '<span class="pf miss">ไม่ครบ</span>' : eyeOff ? '••••' : money(sat); };
-    box.innerHTML = '<table class="pb-table"><thead><tr><th>สินค้า</th><th>ขาย*</th><th>ต้นทุน*</th><th>กำไร</th></tr></thead><tbody>' +
+    var tax = b.kind !== 'c'; // รอบ 52: ต้นทุนตามที่กรอก (ไม่มี * ) / ยอดขายใบกำกับ = ก่อน VAT / ใบเงินสด = ยอดเต็ม
+    box.innerHTML = '<table class="pb-table"><thead><tr><th>สินค้า</th><th>ขาย' + (tax ? '*' : '') + '</th><th>ต้นทุน</th><th>กำไร</th></tr></thead><tbody>' +
       b.lines.map(function (l) {
         return '<tr><td>' + esc(l.name) + (l.free ? ' <span class="badge">แถม</span>' : '') + '<div class="small muted">' + formatQty(l.qty) + ' ' + esc(l.unit) + '</div></td>' +
           '<td class="num">' + (eyeOff ? '••••' : money(l.sale)) + '</td><td class="num">' + cell(l.cost) + '</td><td class="num">' +
           (l.profit === null ? cell(null) : pfHtml(l.profit).replace(/กำไร |ขาดทุน |เท่าทุน /, '')) + '</td></tr>';
-      }).join('') + '</tbody></table><div class="small muted">* ก่อน VAT</div>';
+      }).join('') + '</tbody></table>' + (tax ? '<div class="small muted">* ยอดขายก่อน VAT</div>' : '');
     box.classList.remove('hidden');
   }
 

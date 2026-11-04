@@ -206,7 +206,7 @@
   }
 
   /**
-   * รอบ 43: ตั้งค่าต้นทุน (แท็บตั้งค่าของใบกำกับ) — วันเริ่มคิดต้นทุน + ต้นทุนที่กรอกรวม VAT ไหม
+   * รอบ 43: ตั้งค่าต้นทุน (แท็บตั้งค่าของใบกำกับ) — วันเริ่มคิดต้นทุน + รอบ 52: ใช้ต้นทุนตามที่กรอก (ค่าเริ่มต้น) / หัก VAT ออกจากต้นทุน
    * เปลี่ยนวันเริ่ม → เซิร์ฟเวอร์คำนวณต้นทุนใหม่ทั้งหมด (costSettingsSet)
    */
   async function costSettingsForm() {
@@ -222,7 +222,9 @@
     el('#cs-body').innerHTML =
       '<div class="field"><label class="f" for="cs-start">วันเริ่มคิดต้นทุน</label><input type="date" id="cs-start" value="' + esc(r.start) + '">' +
       '<div class="small" id="cs-start-th">' + esc(formatThaiDateShort(r.start)) + '</div></div>' +
-      '<div class="field"><label class="chk"><input type="checkbox" id="cs-vat"' + (r.includesVat ? ' checked' : '') + '> ต้นทุนที่กรอกรวม VAT แล้ว</label></div>' +
+      '<fieldset class="field" id="cs-vat"><legend class="f">ต้นทุนที่ใช้คิดกำไร</legend>' +
+      '<label class="chk"><input type="radio" name="cs-vat" id="cs-vat-asis" value="asis"' + (r.includesVat ? '' : ' checked') + '> ใช้ตามที่กรอก ไม่หัก VAT</label>' +
+      '<label class="chk"><input type="radio" name="cs-vat" id="cs-vat-deduct" value="deduct"' + (r.includesVat ? ' checked' : '') + '> หัก VAT 7% ออกจากต้นทุนก่อน</label></fieldset>' +
       '<p class="small muted" id="cs-note">บิลตั้งแต่วันนี้ไปคิดต้นทุนแบบของเข้าก่อนออกก่อน เปลี่ยนวันแล้วระบบคำนวณใหม่ทั้งหมด</p>' +
       '<div id="cs-msg"></div><button type="button" class="btn primary block" id="cs-save">บันทึก</button>';
     el('#cs-start').addEventListener('input', function (e) { el('#cs-start-th').textContent = /^\d{4}-\d{2}-\d{2}$/.test(e.target.value) ? formatThaiDateShort(e.target.value) : ''; });
@@ -230,7 +232,7 @@
       var btn = el('#cs-save');
       btn.disabled = true;
       btn.textContent = 'กำลังบันทึก…';
-      var s = await tapi('costSettingsSet', { start: el('#cs-start').value, includesVat: el('#cs-vat').checked });
+      var s = await tapi('costSettingsSet', { start: el('#cs-start').value, includesVat: el('#cs-vat-deduct').checked });
       if (!sh.el.isConnected) return;
       if (!s.ok) {
         if (fatal(s)) { sh.close(); return; }

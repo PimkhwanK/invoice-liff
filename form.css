@@ -834,3 +834,8 @@ a.card:active { background: var(--theme-pressed); }
 .pb-nc .nc-where { list-style: none; margin: 4px 0 0; padding: 0; color: var(--theme-text-2); }
 .pb-nc .nc-where li { padding: 2px 0 0 12px; position: relative; overflow-wrap: anywhere; }
 .pb-nc .nc-where li::before { content: "•"; position: absolute; left: 0; }
+
+/* รอบ 52: ตั้งค่าต้นทุน — ตัวเลือก ใช้ตามที่กรอก / หัก VAT (แตะง่าย แถวละ 48px) */
+fieldset#cs-vat { border: 0; margin: 10px 0 0; padding: 0; min-width: 0; }
+fieldset#cs-vat legend { padding: 0; margin-bottom: 2px; }
+fieldset#cs-vat .chk { display: flex; min-height: 48px; gap: 10px; }
