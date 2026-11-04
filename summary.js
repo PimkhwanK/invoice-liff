@@ -125,6 +125,7 @@
     document.title = SUMMARY_TITLE; // กลับจากใบเช็คยอด (หน้าจอเดียวกัน shell ไม่ตั้งชื่อใหม่)
     setTab(params && params.tab, true);
     fetchDebt(); // รอบ 33: ลูกหนี้ (ทุกครั้งที่เข้าหน้า — ยอดเปลี่ยนตามวัน)
+    needProfit(); // รอบ 48: ขอกำไรพร้อมกับยอดขาย (ไม่รอให้ยอดขายมาก่อน)
     var year = yearOf();
     if (!data[year] && !LiffApp.remember('sales-' + year)) LiffApp.loading('กำลังรวมยอดขาย…', view);
     var r = await ensure(year);
@@ -349,20 +350,53 @@
 
   // ---------- รอบ 44: กำไร/ขาดทุน
 
-  function profitKeyOf() { return JSON.stringify([periodArg(), shopBy, prodBy]); }
+  function profitKeyOf() { return JSON.stringify([today(), periodArg(), shopBy, prodBy]); } // รอบ 48: + วันนี้ (ค่าที่จำไว้ของเมื่อวานไม่ใช่ "วันนี้")
   function profitNow() { return profits[profitKeyOf()] || null; }
 
-  /** ขอกำไรของช่วงที่เลือก (ครั้งเดียวต่อช่วง+การเรียง) แล้ววาดตัวเลข / แท็บใหม่ */
+  // รอบ 48: ผลกำไรล่าสุดของแต่ละช่วงเก็บในเครื่อง (ไม่เกิน PROFIT_KEEP ช่วง) → เปิดหน้าเห็นทันทีพร้อมป้าย "กำลังอัปเดต" แล้วขอค่าใหม่เบื้องหลัง
+  var PROFIT_KEEP = 12;
+  function profitKept(key) {
+    var k = LiffApp.remember('profit-last');
+    var all = k && k.data && typeof k.data === 'object' ? k.data : {};
+    return all[key] || null;
+  }
+  function profitKeepNew(key, r) {
+    var k = LiffApp.remember('profit-last');
+    var all = k && k.data && typeof k.data === 'object' ? k.data : {};
+    all[key] = r;
+    var keys = Object.keys(all);
+    while (keys.length > PROFIT_KEEP) delete all[keys.shift()]; // เก่าสุดออกก่อน (ลำดับที่ใส่)
+    LiffApp.keep('profit-last', all);
+  }
+
+  /** ขอกำไรของช่วงที่เลือก (ครั้งเดียวต่อช่วง+การเรียงต่อการเข้าหน้า) — มีค่าที่จำไว้ = แสดงก่อน (stale) แล้วแทนที่เมื่อได้ค่าใหม่ */
   function needProfit() {
     var key = profitKeyOf();
-    if (profits[key] || profitWait[key]) return;
+    if (profitWait[key] || (profits[key] && !profits[key].stale)) return;
+    if (!profits[key]) {
+      var kept = profitKept(key);
+      if (kept) profits[key] = Object.assign({}, kept, { stale: true });
+    }
     profitWait[key] = tapi('profitData', { period: periodArg(), shopSort: shopBy, prodSort: prodBy }).then(function (r) {
       delete profitWait[key];
-      profits[key] = r.ok ? r : { ok: false, error: r.error };
+      if (r.ok) {
+        profits[key] = r;
+        if (r.ready) profitKeepNew(key, r);
+      } else if (profits[key] && profits[key].stale) {
+        profits[key].failed = true; // ค่าที่จำไว้ยังแสดง + ป้าย "ยังไม่ได้อัปเดต"
+      } else {
+        profits[key] = { ok: false, error: r.error };
+      }
       if (!Shell.isCurrent(scr) || profitKeyOf() !== key || !$('sum-total')) return;
       drawKey();
       if (tab === 'shops' || tab === 'products') drawBody();
     });
+  }
+
+  /** ป้ายเล็กบนการ์ดกำไร: ค่าที่แสดงมาจากที่จำไว้ ยังไม่ใช่ค่าล่าสุด */
+  function staleBadge(p) {
+    if (!p || !p.stale) return '';
+    return '<span class="badge sum-updating" id="sum-profit-updating">' + (p.failed ? 'ยังไม่ได้อัปเดต' : 'กำลังอัปเดต') + '</span>';
   }
 
   /** จำนวนเงินกำไร: +/− คำกำกับ สีเขียว/แดง/เทา (ซ่อนด้วยปุ่มตา) — null = ต้นทุนไม่ครบ (ไม่แสดง 0) */
@@ -385,6 +419,7 @@
     if (!p.ok) return '<div class="key key-profit" id="sum-profit-key">' + head + '<b id="sum-profit" class="pf-big miss">คำนวณไม่สำเร็จ</b><span class="small muted">' + esc(p.error || 'ลองเปิดหน้าใหม่') + '</span></div>';
     if (!p.ready) return '<div class="key key-profit" id="sum-profit-key">' + head + '<b id="sum-profit" class="pf-big miss">ยังไม่ได้ตั้งค่าต้นทุน</b><span class="small muted">กรุณาแจ้งผู้ดูแลระบบ</span></div>';
     var c = p.cur;
+    head += staleBadge(p); // รอบ 48
     if (c.profit === null && !c.incomplete && c.before) { // รอบ 47: ทั้งช่วงอยู่ก่อนวันเริ่มคิดต้นทุน
       return '<div class="key key-profit" id="sum-profit-key">' + head + '<b id="sum-profit" class="pf-big before">ก่อนเริ่มคิดกำไร</b>' +
         '<span class="small muted" id="sum-profit-hint">เริ่มคิดตั้งแต่ ' + esc(formatThaiDateShort(p.start)) + '</span></div>';
@@ -396,9 +431,9 @@
     var t = pfText(c.profit);
     var prev = p.prev && p.prev.profit !== null ? p.prev.profit : null;
     var pct = prev !== null && prev > 0 ? salesPct(c.profit, prev) : null;
-    return '<div class="key key-profit" id="sum-profit-key"><span class="l">' + (c.profit < 0 ? 'ขาดทุน' : c.profit > 0 ? 'กำไร' : 'เท่าทุน') + ' (บาท)</span>' +
+    return '<div class="key key-profit" id="sum-profit-key"><span class="l">' + (c.profit < 0 ? 'ขาดทุน' : c.profit > 0 ? 'กำไร' : 'เท่าทุน') + ' (บาท)</span>' + staleBadge(p) +
       '<b class="num pf-big ' + t.cls + '" id="sum-profit">' + t.num + '</b>' +
-      (c.pct !== null && !eyeOff ? '<span class="small muted" id="sum-profit-pct">' + c.pct.toLocaleString('th-TH', { maximumFractionDigits: 1 }) + '% ของยอดขาย</span>' : '') +
+      (c.pct !== null && !eyeOff ? '<span class="small pf-pct ' + t.cls + '" id="sum-profit-pct">' + c.pct.toLocaleString('th-TH', { maximumFractionDigits: 1 }) + '% ของยอดขาย</span>' : '') +
       (prev !== null ? delta(pct) : '') +
       '<span class="small muted">ช่วงก่อน ' + (prev === null ? 'ไม่มีข้อมูล' : eyeOff ? '••••' : (prev < 0 ? '−' : '') + money(Math.abs(prev))) + '</span></div>';
   }

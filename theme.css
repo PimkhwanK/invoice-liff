@@ -37,6 +37,8 @@
   --theme-warn-border: #EBD6A8;
   --theme-err-bg: #FBEBE7;
   --theme-err-text: #A8291F;     /* ผิดพลาด (แดง) — ปุ่มยืนยันยกเลิกใช้สีนี้เป็นพื้น */
+  --theme-profit: #15803D;       /* รอบ 48: กำไร (เขียว) ตัวหนา — บนขาว 5.0:1 / บนครีม 4.8:1 */
+  --theme-loss: #B91C1C;         /* รอบ 48: ขาดทุน (แดง) ตัวหนา — บนขาว 6.5:1 / บนครีม 6.2:1 */
   --theme-err-border: #EFC6BE;
   --theme-cancel-bg: #F6E5EA;    /* เอกสารที่ยกเลิก (ชมพูหม่น แยกจากข้อผิดพลาด) */
   --theme-cancel-text: #8A2F4D;

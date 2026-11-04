@@ -786,8 +786,11 @@ a.card:active { background: var(--theme-pressed); }
 .audit-bad { color: var(--theme-err-text); }
 
 /* รอบ 44: กำไร/ขาดทุน (หน้าสรุป) — เขียว = กำไร / แดง = ขาดทุน / เทา = เท่าทุน / เทาอ่อน = ต้นทุนไม่ครบ */
-.pf.up, .pf-big.up { color: var(--theme-ok-text); }
-.pf.down, .pf-big.down { color: var(--theme-err-text); }
+/* รอบ 48: ชุดสีเดียวกันทั้งการ์ดหน้าสรุปและกำไรรายบิล — ตัวเลือกยาวกว่า .sum-key .key b (สีดำ) จึงไม่ถูกทับ */
+.pf.up, .pf-big.up, .sum-key .key b.pf-big.up, .pf-pct.up { color: var(--theme-profit); font-weight: 700; }
+.pf.down, .pf-big.down, .sum-key .key b.pf-big.down, .pf-pct.down { color: var(--theme-loss); font-weight: 700; }
+.sum-key .key .pf-pct { font-size: 12px; }
+.sum-updating { align-self: flex-start; font-size: 11px; }
 .pf.zero, .pf-big.zero { color: var(--theme-text-2); }
 .pf.miss, .pf-big.miss { color: var(--theme-text-2); font-weight: 400; font-style: italic; }
 .sum-key .key b.pf-big.miss { font-size: 17px; }
