@@ -35,7 +35,7 @@ var LiffApp = (function () {
     if (t === 'cash' || t === 'tax') return t;
     var page = location.pathname.split('/').pop().replace(/\.html$/, '');
     if (page === 'check') return 'tax'; // หน้าตรวจระบบ (ผู้ดูแล) เรียก action ของใบกำกับ
-    if (page === 'summary' || page === 'profit' || page === 'stock' || page === 'menu' || page === '' || page === 'index') return 'tax'; // รอบ 15: หน้าสรุป (ทั้งสองประเภท) เรียก summaryData ใน Api.gs / รอบ 21: เมนูหลัก
+    if (page === 'summary' || page === 'stock' || page === 'menu' || page === '' || page === 'index') return 'tax'; // รอบ 15: หน้าสรุป (ทั้งสองประเภท) เรียก summaryData ใน Api.gs / รอบ 21: เมนูหลัก
     return page === 'view' && q.has('no') ? 'tax' : 'cash';
   })();
   var MODE_LABEL = MODE === 'cash' ? 'ใบเงินสด' : 'ใบกำกับภาษี';

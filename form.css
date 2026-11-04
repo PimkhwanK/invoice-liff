@@ -803,8 +803,17 @@ a.card:active { background: var(--theme-pressed); }
 .pb-table th:first-child, .pb-table td:first-child { text-align: left; }
 .pb-table th { font-size: 12px; color: var(--theme-text-2); font-weight: 400; }
 
-/* รอบ 45: แถบเมนู 6 แท็บ (+ กำไรบิล) — ไม่ตกบรรทัด แน่นเกิน = เลื่อนข้างได้ */
-.tabbar { overflow-x: auto; scrollbar-width: none; }
-.tabbar::-webkit-scrollbar { display: none; }
-.tabbar button { min-width: 56px; white-space: nowrap; }
-.screen[data-screen=profit] .sum-head .btn { min-height: 48px; flex: none; }
+/* รอบ 46: หัวหน้าสรุป = สวิตช์ สรุปยอดขาย / กำไรรายบิล (แทนหัวข้อ) + ปุ่มใบเช็คยอด */
+.sum-view { display: flex; min-width: 0; padding: 0; margin: 0; overflow: hidden; }
+.sum-view + .sub { margin-top: 6px; }
+.sum-view button { flex: 1 1 0; min-width: 0; min-height: 48px; padding: 4px 6px; border: 0; background: var(--theme-card); font: inherit; font-size: 15px; font-weight: 700; color: var(--theme-text); cursor: pointer; }
+.sum-view button + button { border-left: 1px solid var(--theme-field-border); }
+.sum-view button.on { background: var(--theme-primary); color: var(--theme-on-primary); }
+.sum-view button:focus-visible { outline: 2px solid var(--theme-primary-dark); outline-offset: -4px; }
+.sum-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.sum-top .mode-pill { margin-bottom: 0; }
+.sum-top .sum-daily-btn { max-width: 60%; }
+@media (min-width: 768px) { .sum-view { max-width: 520px; } }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.pb-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.pb-top .btn { min-height: 48px; flex: none; }

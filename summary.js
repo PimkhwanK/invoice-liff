@@ -36,6 +36,7 @@
   var profitWait = {};   // key → Promise
   var shopBy = 'sat';    // แท็บร้านค้า: ตามยอดขาย / ตามกำไร
   var eyeOff = (function () { var k = LiffApp.remember('profit-eye'); return !!(k && k.data === 'off'); })();
+  var sumView = (function () { var k = LiffApp.remember('sum-view'); return k && k.data === 'bills' ? 'bills' : 'sales'; })(); // รอบ 46: สรุปยอดขาย / กำไรรายบิล (ค่าเริ่มต้น = สรุปยอดขาย)
   var COST_HINT = 'กรอกต้นทุนที่หน้าสต็อก (ปุ่มของเข้า) หรือคอลัมน์ "ต้นทุนเริ่มต้น (บาท)" ในชีต';
   var MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
   function $(id) { return scr.$(id); }
@@ -116,7 +117,9 @@
   async function show(params) {
     if (!pick.year) { pick.year = thisYear(); pick.month = Number(today().slice(5, 7)); yearPick = thisYear(); dayPick = today(); }
     if (params && params.print) return showDaily(params.print);
-    if (params && params.bills) return Shell.go('profit', {}); // รอบ 45: กำไรรายบิลย้ายไปแท็บ "กำไรบิล" (ลิงก์เดิมยังใช้ได้)
+    if (params && params.bills) { sumView = 'bills'; LiffApp.keep('sum-view', 'bills'); Shell.setParams(scr, {}); } // รอบ 46: ลิงก์เดิม = มุมมองกำไรรายบิล
+    markView();
+    if (sumView === 'bills') return showBills();
     profits = {}; // รอบ 44: เข้าหน้าใหม่ = คำนวณกำไรใหม่ (มีบิลใหม่ / แก้ต้นทุนแล้ว)
     eyeOff = (function () { var k = LiffApp.remember('profit-eye'); return !!(k && k.data === 'off'); })(); // รอบ 45: ใช้ร่วมกับหน้ากำไรบิล
     document.title = SUMMARY_TITLE; // กลับจากใบเช็คยอด (หน้าจอเดียวกัน shell ไม่ตั้งชื่อใหม่)
@@ -938,8 +941,135 @@
     var b = el.closest && el.closest('[data-debt]');
     if (b) return debtAsk(b);
     if (el.closest && el.closest('#debt-retry')) { debtErr = null; drawDebt(); return fetchDebt(); }
+    if (el.closest && el.closest('#pb-more')) return billsMore(el.closest('#pb-more'));
+    if (el.closest && el.closest('#pb-eye')) return billsEye();
+    if (el.closest && el.closest('#pb-retry')) return showBills();
+    var pbli = el.closest && el.closest('li.pb-doc');
+    if (pbli) return billsToggle(pbli);
     var row = el.closest && el.closest('[data-href]');
     if (row) location.assign(row.getAttribute('data-href'));
+  }
+
+  // ---------- รอบ 46: มุมมอง "กำไรรายบิล" (สวิตช์บนหัว) — แบบหน้าประวัติ "บิลล่าสุด" + กำไร/ขาดทุนต่อบิล ไม่มีช่วงเวลา ไม่มีการ์ดตัวเลข
+  //   ทั้งสองประเภท ใบใหม่อยู่บน ทีละ 10 ใบ + "โหลดบิลเพิ่ม" / แตะ = รายสินค้า / ข้อมูลจาก profitBills (ไม่จำไว้ในเครื่อง)
+
+  var PB_PAGE = 10;
+  var pbList = [];
+  var pbTotal = 0;
+  var pbSeq = 0;      // กันคำตอบเก่ามาวาดทับ (สลับมุมมองเร็ว ๆ)
+
+  function setView(v) {
+    sumView = v === 'bills' ? 'bills' : 'sales';
+    LiffApp.keep('sum-view', sumView);
+    markView();
+    Shell.scrollTop(scr);
+    if (sumView === 'bills') return showBills();
+    view.innerHTML = '';   // สร้างโครงหน้าสรุปใหม่ (layout)
+    return show({});
+  }
+  function markView() {
+    var box = $('sum-view');
+    if (!box) return;
+    Array.prototype.forEach.call(box.querySelectorAll('button[data-view]'), function (x) {
+      var on = x.dataset.view === sumView;
+      x.classList.toggle('on', on);
+      x.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    var sub = $('sum-sub');
+    // มุมมองสรุปยอดขาย: ไม่มีบรรทัดคำอธิบาย (ตัวเลข 4 ตัว + แท็บต้องเห็นโดยไม่ต้องเลื่อนที่จอ 375×667)
+    if (sub) { sub.textContent = sumView === 'bills' ? 'บิลล่าสุด แตะเพื่อดูรายสินค้า' : ''; sub.classList.toggle('hidden', sumView !== 'bills'); }
+  }
+
+  async function showBills() {
+    var seq = ++pbSeq;
+    pbList = [];
+    LiffApp.loading('กำลังคำนวณกำไรรายบิล…', view);
+    var r = await tapi('profitBills', { offset: 0, limit: PB_PAGE });
+    if (seq !== pbSeq || !Shell.isCurrent(scr) || sumView !== 'bills') return;
+    if (!r.ok) {
+      if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
+      view.innerHTML = '<section class="card"><div class="alert err" id="pb-error">' + LiffApp.errorHtml(r.error || 'โหลดกำไรรายบิลไม่สำเร็จ') + '</div>' +
+        '<button type="button" class="btn block" id="pb-retry" style="margin-top:10px">ลองอีกครั้ง</button></section>';
+      return;
+    }
+    view.innerHTML = '<section class="card" id="pb-card"><div class="pb-top"><h2>กำไรรายบิล <span class="count">ทั้ง 2 ประเภท</span></h2>' +
+      '<button type="button" class="btn" id="pb-eye"></button></div>' +
+      (r.ready ? '' : '<div class="alert warn" id="pb-not-ready">ยังไม่ได้ตั้งค่าต้นทุน กรุณาแจ้งผู้ดูแลระบบ</div>') +
+      '<ul class="list" id="pb-list"></ul><div id="pb-foot"></div>' +
+      '<p class="small muted" id="pb-hint">ต้นทุนไม่ครบ = ' + esc(COST_HINT) + '</p></section>';
+    drawEyeBtn();
+    billsAdd(r);
+    Shell.drawn(scr);
+  }
+
+  function drawEyeBtn() {
+    var b = $('pb-eye');
+    if (!b) return;
+    b.setAttribute('aria-pressed', eyeOff ? 'true' : 'false');
+    b.innerHTML = iconSvg(eyeOff ? 'eyeOff' : 'eye') + '<span>' + (eyeOff ? 'แสดงกำไร' : 'ซ่อนกำไร') + '</span>';
+  }
+
+  /** ปุ่มตา (ค่าเดียวกับมุมมองสรุปยอดขาย จำในเครื่อง) → วาดการ์ดที่มีอยู่ใหม่ */
+  function billsEye() {
+    eyeOff = !eyeOff;
+    LiffApp.keep('profit-eye', eyeOff ? 'off' : 'on');
+    drawEyeBtn();
+    var ul = $('pb-list');
+    if (ul && pbList.length) ul.innerHTML = pbList.map(billRow).join('');
+  }
+
+  function billsAdd(r) {
+    pbTotal = r.total || 0;
+    var start = pbList.length;
+    pbList = pbList.concat(r.bills || []);
+    var ul = $('pb-list');
+    if (!pbList.length) ul.innerHTML = '<li class="empty">ยังไม่มีบิล</li>';
+    else ul.insertAdjacentHTML('beforeend', (r.bills || []).map(function (b, i) { return billRow(b, start + i); }).join(''));
+    $('pb-foot').innerHTML = pbList.length < pbTotal ? '<button type="button" class="btn block" id="pb-more">โหลดบิลเพิ่ม</button>' : '';
+  }
+
+  async function billsMore(btn) {
+    var seq = pbSeq;
+    btn.disabled = true;
+    btn.textContent = 'กำลังโหลด…';
+    var r = await tapi('profitBills', { offset: pbList.length, limit: PB_PAGE });
+    if (seq !== pbSeq || !Shell.isCurrent(scr) || sumView !== 'bills') return;
+    if (!r.ok) {
+      if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
+      btn.disabled = false;
+      btn.textContent = 'ลองอีกครั้ง';
+      return LiffApp.toast(r.error || 'โหลดไม่สำเร็จ', true);
+    }
+    billsAdd(r);
+  }
+
+  /** การ์ดบิล — โครงเดียวกับ docRow ของหน้าประวัติ + กำไร/ขาดทุน */
+  function billRow(b, i) {
+    var label = b.kind === 'c' ? '#' + b.no : LiffApp.docLabel(b.no, b.docType);
+    var why = b.cancelled ? '<span class="pf miss">ยกเลิก ไม่นับกำไร</span>' : b.paired ? '<span class="pf miss">ไม่นับซ้ำ (มีใบกำกับคู่)</span>' : pfHtml(b.profit);
+    return '<li class="doc pb-doc" role="button" tabindex="0" aria-expanded="false" data-i="' + i + '">' +
+      '<div class="no' + (b.cancelled ? ' cancel' : '') + '">' + esc(label) + ' ' + (b.cancelled ? '<span class="badge red">ยกเลิก</span>' : '<span class="badge">ออกแล้ว</span>') + '</div>' +
+      '<div class="amt num">' + money(b.total) + '</div>' +
+      '<div class="shop-n">' + esc(b.shopName || '') + '</div>' +
+      '<div class="meta">' + formatThaiDate(b.date) + ' · ' + esc(b.kind === 'c' ? CASH_DOC_TITLE : b.docType) + (b.saleType ? ' · ' + esc(b.saleType) : '') +
+      (b.issuedBy ? '<br>ออกโดย ' + esc(b.issuedBy) : '') + '</div>' +
+      '<div class="pb-pf">' + why + '</div><div class="pb-lines hidden"></div></li>';
+  }
+
+  function billsToggle(li) {
+    var box = li.querySelector('.pb-lines');
+    var open = box.classList.contains('hidden');
+    li.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) { box.classList.add('hidden'); return; }
+    var b = pbList[Number(li.dataset.i)];
+    var cell = function (sat) { return sat === null || sat === undefined ? '<span class="pf miss">ไม่ครบ</span>' : eyeOff ? '••••' : money(sat); };
+    box.innerHTML = '<table class="pb-table"><thead><tr><th>สินค้า</th><th>ขาย*</th><th>ต้นทุน*</th><th>กำไร</th></tr></thead><tbody>' +
+      b.lines.map(function (l) {
+        return '<tr><td>' + esc(l.name) + (l.free ? ' <span class="badge">แถม</span>' : '') + '<div class="small muted">' + formatQty(l.qty) + ' ' + esc(l.unit) + '</div></td>' +
+          '<td class="num">' + (eyeOff ? '••••' : money(l.sale)) + '</td><td class="num">' + cell(l.cost) + '</td><td class="num">' +
+          (l.profit === null ? cell(null) : pfHtml(l.profit).replace(/กำไร |ขาดทุน |เท่าทุน /, '')) + '</td></tr>';
+      }).join('') + '</tbody></table><div class="small muted">* ก่อน VAT</div>';
+    box.classList.remove('hidden');
   }
 
   Shell.define('summary', {
@@ -947,12 +1077,17 @@
     build: function (s) {
       scr = s;
       s.root.innerHTML =
-        '<div class="topbar"><div class="mode-pill" data-mode="all">' + iconSvg('summary') + '<span>ทุกประเภท</span></div>' +
-        '<div class="sum-head"><div><h1>สรุปยอดขาย</h1><div class="sub">ไม่นับบิลที่ยกเลิกและบิลทดสอบ</div></div>' +
-        '<button type="button" class="btn sum-daily-btn" id="sum-daily-btn">' + iconSvg('file') + '<span>ใบเช็คยอดรายวัน</span></button></div></div>' +
+        '<div class="topbar"><div class="sum-top"><div class="mode-pill" data-mode="all">' + iconSvg('summary') + '<span>ทุกประเภท</span></div>' +
+        '<button type="button" class="btn sum-daily-btn" id="sum-daily-btn">' + iconSvg('file') + '<span>ใบเช็คยอดรายวัน</span></button></div>' +
+        '<h1 class="sr-only">สรุปยอดขาย</h1>' +
+        '<div class="seg-choice sum-view" id="sum-view" role="tablist" aria-label="มุมมอง">' + // รอบ 46: แทนหัวข้อ "สรุปยอดขาย"
+        '<button type="button" role="tab" data-view="sales" id="sum-view-sales">สรุปยอดขาย</button>' +
+        '<button type="button" role="tab" data-view="bills" id="sum-view-bills">กำไรรายบิล</button></div>' +
+        '<div class="sub hidden" id="sum-sub"></div></div>' +
         '<div id="view" aria-live="polite"></div>';
       view = $('view');
       $('sum-daily-btn').addEventListener('click', openDaily);
+      $('sum-view').addEventListener('click', function (e) { var b = e.target.closest('button[data-view]'); if (b && b.dataset.view !== sumView) setView(b.dataset.view); });
       view.addEventListener('click', function (e) { pickerOpen(e); go(e.target); });
       view.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.target.closest('button')) go(e.target); }); // ปุ่มกด Enter = click อยู่แล้ว
     },
