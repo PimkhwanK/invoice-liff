@@ -1047,11 +1047,25 @@
   function noCostBox(list) {
     if (!Array.isArray(list) || !list.length) return '';
     return '<details class="pb-nocost" id="pb-nocost"><summary>สินค้าที่ยังไม่มีต้นทุน <span class="count">' + list.length + ' รายการ</span></summary>' +
-      '<p class="small muted" id="pb-nocost-hint">กรอกที่คอลัมน์ "ต้นทุนเริ่มต้น (บาท)" ในชีต "รายการ" (ของเข้าครั้งต่อไปใส่ต้นทุนที่หน้าสต็อก)</p>' +
+      '<p class="small muted" id="pb-nocost-hint">กรอกต้นทุนในชีตตามที่บอกใต้ชื่อสินค้า แล้วกดเมนู "คำนวณต้นทุนย้อนหลัง"</p>' +
       '<ul class="list" id="pb-nocost-list">' + list.map(function (p) {
-        return '<li class="pb-nc"><div class="nm"><div class="n">' + esc(p.name || p.barcode) + '</div><div class="small muted">' + p.bills.toLocaleString('th-TH') + ' บิล</div></div>' +
+        return '<li class="pb-nc"><div class="nm"><div class="n">' + esc(p.name || p.barcode) + '</div><div class="small muted">' + p.bills.toLocaleString('th-TH') + ' บิล</div>' +
+          noCostWhere(p) + '</div>' +
           '<div class="amt"><b class="num">' + formatQty(p.qty) + '</b> ' + esc(p.unit) + '</div></li>';
       }).join('') + '</ul></details>';
+  }
+
+  /** รอบ 49: ที่ต้องกรอกต้นทุนของสินค้านี้ (ไม่รู้ = บอกทั้งสองที่) */
+  function noCostWhere(p) {
+    var start = !!p.start, moves = !!p.moves;
+    if (!start && !moves) start = moves = true;
+    var out = [];
+    if (moves) {
+      var d = Array.isArray(p.moveDates) && p.moveDates.length ? ' (รายการวันที่ ' + p.moveDates.map(function (x) { return formatThaiDateShort(x); }).join(', ') + ')' : '';
+      out.push('<li class="nc-moves">ของเข้า/แก้ยอด: แท็บ "ความเคลื่อนไหวสต็อก" คอลัมน์ "ต้นทุนต่อหน่วย (บาท)"' + esc(d) + '</li>');
+    }
+    if (start) out.push('<li class="nc-start">ยอดเริ่มต้น: ชีต "รายการ" คอลัมน์ "ต้นทุนเริ่มต้น (บาท)"</li>');
+    return '<ul class="nc-where small">' + out.join('') + '</ul>';
   }
 
   function drawEyeBtn() {

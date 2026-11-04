@@ -829,4 +829,8 @@ a.card:active { background: var(--theme-pressed); }
 .pb-nocost summary .count { font-weight: 400; }
 .pb-nocost > p, .pb-nocost > ul { margin: 0 12px 10px; }
 .pb-nc { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.pb-nc .nm { min-width: 0; }
+.pb-nc .nm { min-width: 0; flex: 1; }
+.pb-nc .amt { white-space: nowrap; align-self: flex-start; }
+.pb-nc .nc-where { list-style: none; margin: 4px 0 0; padding: 0; color: var(--theme-text-2); }
+.pb-nc .nc-where li { padding: 2px 0 0 12px; position: relative; overflow-wrap: anywhere; }
+.pb-nc .nc-where li::before { content: "•"; position: absolute; left: 0; }
