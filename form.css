@@ -817,3 +817,13 @@ a.card:active { background: var(--theme-pressed); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .pb-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .pb-top .btn { min-height: 48px; flex: none; }
+
+/* รอบ 47: บิลก่อนวันเริ่มคิดต้นทุน (เทาอ่อน ไม่เอียง — คนละแบบกับต้นทุนไม่ครบ) / สินค้าที่ยังไม่มีต้นทุน (พับได้) */
+.pf.before, .pf-big.before { color: var(--theme-text-2); font-weight: 400; }
+.sum-key .key b.pf-big.before { font-size: 17px; }
+.pb-nocost { margin: 6px 0 10px; border: 1px solid var(--theme-warn-border); border-radius: 12px; background: var(--theme-warn-bg); }
+.pb-nocost summary { min-height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 12px; font-weight: 700; color: var(--theme-warn-text); cursor: pointer; }
+.pb-nocost summary .count { font-weight: 400; }
+.pb-nocost > p, .pb-nocost > ul { margin: 0 12px 10px; }
+.pb-nc { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.pb-nc .nm { min-width: 0; }

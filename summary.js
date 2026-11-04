@@ -385,6 +385,10 @@
     if (!p.ok) return '<div class="key key-profit" id="sum-profit-key">' + head + '<b id="sum-profit" class="pf-big miss">คำนวณไม่สำเร็จ</b><span class="small muted">' + esc(p.error || 'ลองเปิดหน้าใหม่') + '</span></div>';
     if (!p.ready) return '<div class="key key-profit" id="sum-profit-key">' + head + '<b id="sum-profit" class="pf-big miss">ยังไม่ได้ตั้งค่าต้นทุน</b><span class="small muted">กรุณาแจ้งผู้ดูแลระบบ</span></div>';
     var c = p.cur;
+    if (c.profit === null && !c.incomplete && c.before) { // รอบ 47: ทั้งช่วงอยู่ก่อนวันเริ่มคิดต้นทุน
+      return '<div class="key key-profit" id="sum-profit-key">' + head + '<b id="sum-profit" class="pf-big before">ก่อนเริ่มคิดกำไร</b>' +
+        '<span class="small muted" id="sum-profit-hint">เริ่มคิดตั้งแต่ ' + esc(formatThaiDateShort(p.start)) + '</span></div>';
+    }
     if (c.profit === null) {
       return '<div class="key key-profit" id="sum-profit-key">' + head + '<b id="sum-profit" class="pf-big miss">ต้นทุนไม่ครบ</b>' +
         '<span class="small muted" id="sum-profit-hint">' + esc(COST_HINT) + '</span></div>';
@@ -420,6 +424,7 @@
   function profitCell(map, key) {
     if (!map) return '';
     var x = map[key];
+    if (x && x.profit === null && !x.incomplete && x.before) return '<span class="small sum-pf-row"><span class="pf before">ก่อนเริ่มคิดกำไร</span></span>'; // รอบ 47
     return '<span class="small sum-pf-row">' + pfHtml(x ? (x.incomplete && x.profit === null ? null : x.profit) : null) + '</span>';
   }
 
@@ -995,11 +1000,23 @@
     view.innerHTML = '<section class="card" id="pb-card"><div class="pb-top"><h2>กำไรรายบิล <span class="count">ทั้ง 2 ประเภท</span></h2>' +
       '<button type="button" class="btn" id="pb-eye"></button></div>' +
       (r.ready ? '' : '<div class="alert warn" id="pb-not-ready">ยังไม่ได้ตั้งค่าต้นทุน กรุณาแจ้งผู้ดูแลระบบ</div>') +
+      noCostBox(r.noCost) +
       '<ul class="list" id="pb-list"></ul><div id="pb-foot"></div>' +
       '<p class="small muted" id="pb-hint">ต้นทุนไม่ครบ = ' + esc(COST_HINT) + '</p></section>';
     drawEyeBtn();
     billsAdd(r);
     Shell.drawn(scr);
+  }
+
+  /** รอบ 47: สินค้าที่ขายตั้งแต่วันเริ่มคิดต้นทุนแต่ยังไม่มีต้นทุน — กล่องพับได้ (details) เรียงตามจำนวนที่ขาย / ไม่มี = ไม่แสดง */
+  function noCostBox(list) {
+    if (!Array.isArray(list) || !list.length) return '';
+    return '<details class="pb-nocost" id="pb-nocost"><summary>สินค้าที่ยังไม่มีต้นทุน <span class="count">' + list.length + ' รายการ</span></summary>' +
+      '<p class="small muted" id="pb-nocost-hint">กรอกที่คอลัมน์ "ต้นทุนเริ่มต้น (บาท)" ในชีต "รายการ" (ของเข้าครั้งต่อไปใส่ต้นทุนที่หน้าสต็อก)</p>' +
+      '<ul class="list" id="pb-nocost-list">' + list.map(function (p) {
+        return '<li class="pb-nc"><div class="nm"><div class="n">' + esc(p.name || p.barcode) + '</div><div class="small muted">' + p.bills.toLocaleString('th-TH') + ' บิล</div></div>' +
+          '<div class="amt"><b class="num">' + formatQty(p.qty) + '</b> ' + esc(p.unit) + '</div></li>';
+      }).join('') + '</ul></details>';
   }
 
   function drawEyeBtn() {
@@ -1046,7 +1063,8 @@
   /** การ์ดบิล — โครงเดียวกับ docRow ของหน้าประวัติ + กำไร/ขาดทุน */
   function billRow(b, i) {
     var label = b.kind === 'c' ? '#' + b.no : LiffApp.docLabel(b.no, b.docType);
-    var why = b.cancelled ? '<span class="pf miss">ยกเลิก ไม่นับกำไร</span>' : b.paired ? '<span class="pf miss">ไม่นับซ้ำ (มีใบกำกับคู่)</span>' : pfHtml(b.profit);
+    var why = b.cancelled ? '<span class="pf miss">ยกเลิก ไม่นับกำไร</span>' : b.paired ? '<span class="pf miss">ไม่นับซ้ำ (มีใบกำกับคู่)</span>'
+      : b.beforeStart ? '<span class="pf before">ก่อนเริ่มคิดกำไร</span>' : pfHtml(b.profit); // รอบ 47
     return '<li class="doc pb-doc" role="button" tabindex="0" aria-expanded="false" data-i="' + i + '">' +
       '<div class="no' + (b.cancelled ? ' cancel' : '') + '">' + esc(label) + ' ' + (b.cancelled ? '<span class="badge red">ยกเลิก</span>' : '<span class="badge">ออกแล้ว</span>') + '</div>' +
       '<div class="amt num">' + money(b.total) + '</div>' +
