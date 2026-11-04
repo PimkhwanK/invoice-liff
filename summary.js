@@ -36,7 +36,9 @@
   var profitWait = {};   // key → Promise
   var shopBy = 'sat';    // แท็บร้านค้า: ตามยอดขาย / ตามกำไร
   var eyeOff = (function () { var k = LiffApp.remember('profit-eye'); return !!(k && k.data === 'off'); })();
-  var sumView = (function () { var k = LiffApp.remember('sum-view'); return k && k.data === 'bills' ? 'bills' : 'sales'; })(); // รอบ 46: สรุปยอดขาย / กำไรรายบิล (ค่าเริ่มต้น = สรุปยอดขาย)
+  /** รอบ 54: ค่าที่จำไว้ผิดรูปแบบ / ไม่มี = สรุปยอดขาย — อ่านตอนเข้าหน้า (ตอนโหลดสคริปต์ยังไม่รู้บัญชี ค่าที่จำไว้จึงอ่านไม่ได้) */
+  function rememberedView() { var k = LiffApp.remember('sum-view'); return !k ? null : k.data === 'bills' ? 'bills' : 'sales'; } // ไม่มี (เครื่องจำไม่ได้) = คงค่าเดิม
+  var sumView = 'sales'; // รอบ 46: สรุปยอดขาย / กำไรรายบิล (ค่าเริ่มต้น = สรุปยอดขาย)
   var COST_HINT = 'กรอกต้นทุนที่หน้าสต็อก (ปุ่มของเข้า) หรือคอลัมน์ "ต้นทุนเริ่มต้น (บาท)" ในชีต';
   var MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
   function $(id) { return scr.$(id); }
@@ -100,7 +102,7 @@
       if (!Object.keys(pending).length) LiffApp.syncing(false, scr);
       if (!r.ok) {
         // มีข้อมูลที่จำไว้แสดงอยู่แล้ว → บอกสั้น ๆ (ตัวเลขเดิมยังอยู่) / ไม่มีสิทธิ์ → หน้าไม่มีสิทธิ์
-        if (data[year] && !LiffApp.isAuthFail(r.code)) LiffApp.toast('อัปเดตตัวเลขไม่สำเร็จ ตัวเลขที่เห็นอาจไม่ใช่ล่าสุด', true);
+        if (data[year] && !LiffApp.isAuthFail(r.code)) { if (salesOn()) LiffApp.toast('อัปเดตตัวเลขไม่สำเร็จ ตัวเลขที่เห็นอาจไม่ใช่ล่าสุด', true); }
         else if (data[year]) LiffApp.showApiError(r, scr);
         return r;
       }
@@ -108,18 +110,38 @@
       data[year] = r.summary;
       LiffApp.keep('sales-' + year, r.summary);
       if ('stockLow' in r) { stockLow = r.stockLow; LiffApp.keep('stock-low', r.stockLow); }
-      if (Shell.isCurrent(scr) && yearOf() === year) draw();
+      if (salesOn() && yearOf() === year) draw(); // รอบ 54: มุมมองกำไรรายบิล / ใบเช็คยอด → ไม่วาดทับ
       return r;
     });
     return pending[year];
   }
 
+  /**
+   * รอบ 54: เนื้อหาที่ควรแสดงตอนนี้ 'sales' | 'bills' | 'daily' — ค่าเดียวที่ทั้งสวิตช์และเนื้อหาใช้
+   * คำตอบที่มาทีหลัง (summaryData / profitData / debtData / profitBills) วาดได้เฉพาะเมื่อ screenKind ยังเป็นมุมมองของตัวเอง
+   * (เดิม: summaryData ตอบช้า หลังผู้ใช้กดไป "กำไรรายบิล" แล้ว → draw() สร้างหน้าสรุปยอดขายทับ สวิตช์ยังเป็นกำไรรายบิล)
+   */
+  var screenKind = '';
+  function salesOn() { return screenKind === 'sales' && Shell.isCurrent(scr); }
+
+  /** วาดไม่สำเร็จ (โค้ดผิดพลาด) → กล่องข้อผิดพลาด + ลองอีกครั้ง ในพื้นที่เนื้อหา (ไม่ค้างหน้าเดิม) / log ไม่มีตัวเลขเงิน */
+  function renderFail(where, e) {
+    try { console.error('[summary] วาด ' + where + ' ไม่สำเร็จ (มุมมอง ' + screenKind + '): ' + (e && e.message ? e.message : e)); } catch (x) { /* ไม่มี console */ }
+    view.innerHTML = '<section class="card"><div class="alert err" id="sum-render-error">' + LiffApp.errorHtml('แสดงข้อมูลไม่สำเร็จ ลองอีกครั้ง') + '</div>' +
+      '<button type="button" class="btn block" id="sum-render-retry" style="margin-top:10px">ลองอีกครั้ง</button></section>';
+    view.dataset.view = screenKind;
+    Shell.drawn(scr);
+  }
+
   async function show(params) {
     if (!pick.year) { pick.year = thisYear(); pick.month = Number(today().slice(5, 7)); yearPick = thisYear(); dayPick = today(); }
-    if (params && params.print) return showDaily(params.print);
+    if (params && params.print) { screenKind = 'daily'; return showDaily(params.print); }
+    sumView = rememberedView() || sumView;
     if (params && params.bills) { sumView = 'bills'; LiffApp.keep('sum-view', 'bills'); Shell.setParams(scr, {}); } // รอบ 46: ลิงก์เดิม = มุมมองกำไรรายบิล
+    screenKind = sumView;
     markView();
     if (sumView === 'bills') return showBills();
+    if (view.dataset.view !== 'sales') view.innerHTML = ''; // เนื้อหาของมุมมองอื่นค้างอยู่ → สร้างโครงหน้าสรุปใหม่
     profits = {}; // รอบ 44: เข้าหน้าใหม่ = คำนวณกำไรใหม่ (มีบิลใหม่ / แก้ต้นทุนแล้ว)
     eyeOff = (function () { var k = LiffApp.remember('profit-eye'); return !!(k && k.data === 'off'); })(); // รอบ 45: ใช้ร่วมกับหน้ากำไรบิล
     document.title = SUMMARY_TITLE; // กลับจากใบเช็คยอด (หน้าจอเดียวกัน shell ไม่ตั้งชื่อใหม่)
@@ -129,6 +151,7 @@
     var year = yearOf();
     if (!data[year] && !LiffApp.remember('sales-' + year)) LiffApp.loading('กำลังรวมยอดขาย…', view);
     var r = await ensure(year);
+    if (!salesOn()) return; // รอบ 54: ระหว่างรอ ผู้ใช้สลับไปมุมมองอื่นแล้ว → ไม่วาดทับ
     if (!r.ok) return LiffApp.showApiError(r, scr);
     if (yearOf() === year) draw();
     Shell.drawn(scr);
@@ -144,7 +167,7 @@
     drawPeriod();
     LiffApp.loading('กำลังรวมยอดขายปี ' + (year + 543) + '…', $('sum-body'));
     ensure(year).then(function (r) {
-      if (yearOf() !== year || !Shell.isCurrent(scr)) return;
+      if (yearOf() !== year || !salesOn() || !$('sum-body')) return;
       if (!r.ok) {
         if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
         $('sum-body').innerHTML = '<div class="alert err" id="sum-error">' + LiffApp.errorHtml(r.error || 'โหลดยอดขายไม่สำเร็จ') + '</div>' +
@@ -182,10 +205,13 @@
   // ---------- วาด
 
   function draw() {
+    if (!salesOn()) return; // รอบ 54: วาดหน้าสรุปยอดขายได้เฉพาะเมื่อมุมมองที่เลือก = สรุปยอดขาย
     var d = data[yearOf()];
     if (!d) return;
-    drawPeriod();
-    drawBody();
+    try {
+      drawPeriod();
+      drawBody();
+    } catch (e) { renderFail('สรุปยอดขาย', e); }
   }
 
   function yearsList() {
@@ -208,6 +234,7 @@
   /** โครงหน้า: ตัวเลือกช่วงเวลา + เนื้อหา (สร้างใหม่หลังข้อความระหว่างรอ / หน้าผิดพลาดแทนที่ไป) */
   function layout() {
     if ($('sum-period')) return;
+    view.dataset.view = 'sales';
     view.innerHTML = '<section class="card" id="sum-period"></section><section class="card sum-key" id="sum-total"></section>' +
       '<div class="seg-choice sum-tabs" id="sum-tabs" role="tablist" aria-label="หัวข้อ">' + TABS.map(function (t) {
         return '<button type="button" role="tab" data-tab="' + t[0] + '" id="sum-tab-' + t[0] + '">' + t[1] + '</button>';
@@ -279,7 +306,10 @@
   function drawBody() {
     var body = $('sum-body');
     var d = data[yearOf()];
-    if (!body || !d) return;
+    if (!body || !d || !salesOn()) return;
+    try { drawBodyOf(body, d); } catch (e) { renderFail('แท็บ ' + tab, e); }
+  }
+  function drawBodyOf(body, d) {
     var v = salesView(d, periodArg(), period.kind === 'day' && days[dayPick] ? days[dayPick].day : null);
     needDay();
     var miss = [];
@@ -387,7 +417,7 @@
       } else {
         profits[key] = { ok: false, error: r.error };
       }
-      if (!Shell.isCurrent(scr) || profitKeyOf() !== key || !$('sum-total')) return;
+      if (!salesOn() || profitKeyOf() !== key || !$('sum-total')) return;
       drawKey();
       if (tab === 'shops' || tab === 'products') drawBody();
     });
@@ -538,9 +568,10 @@
   async function showDaily(date) {
     if (!isIsoDate(date)) date = today();
     document.title = dailyTitle(date);
+    view.dataset.view = 'daily';
     LiffApp.loading('กำลังเตรียมใบเช็คยอดขาย…', view);
     var r = await fetchDay(date);
-    if (!Shell.isCurrent(scr) || scr.params.print !== date && isIsoDate(scr.params.print)) return;
+    if (!Shell.isCurrent(scr) || screenKind !== 'daily' || scr.params.print !== date && isIsoDate(scr.params.print)) return;
     if (!r.ok) {
       if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
       view.innerHTML = '<section class="card alert err" id="dsr-error">' + LiffApp.errorHtml(r.error || 'โหลดยอดขายไม่สำเร็จ ลองอีกครั้ง') + '</section>' +
@@ -892,6 +923,7 @@
 
   /** วาดการ์ดลูกหนี้ใหม่ที่เดิม (ไม่วาดทั้งหน้า) */
   function drawDebt() {
+    if (!salesOn()) return; // รอบ 54: ลูกหนี้ตอบมาทีหลังขณะอยู่มุมมองอื่น → ไม่แตะ (เข้าสรุปยอดขายอีกครั้ง = วาดจากค่าที่ได้)
     var box = $('sum-debt');
     if (box) box.outerHTML = debtCard();
     drawKey(); // รอบ 34: ลูกหนี้ค้างในตัวเลข 4 ตัว
@@ -984,6 +1016,7 @@
     if (el.closest && el.closest('#pb-more')) return billsMore(el.closest('#pb-more'));
     if (el.closest && el.closest('#pb-eye')) return billsEye();
     if (el.closest && el.closest('#pb-retry')) return showBills();
+    if (el.closest && el.closest('#sum-render-retry')) { view.dataset.view = ''; return sumView === 'bills' ? showBills() : show({}); } // รอบ 54
     var pbli = el.closest && el.closest('li.pb-doc');
     if (pbli) return billsToggle(pbli);
     var row = el.closest && el.closest('[data-href]');
@@ -999,13 +1032,17 @@
   var pbBeforeVat = false; // รอบ 53: ยอดขายใบกำกับในกำไร = ก่อน VAT (จากเซิร์ฟเวอร์)
   var pbSeq = 0;      // กันคำตอบเก่ามาวาดทับ (สลับมุมมองเร็ว ๆ)
 
+  /** สลับมุมมอง: ค่า sumView → สวิตช์ + เนื้อหา (เปลี่ยนพร้อมกันในรอบเดียว — กล่องกำลังโหลดของมุมมองใหม่แทนเนื้อหาเดิมทันที) */
   function setView(v) {
     sumView = v === 'bills' ? 'bills' : 'sales';
     LiffApp.keep('sum-view', sumView);
+    screenKind = sumView;
     markView();
     Shell.scrollTop(scr);
     if (sumView === 'bills') return showBills();
+    pbSeq++;               // คำตอบ profitBills ที่ยังค้าง = ไม่ใช้
     view.innerHTML = '';   // สร้างโครงหน้าสรุปใหม่ (layout)
+    view.dataset.view = '';
     return show({});
   }
   function markView() {
@@ -1024,15 +1061,23 @@
   async function showBills() {
     var seq = ++pbSeq;
     pbList = [];
-    LiffApp.loading('กำลังคำนวณกำไรรายบิล…', view);
-    var r = await tapi('profitBills', { offset: 0, limit: PB_PAGE });
-    if (seq !== pbSeq || !Shell.isCurrent(scr) || sumView !== 'bills') return;
+    screenKind = 'bills';
+    view.dataset.view = 'bills';
+    LiffApp.loading('กำลังคำนวณกำไรรายบิล…', view); // แทนเนื้อหาเดิมทันที (สวิตช์กับเนื้อหาตรงกันตั้งแต่แตะ)
+    var r;
+    try { r = await tapi('profitBills', { offset: 0, limit: PB_PAGE }); } catch (e) { r = { ok: false, error: 'โหลดกำไรรายบิลไม่สำเร็จ' }; }
+    if (seq !== pbSeq || !Shell.isCurrent(scr) || sumView !== 'bills' || screenKind !== 'bills') return;
     if (!r.ok) {
       if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
       view.innerHTML = '<section class="card"><div class="alert err" id="pb-error">' + LiffApp.errorHtml(r.error || 'โหลดกำไรรายบิลไม่สำเร็จ') + '</div>' +
         '<button type="button" class="btn block" id="pb-retry" style="margin-top:10px">ลองอีกครั้ง</button></section>';
+      Shell.drawn(scr);
       return;
     }
+    try { billsPage(r); } catch (e) { pbList = []; renderFail('กำไรรายบิล', e); }
+  }
+
+  function billsPage(r) {
     view.innerHTML = '<section class="card" id="pb-card"><div class="pb-top"><h2>กำไรรายบิล <span class="count">ทั้ง 2 ประเภท</span></h2>' +
       '<button type="button" class="btn" id="pb-eye"></button></div>' +
       (r.ready ? '' : '<div class="alert warn" id="pb-not-ready">ยังไม่ได้ตั้งค่าต้นทุน กรุณาแจ้งผู้ดูแลระบบ</div>') +
@@ -1101,14 +1146,14 @@
     btn.disabled = true;
     btn.textContent = 'กำลังโหลด…';
     var r = await tapi('profitBills', { offset: pbList.length, limit: PB_PAGE });
-    if (seq !== pbSeq || !Shell.isCurrent(scr) || sumView !== 'bills') return;
+    if (seq !== pbSeq || !Shell.isCurrent(scr) || sumView !== 'bills' || !$('pb-list')) return;
     if (!r.ok) {
       if (LiffApp.isAuthFail(r.code)) return LiffApp.showApiError(r, scr);
       btn.disabled = false;
       btn.textContent = 'ลองอีกครั้ง';
       return LiffApp.toast(r.error || 'โหลดไม่สำเร็จ', true);
     }
-    billsAdd(r);
+    try { billsAdd(r); } catch (e) { renderFail('กำไรรายบิล (โหลดเพิ่ม)', e); }
   }
 
   /** การ์ดบิล — โครงเดียวกับ docRow ของหน้าประวัติ + กำไร/ขาดทุน */
