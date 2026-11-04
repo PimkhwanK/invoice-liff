@@ -36,9 +36,7 @@
   var profitWait = {};   // key → Promise
   var shopBy = 'sat';    // แท็บร้านค้า: ตามยอดขาย / ตามกำไร
   var eyeOff = (function () { var k = LiffApp.remember('profit-eye'); return !!(k && k.data === 'off'); })();
-  /** รอบ 54: ค่าที่จำไว้ผิดรูปแบบ / ไม่มี = สรุปยอดขาย — อ่านตอนเข้าหน้า (ตอนโหลดสคริปต์ยังไม่รู้บัญชี ค่าที่จำไว้จึงอ่านไม่ได้) */
-  function rememberedView() { var k = LiffApp.remember('sum-view'); return !k ? null : k.data === 'bills' ? 'bills' : 'sales'; } // ไม่มี (เครื่องจำไม่ได้) = คงค่าเดิม
-  var sumView = 'sales'; // รอบ 46: สรุปยอดขาย / กำไรรายบิล (ค่าเริ่มต้น = สรุปยอดขาย)
+  var sumView = 'sales'; // รอบ 46: สรุปยอดขาย / กำไรรายบิล — รอบ 55: ไม่จำ เข้าหน้าสรุปทุกครั้ง = สรุปยอดขาย (ยกเว้น summary?bills=1)
   var COST_HINT = 'กรอกต้นทุนที่หน้าสต็อก (ปุ่มของเข้า) หรือคอลัมน์ "ต้นทุนเริ่มต้น (บาท)" ในชีต';
   var MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
   function $(id) { return scr.$(id); }
@@ -136,8 +134,9 @@
   async function show(params) {
     if (!pick.year) { pick.year = thisYear(); pick.month = Number(today().slice(5, 7)); yearPick = thisYear(); dayPick = today(); }
     if (params && params.print) { screenKind = 'daily'; return showDaily(params.print); }
-    sumView = rememberedView() || sumView;
-    if (params && params.bills) { sumView = 'bills'; LiffApp.keep('sum-view', 'bills'); Shell.setParams(scr, {}); } // รอบ 46: ลิงก์เดิม = มุมมองกำไรรายบิล
+    LiffApp.drop('sum-view'); // รอบ 55: ค่าที่จำไว้จากรอบ 46–54 ลบทิ้ง (ไม่อ่านแล้ว)
+    sumView = 'sales';
+    if (params && params.bills) { sumView = 'bills'; Shell.setParams(scr, {}); } // รอบ 46: ลิงก์เดิม = มุมมองกำไรรายบิล
     screenKind = sumView;
     markView();
     if (sumView === 'bills') return showBills();
@@ -1035,7 +1034,6 @@
   /** สลับมุมมอง: ค่า sumView → สวิตช์ + เนื้อหา (เปลี่ยนพร้อมกันในรอบเดียว — กล่องกำลังโหลดของมุมมองใหม่แทนเนื้อหาเดิมทันที) */
   function setView(v) {
     sumView = v === 'bills' ? 'bills' : 'sales';
-    LiffApp.keep('sum-view', sumView);
     screenKind = sumView;
     markView();
     Shell.scrollTop(scr);
