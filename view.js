@@ -113,7 +113,11 @@
       head(S.doc) + '<div class="pdf-pages" id="pages"></div>';
     $('btn-download').addEventListener('click', function (e) {
       if (inLine) {
-        if (LiffApp.openExternal(r.pdfUrl)) e.preventDefault(); // ในแอป LINE: เปิดเบราว์เซอร์ภายนอก (ดาวน์โหลด/แชร์ได้)
+        // รอบ 57: ในแอป LINE ลิงก์ Drive ได้ชื่อไฟล์จาก Drive (ไฟล์ก่อนรอบ 56 ไม่มีชื่อร้าน / ชื่อไทยใน header อาจเพี้ยน)
+        //   ก) แชร์ไฟล์ได้ (ไฟล์อยู่ในมือแล้ว ชื่อ INV-…_<ร้าน>.pdf) → เมนูแชร์ของเครื่อง
+        //   ข) ไม่ได้ → เปิดหน้าดู PDF นี้ในเบราว์เซอร์ของเครื่อง (ที่นั่นใช้ชื่อไฟล์จากบิล) + กล่องบอกวิธี / ลิงก์ Drive (href) เหลือไว้สำรอง
+        if (r.pdfBase64 && LiffApp.canShareFiles()) { e.preventDefault(); shareInLine(r); return; }
+        if (LiffApp.openOutside(viewPageUrl(), view, 'กด "พิมพ์ / ดาวน์โหลด" ')) e.preventDefault();
         return;
       }
       if (!r.pdfBase64) return; // ไม่มีไฟล์ในมือ → ลิงก์หน้า Drive แบบเว็บ
@@ -138,12 +142,33 @@
     return m ? 'https://drive.google.com/file/d/' + m[1] + '/view' : url;
   }
 
+  /** รอบ 57: ไฟล์ PDF ของบิลนี้ ชื่อจาก snapshot ในบิล (LiffApp.pdfName) */
+  function pdfFileOf(r) {
+    var cash = LiffApp.MODE === 'cash';
+    return LiffApp.pdfFile(r.pdfBase64, LiffApp.pdfName(cash ? 'cash' : 'tax', cash ? LiffApp.docNoText(S.no) : S.no, S.dt || '', r.document || S.doc, r.fileName));
+  }
+
+  /** รอบ 57: หน้าดู PDF ของบิลนี้ (ลิงก์เต็ม มี type และประเภท) สำหรับเปิดในเบราว์เซอร์ของเครื่อง */
+  function viewPageUrl() {
+    var q = LiffApp.viewHref(LiffApp.docNoText(S.no), S.dt).split('?')[1] || '';
+    return LiffApp.appUrl('view') + '?' + q + '&type=' + encodeURIComponent(LiffApp.MODE);
+  }
+
+  /** รอบ 57: ในแอป LINE แชร์ไฟล์ — ไม่สำเร็จ (ไม่ใช่ผู้ใช้ปิดเอง) → เปิดหน้านี้ในเบราว์เซอร์ */
+  function shareInLine(r) {
+    var file;
+    try { file = pdfFileOf(r); } catch (e) { LiffApp.openOutside(viewPageUrl(), view, 'กด "พิมพ์ / ดาวน์โหลด" '); return; }
+    navigator.share({ files: [file], title: file.name }).catch(function (err) {
+      if (err && err.name === 'AbortError') return;
+      LiffApp.openOutside(viewPageUrl(), view, 'กด "พิมพ์ / ดาวน์โหลด" ');
+    });
+  }
+
   /** นอกแอป LINE: ไฟล์ PDF ที่โหลดมาแล้ว → iPhone/iPad เมนูแชร์ (มี "พิมพ์" / "บันทึกลงไฟล์") / อื่น ๆ เปิดในแท็บใหม่ (ตัวดู PDF ของเบราว์เซอร์มีปุ่มพิมพ์) */
   function savePdf(r) {
     var file;
     // รอบ 56: ชื่อไฟล์มีชื่อร้าน (snapshot ในบิล) แบบเดียวกับใน Drive
-    var cash = LiffApp.MODE === 'cash';
-    try { file = LiffApp.pdfFile(r.pdfBase64, LiffApp.pdfName(cash ? 'cash' : 'tax', cash ? LiffApp.docNoText(S.no) : S.no, S.dt || '', r.document || S.doc, r.fileName)); } catch (e) { location.href = webPdfUrl(r.pdfUrl); return; }
+    try { file = pdfFileOf(r); } catch (e) { location.href = webPdfUrl(r.pdfUrl); return; }
     if (LiffApp.isIos() && LiffApp.canShareFiles()) {
       navigator.share({ files: [file] }).catch(function (err) {
         if (!err || err.name !== 'AbortError') openBlob(file, r);
