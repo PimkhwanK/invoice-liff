@@ -103,16 +103,24 @@
     }
     // รอบ 38: นอกแอป LINE (Safari / แอปบนหน้าจอโฮม / คอมพิวเตอร์) ลิงก์ Drive ของ LINE (openExternalBrowser=1) เปิดแล้วค้างจอขาว
     //   → ใช้ไฟล์ที่โหลดมาแล้ว (iPhone/iPad = เมนูแชร์: พิมพ์ / บันทึก / ส่งต่อ, อื่น ๆ = เปิดไฟล์ในแท็บใหม่) / ไม่มีไฟล์ = หน้า Drive แบบเว็บ
+    // รอบ 61: ปุ่มบนแถบเท่านั้น (ไม่มีปุ่มใต้หัวบิล)
+    //   ในแอป LINE: ปุ่มเดียว "ส่งไฟล์ PDF" (#btn-download — แชร์ไฟล์ได้ → เมนูแชร์ไฟล์อย่างเดียว / ไม่ได้หรือล้มเหลว → เปิดหน้านี้ในเบราว์เซอร์)
+    //   ในเว็บ: "พิมพ์ / ดาวน์โหลด" (#btn-download แบบรอบ 38) + "ส่งไฟล์ PDF" (#btn-sharefile) เฉพาะเมื่อแชร์ไฟล์ได้
     var inLine = LiffApp.inClient();
-    S.dlLabel = inLine ? 'ดาวน์โหลด / ส่งต่อ' : 'พิมพ์ / ดาวน์โหลด';
+    var webShare = !inLine && canSendFile(r);
+    // รอบ 61 ต่อ: เว็บบน iPhone/iPad "พิมพ์ / ดาวน์โหลด" ก็เปิดเมนูแชร์ไฟล์ (savePdf) = ซ้ำกับ "ส่งไฟล์ PDF" → ซ่อน (เมนูแชร์ของ iOS มีพิมพ์ / บันทึกลงไฟล์)
+    var dlBtn = !(webShare && LiffApp.isIos());
+    S.dlLabel = inLine || !dlBtn ? 'ส่งไฟล์ PDF' : 'พิมพ์ / ดาวน์โหลด';
     view.innerHTML =
       '<div class="pdf-bar" id="pdf-bar"><div class="zoom">' +
       '<button type="button" class="btn sm" id="zoom-out" aria-label="ย่อ">' + iconSvg('minus') + '</button><span id="zoom-label">พอดีจอ</span>' +
       '<button type="button" class="btn sm" id="zoom-in" aria-label="ขยาย">' + iconSvg('plus') + '</button></div><span class="grow"></span>' +
-      '<a class="btn sm primary" id="btn-download" href="' + esc(inLine ? r.pdfUrl : webPdfUrl(r.pdfUrl)) + '" target="_blank" rel="noopener">' + iconSvg('download') + '<span>' + S.dlLabel + '</span></a></div>' +
-      head(S.doc) + shareBox(r) + '<div class="pdf-pages" id="pages"></div>';
-    if ($('btn-sharefile')) $('btn-sharefile').addEventListener('click', function () { shareFile(r, inLine); });
-    $('btn-download').addEventListener('click', function (e) {
+      (webShare ? '<button type="button" class="btn sm primary" id="btn-sharefile">' + iconSvg('send') + '<span>ส่งไฟล์ PDF</span></button>' : '') +
+      (dlBtn ? '<a class="btn sm' + (webShare ? '' : ' primary') + '" id="btn-download" href="' + esc(inLine ? r.pdfUrl : webPdfUrl(r.pdfUrl)) + '" target="_blank" rel="noopener">' +
+        iconSvg(inLine ? 'send' : 'download') + '<span>' + S.dlLabel + '</span></a>' : '') + '</div>' +
+      head(S.doc) + '<div class="pdf-pages" id="pages"></div>';
+    if ($('btn-sharefile')) $('btn-sharefile').addEventListener('click', function () { shareFile(r, false); });
+    if ($('btn-download')) $('btn-download').addEventListener('click', function (e) {
       if (inLine) {
         // รอบ 57: ในแอป LINE ลิงก์ Drive ได้ชื่อไฟล์จาก Drive (ไฟล์ก่อนรอบ 56 ไม่มีชื่อร้าน / ชื่อไทยใน header อาจเพี้ยน)
         //   ก) แชร์ไฟล์ได้ (ไฟล์อยู่ในมือแล้ว ชื่อ INV-…_<ร้าน>.pdf) → เมนูแชร์ของเครื่อง
@@ -143,18 +151,10 @@
     return m ? 'https://drive.google.com/file/d/' + m[1] + '/view' : url;
   }
 
-  /**
-   * รอบ 60: ปุ่ม "ส่งไฟล์ PDF" ใต้หัวบิล (ปุ่มหลัก) เฉพาะเมื่อแชร์ไฟล์ได้และมีไฟล์ในมือแล้ว — เมนูแชร์ส่งไฟล์อย่างเดียว ชื่อมีชื่อร้าน
-   *   แชร์ไฟล์ไม่ได้ → ไม่มีปุ่มนี้ ใช้ปุ่ม "ดาวน์โหลด / ส่งต่อ" (ในแอป LINE) / "พิมพ์ / ดาวน์โหลด" (เว็บ) บนแถบด้านบนแบบเดิม
-   */
+  /** แชร์ไฟล์ได้และมีไฟล์ในมือแล้ว (เมนูแชร์ส่งไฟล์อย่างเดียว ชื่อมีชื่อร้าน) */
   function canSendFile(r) { return !!r.pdfBase64 && LiffApp.canShareFiles(); }
-  function shareBox(r) {
-    if (!canSendFile(r)) return '';
-    return '<div class="card stack no-print" id="share-box"><button type="button" class="btn primary block" id="btn-sharefile">' +
-      iconSvg('send') + '<span>ส่งไฟล์ PDF</span></button></div>';
-  }
 
-  /** รอบ 60: แชร์ล้มเหลว (ไม่ใช่ผู้ใช้ปิดเอง) → ทางเดิมของปุ่มดาวน์โหลด: ในแอป LINE เปิดหน้านี้ในเบราว์เซอร์ / เว็บ เปิดไฟล์ในแท็บใหม่ */
+  /** รอบ 60–61: "ส่งไฟล์ PDF" ในเว็บ — ล้มเหลว (ไม่ใช่ผู้ใช้ปิดเอง) → ทางเดิมของปุ่มดาวน์โหลด: เปิดไฟล์ในแท็บใหม่ */
   function shareFile(r, inLine) {
     var file;
     try { file = pdfFileOf(r); } catch (e) { return downloadFallback(r, inLine); }

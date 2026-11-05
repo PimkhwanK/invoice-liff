@@ -190,7 +190,7 @@ input[type=date]::-webkit-datetime-edit { padding: 0; }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
 
 /* ---------- ดู PDF (view.html) ---------- */
-.pdf-bar { position: sticky; top: 0; z-index: 5; display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--theme-card); border-bottom: 1px solid var(--theme-line); }
+.pdf-bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; background: var(--theme-card); border-bottom: 1px solid var(--theme-line); }
 .pdf-bar .zoom { display: flex; gap: 4px; align-items: center; }
 .pdf-bar .zoom .btn { min-width: 40px; justify-content: center; }
 .pdf-bar #zoom-label { min-width: 46px; text-align: center; font-size: 13px; color: var(--theme-text-2); }
