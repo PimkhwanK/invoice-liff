@@ -110,9 +110,8 @@
       '<button type="button" class="btn sm" id="zoom-out" aria-label="ย่อ">' + iconSvg('minus') + '</button><span id="zoom-label">พอดีจอ</span>' +
       '<button type="button" class="btn sm" id="zoom-in" aria-label="ขยาย">' + iconSvg('plus') + '</button></div><span class="grow"></span>' +
       '<a class="btn sm primary" id="btn-download" href="' + esc(inLine ? r.pdfUrl : webPdfUrl(r.pdfUrl)) + '" target="_blank" rel="noopener">' + iconSvg('download') + '<span>' + S.dlLabel + '</span></a></div>' +
-      head(S.doc) + lineBox(r) + '<div class="pdf-pages" id="pages"></div>';
-    $('btn-line').addEventListener('click', function () { sendLine(r, $('btn-line')); });
-    if ($('btn-sharefile')) $('btn-sharefile').addEventListener('click', function () { shareFile(r, $('btn-sharefile')); });
+      head(S.doc) + shareBox(r) + '<div class="pdf-pages" id="pages"></div>';
+    if ($('btn-sharefile')) $('btn-sharefile').addEventListener('click', function () { shareFile(r, inLine); });
     $('btn-download').addEventListener('click', function (e) {
       if (inLine) {
         // รอบ 57: ในแอป LINE ลิงก์ Drive ได้ชื่อไฟล์จาก Drive (ไฟล์ก่อนรอบ 56 ไม่มีชื่อร้าน / ชื่อไทยใน header อาจเพี้ยน)
@@ -145,45 +144,28 @@
   }
 
   /**
-   * รอบ 58 → 59: ปุ่มส่งใต้หัวบิล — ตัดสินจาก "แชร์ไฟล์ได้ไหม" อย่างเดียว (ไม่ดูชนิดเครื่อง) ทั้งในแอป LINE และในเว็บ
-   *   แชร์ไฟล์ได้ (และมีไฟล์ในมือแล้ว) → "ส่งไฟล์ PDF" #btn-sharefile ปุ่มหลัก + "ส่งเข้า LINE" #btn-line ปุ่มรอง
-   *   ไม่ได้ → "ส่งเข้า LINE" ปุ่มหลักปุ่มเดียว (การ์ดบิล เลขที่ ร้าน ยอดรวม ปุ่มเปิด PDF ผ่าน shareTargetPicker)
+   * รอบ 60: ปุ่ม "ส่งไฟล์ PDF" ใต้หัวบิล (ปุ่มหลัก) เฉพาะเมื่อแชร์ไฟล์ได้และมีไฟล์ในมือแล้ว — เมนูแชร์ส่งไฟล์อย่างเดียว ชื่อมีชื่อร้าน
+   *   แชร์ไฟล์ไม่ได้ → ไม่มีปุ่มนี้ ใช้ปุ่ม "ดาวน์โหลด / ส่งต่อ" (ในแอป LINE) / "พิมพ์ / ดาวน์โหลด" (เว็บ) บนแถบด้านบนแบบเดิม
    */
   function canSendFile(r) { return !!r.pdfBase64 && LiffApp.canShareFiles(); }
-  function lineBox(r) {
-    var file = canSendFile(r);
-    return '<div class="card stack no-print" id="line-box">' +
-      (file ? '<button type="button" class="btn primary block" id="btn-sharefile">' + iconSvg('send') + '<span>ส่งไฟล์ PDF</span></button>' : '') +
-      '<button type="button" class="btn block' + (file ? '' : ' primary') + '" id="btn-line">' +
-      iconSvg('send') + '<span>ส่งเข้า LINE</span></button></div>';
+  function shareBox(r) {
+    if (!canSendFile(r)) return '';
+    return '<div class="card stack no-print" id="share-box"><button type="button" class="btn primary block" id="btn-sharefile">' +
+      iconSvg('send') + '<span>ส่งไฟล์ PDF</span></button></div>';
   }
 
-  /** รอบ 59: "ส่งไฟล์ PDF" — เมนูแชร์ของเครื่อง ไฟล์อย่างเดียว (ชื่อมีชื่อร้าน) / ล้มเหลว (ไม่ใช่ผู้ใช้ปิดเอง) → ส่งการ์ดเข้า LINE แทน */
-  function shareFile(r, btn) {
+  /** รอบ 60: แชร์ล้มเหลว (ไม่ใช่ผู้ใช้ปิดเอง) → ทางเดิมของปุ่มดาวน์โหลด: ในแอป LINE เปิดหน้านี้ในเบราว์เซอร์ / เว็บ เปิดไฟล์ในแท็บใหม่ */
+  function shareFile(r, inLine) {
     var file;
-    try { file = pdfFileOf(r); } catch (e) { sendLine(r, $('btn-line')); return; }
+    try { file = pdfFileOf(r); } catch (e) { return downloadFallback(r, inLine); }
     navigator.share({ files: [file] }).catch(function (err) {
       if (err && err.name === 'AbortError') return;
-      sendLine(r, $('btn-line'));
+      downloadFallback(r, inLine);
     });
   }
-
-  async function sendLine(r, btn) {
-    var d = S.doc || {};
-    var cash = LiffApp.MODE === 'cash';
-    var card = LiffApp.billCard({
-      type: cash ? LiffApp.MODE_LABEL : (d.doc_type || LiffApp.MODE_LABEL),
-      no: LiffApp.docNoText(d.doc_no !== undefined ? d.doc_no : S.no),
-      shop: d.shop_legal_name || d.shop_short_name || '',
-      total: formatMoney(d.total), pdfUrl: r.pdfUrl, cancelled: d.status === 'cancelled'
-    });
-    btn.disabled = true;
-    var how = await LiffApp.sendCard(card);
-    btn.disabled = false;
-    if (how !== 'unavailable') return;
-    // ทางสำรอง (ไม่ใช้ sendMessages): คัดลอกข้อความ + ลิงก์ PDF ไปวางในแชทเอง
-    var NL = String.fromCharCode(10);
-    try { await navigator.clipboard.writeText(card.altText + NL + r.pdfUrl); LiffApp.toast('คัดลอกข้อความและลิงก์ PDF แล้ว นำไปวางในแชท LINE'); } catch (e) { LiffApp.toast('ส่งไม่สำเร็จ ลองอีกครั้ง', true); }
+  function downloadFallback(r, inLine) {
+    if (inLine) { LiffApp.openOutside(viewPageUrl(), view, 'กด "พิมพ์ / ดาวน์โหลด" '); return; }
+    try { openBlob(pdfFileOf(r), r); } catch (e) { location.href = webPdfUrl(r.pdfUrl); }
   }
 
   /** รอบ 57: ไฟล์ PDF ของบิลนี้ ชื่อจาก snapshot ในบิล (LiffApp.pdfName) */
