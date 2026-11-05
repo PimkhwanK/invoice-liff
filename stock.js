@@ -665,7 +665,7 @@
       var ok = false;
       try { ok = navigator.canShare({ files: [file] }); } catch (e) { ok = false; }
       if (ok) {
-        navigator.share({ files: [file], title: repFileName(r) }).catch(function (e) {
+        navigator.share({ files: [file] }).catch(function (e) {
           if (e && e.name === 'AbortError') return; // ผู้ใช้ปิดแผ่นแชร์เอง
           Xlsx.save(name, bytes);
           repHelp('ส่งไฟล์ไม่สำเร็จ ถ้าไฟล์ไม่ขึ้น', 'กดดาวน์โหลด');

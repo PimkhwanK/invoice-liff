@@ -765,6 +765,13 @@ var LiffApp = (function () {
     var ua = navigator.userAgent || '';
     return /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
   }
+  /** รอบ 58: iPad (UA มีคำว่า iPad หรือ iPadOS 13+ ที่บอกตัวเองว่าเป็น Mac แต่มีจอสัมผัส) — เมนูแชร์ของ iPad ไม่มี LINE ให้เลือก */
+  function isIpad() {
+    var ua = navigator.userAgent || '';
+    return /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  }
+  /** รอบ 58: ใช้ปุ่ม "ส่งไฟล์ PDF" (เมนูแชร์ของเครื่อง) ได้ไหม — iPad ไม่ใช้ (ไม่มี LINE ในเมนู) ใช้ "ส่งเข้า LINE" ปุ่มเดียว */
+  function fileShareFirst() { return canShareFiles() && !isIpad(); }
   /** เบราว์เซอร์ในแอป LINE ที่ไม่ใช่ LIFF (เช่น แตะลิงก์ในแชท) — พิมพ์ / ดาวน์โหลดไม่ได้ */
   function inLineBrowser() { return !inClient() && /\bLine\//i.test(navigator.userAgent || ''); }
   /** แอปที่เพิ่มไว้บนหน้าจอโฮม */
@@ -869,6 +876,60 @@ var LiffApp = (function () {
     };
   }
 
+  /**
+   * รอบ 58: การ์ดบิลสำหรับส่งเข้าแชท LINE — เลขที่ (ใหญ่) / ชื่อร้าน / ยอดรวม / ปุ่ม "เปิด PDF" (ลิงก์ Drive ลูกค้าเปิดได้โดยไม่ต้องเข้าสู่ระบบ)
+   * ไม่มีต้นทุน / กำไร / ลิงก์ยาวบนการ์ด
+   * o = { type: 'ใบกำกับภาษี', no: '9001', shop, total: '1,200.00', pdfUrl, cancelled }
+   */
+  function billCard(o) {
+    var head = themeHex('primary');
+    var onHead = themeHex('on-primary');
+    var text = themeHex('text');
+    var text2 = themeHex('text-2');
+    var line = themeHex('line');
+    var color = function (obj, c) { if (c) obj.color = c; return obj; };
+    var shop = String(o.shop || '').trim() || '-';
+    var headBox = { type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'xs', contents: [
+      color({ type: 'text', text: o.type, size: 'sm', wrap: true }, onHead),
+      color({ type: 'text', text: 'เลขที่ ' + o.no, weight: 'bold', size: 'xl', wrap: true }, onHead)
+    ] };
+    if (head) headBox.backgroundColor = head;
+    var body = [
+      color({ type: 'text', text: shop, weight: 'bold', size: 'md', wrap: true }, text),
+      color({ type: 'separator', margin: 'md' }, line),
+      { type: 'box', layout: 'baseline', margin: 'md', contents: [
+        color({ type: 'text', text: 'ยอดรวม', size: 'sm', flex: 0 }, text2),
+        color({ type: 'text', text: o.total + ' บาท', weight: 'bold', size: 'lg', align: 'end', wrap: true }, text)
+      ] }
+    ];
+    if (o.cancelled) body.push(color({ type: 'text', text: 'บิลนี้ยกเลิกแล้ว', size: 'sm', weight: 'bold', margin: 'md', wrap: true }, themeHex('cancel-text')));
+    return {
+      type: 'flex',
+      altText: o.type + ' เลขที่ ' + o.no + ' ' + shop + ' ยอด ' + o.total + ' บาท',
+      contents: {
+        type: 'bubble', size: 'kilo',
+        header: headBox,
+        body: { type: 'box', layout: 'vertical', paddingAll: '16px', contents: body },
+        footer: { type: 'box', layout: 'vertical', paddingAll: '12px', contents: [color({ type: 'button', style: 'primary', height: 'md', action: { type: 'uri', label: 'เปิด PDF', uri: o.pdfUrl } }, head)] }
+      }
+    };
+  }
+
+  /**
+   * รอบ 58: ส่งการ์ดเข้าแชท LINE ด้วย shareTargetPicker (ผู้ใช้เลือกแชทเอง ส่งในนามผู้ใช้ ไม่กินโควตา ไม่ใช่ push / sendMessages)
+   * คืน 'sent' | 'closed' (เปิดหน้าเลือกแล้วผู้ใช้ปิดเอง) | 'unavailable' (ใช้ไม่ได้ / ล้มเหลว → ผู้เรียกใช้ทางสำรอง)
+   */
+  async function sendCard(card) {
+    var ok = false;
+    try { ok = typeof liff !== 'undefined' && typeof liff.shareTargetPicker === 'function' && typeof liff.isApiAvailable === 'function' && liff.isApiAvailable('shareTargetPicker'); } catch (e) { ok = false; }
+    if (!ok) return 'unavailable';
+    try {
+      var res = await liff.shareTargetPicker([card], { isMultiple: true });
+      if (res) { toast('ส่งแล้ว'); return 'sent'; }
+      return 'closed';
+    } catch (e) { return 'unavailable'; }
+  }
+
   /** เครื่องนี้แชร์ "ไฟล์" ผ่านเมนูแชร์ได้ไหม (Web Share API ระดับ 2 — Safari iOS 15+, Chrome Android / ไม่มีใน WebView ของ Android) */
   function canShareFiles() {
     try {
@@ -915,6 +976,7 @@ var LiffApp = (function () {
 
   return {
     pdfName: pdfName, pdfShopPart: pdfShopPart, // รอบ 56
+    isIpad: isIpad, fileShareFirst: fileShareFirst, billCard: billCard, sendCard: sendCard, // รอบ 58
     liffUrl: liffUrl, themeHex: themeHex, cardFlex: cardFlex, canShareFiles: canShareFiles, pdfFile: pdfFile, // รอบ 36
     printAs: printAs, fileDate: fileDate, // รอบ 30
     isIos: isIos, inLineBrowser: inLineBrowser, standalone: standalone, externalUrl: externalUrl, outsideHelp: outsideHelp, openOutside: openOutside, // รอบ 31

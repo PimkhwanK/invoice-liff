@@ -632,7 +632,7 @@
     }
     if (ready.file && LiffApp.canShareFiles()) {
       try {
-        await navigator.share({ files: [ready.file], title: ready.file.name });
+        await navigator.share({ files: [ready.file] });
         return;
       } catch (e) {
         if (e && e.name === 'AbortError') return; // ผู้ใช้ปิดเอง

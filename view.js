@@ -110,7 +110,8 @@
       '<button type="button" class="btn sm" id="zoom-out" aria-label="ย่อ">' + iconSvg('minus') + '</button><span id="zoom-label">พอดีจอ</span>' +
       '<button type="button" class="btn sm" id="zoom-in" aria-label="ขยาย">' + iconSvg('plus') + '</button></div><span class="grow"></span>' +
       '<a class="btn sm primary" id="btn-download" href="' + esc(inLine ? r.pdfUrl : webPdfUrl(r.pdfUrl)) + '" target="_blank" rel="noopener">' + iconSvg('download') + '<span>' + S.dlLabel + '</span></a></div>' +
-      head(S.doc) + '<div class="pdf-pages" id="pages"></div>';
+      head(S.doc) + lineBox(r) + '<div class="pdf-pages" id="pages"></div>';
+    $('btn-line').addEventListener('click', function () { sendLine(r, $('btn-line')); });
     $('btn-download').addEventListener('click', function (e) {
       if (inLine) {
         // รอบ 57: ในแอป LINE ลิงก์ Drive ได้ชื่อไฟล์จาก Drive (ไฟล์ก่อนรอบ 56 ไม่มีชื่อร้าน / ชื่อไทยใน header อาจเพี้ยน)
@@ -142,6 +143,34 @@
     return m ? 'https://drive.google.com/file/d/' + m[1] + '/view' : url;
   }
 
+  /**
+   * รอบ 58: ปุ่ม "ส่งเข้า LINE" ใต้หัวบิล — การ์ดบิล (เลขที่ ร้าน ยอดรวม ปุ่มเปิด PDF) ผ่าน shareTargetPicker ทันที
+   *   iPad / แชร์ไฟล์ไม่ได้ = ปุ่มหลัก (เมนูแชร์ของ iPad ไม่มี LINE) / iPhone ที่แชร์ไฟล์ได้ = ปุ่มรอง (ปุ่มดาวน์โหลดด้านบนส่งไฟล์ได้)
+   */
+  function lineBox(r) {
+    var main = !LiffApp.fileShareFirst();
+    return '<div class="card stack no-print" id="line-box"><button type="button" class="btn block' + (main ? ' primary' : '') + '" id="btn-line">' +
+      iconSvg('send') + '<span>ส่งเข้า LINE</span></button></div>';
+  }
+
+  async function sendLine(r, btn) {
+    var d = S.doc || {};
+    var cash = LiffApp.MODE === 'cash';
+    var card = LiffApp.billCard({
+      type: cash ? LiffApp.MODE_LABEL : (d.doc_type || LiffApp.MODE_LABEL),
+      no: LiffApp.docNoText(d.doc_no !== undefined ? d.doc_no : S.no),
+      shop: d.shop_legal_name || d.shop_short_name || '',
+      total: formatMoney(d.total), pdfUrl: r.pdfUrl, cancelled: d.status === 'cancelled'
+    });
+    btn.disabled = true;
+    var how = await LiffApp.sendCard(card);
+    btn.disabled = false;
+    if (how !== 'unavailable') return;
+    // ทางสำรอง (ไม่ใช้ sendMessages): คัดลอกข้อความ + ลิงก์ PDF ไปวางในแชทเอง
+    var NL = String.fromCharCode(10);
+    try { await navigator.clipboard.writeText(card.altText + NL + r.pdfUrl); LiffApp.toast('คัดลอกข้อความและลิงก์ PDF แล้ว นำไปวางในแชท LINE'); } catch (e) { LiffApp.toast('ส่งไม่สำเร็จ ลองอีกครั้ง', true); }
+  }
+
   /** รอบ 57: ไฟล์ PDF ของบิลนี้ ชื่อจาก snapshot ในบิล (LiffApp.pdfName) */
   function pdfFileOf(r) {
     var cash = LiffApp.MODE === 'cash';
@@ -158,7 +187,7 @@
   function shareInLine(r) {
     var file;
     try { file = pdfFileOf(r); } catch (e) { LiffApp.openOutside(viewPageUrl(), view, 'กด "พิมพ์ / ดาวน์โหลด" '); return; }
-    navigator.share({ files: [file], title: file.name }).catch(function (err) {
+    navigator.share({ files: [file] }).catch(function (err) {
       if (err && err.name === 'AbortError') return;
       LiffApp.openOutside(viewPageUrl(), view, 'กด "พิมพ์ / ดาวน์โหลด" ');
     });
