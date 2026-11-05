@@ -1014,15 +1014,15 @@
 
   /**
    * รอบ 36: ไฟล์ PDF จากเซิร์ฟเวอร์ (getPdf ตรวจผู้ใช้แล้วคืน base64 — ไม่ fetch ลิงก์ Drive ตรง ๆ เพราะ Drive ไม่อนุญาต CORS)
-   * ชื่อไฟล์ = ชื่อใน Drive (INV-N.pdf / RC-N.pdf / CASH-N.pdf) / ไม่สำเร็จ → null
+   * ชื่อไฟล์ (รอบ 56) = INV-N_<ร้าน>.pdf / RC-N_<ร้าน>.pdf / CASH-N_<ร้าน>.pdf จาก snapshot ในบิล (LiffApp.pdfName) / ไม่สำเร็จ → null
    */
   async function fetchPdfFile(r) {
     var no = LiffApp.docNoText(r.docNo);
     try {
       var res = await LiffApp.api('getPdf', { docNo: CASH ? no : r.docNo, docType: CASH ? '' : (doneDocType(r) || '') });
       if (!res.ok || !res.pdfBase64) return null;
-      var fallback = (CASH ? 'CASH-' : doneDocType(r) === TAX_RECEIPT_TYPE ? 'RC-' : 'INV-') + no + '.pdf';
-      return LiffApp.pdfFile(res.pdfBase64, res.fileName || fallback);
+      var name = LiffApp.pdfName(CASH ? 'cash' : 'tax', CASH ? no : r.docNo, doneDocType(r) || '', res.document || r.document, res.fileName);
+      return LiffApp.pdfFile(res.pdfBase64, name);
     } catch (e) { return null; }
   }
 

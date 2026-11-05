@@ -141,7 +141,9 @@
   /** นอกแอป LINE: ไฟล์ PDF ที่โหลดมาแล้ว → iPhone/iPad เมนูแชร์ (มี "พิมพ์" / "บันทึกลงไฟล์") / อื่น ๆ เปิดในแท็บใหม่ (ตัวดู PDF ของเบราว์เซอร์มีปุ่มพิมพ์) */
   function savePdf(r) {
     var file;
-    try { file = LiffApp.pdfFile(r.pdfBase64, r.fileName || ('บิล ' + LiffApp.docNoText(S.no) + '.pdf')); } catch (e) { location.href = webPdfUrl(r.pdfUrl); return; }
+    // รอบ 56: ชื่อไฟล์มีชื่อร้าน (snapshot ในบิล) แบบเดียวกับใน Drive
+    var cash = LiffApp.MODE === 'cash';
+    try { file = LiffApp.pdfFile(r.pdfBase64, LiffApp.pdfName(cash ? 'cash' : 'tax', cash ? LiffApp.docNoText(S.no) : S.no, S.dt || '', r.document || S.doc, r.fileName)); } catch (e) { location.href = webPdfUrl(r.pdfUrl); return; }
     if (LiffApp.isIos() && LiffApp.canShareFiles()) {
       navigator.share({ files: [file] }).catch(function (err) {
         if (!err || err.name !== 'AbortError') openBlob(file, r);

@@ -885,7 +885,36 @@ var LiffApp = (function () {
     return new File([bytes], name, { type: 'application/pdf' });
   }
 
+  /**
+   * รอบ 56: ชื่อไฟล์ PDF ของบิล = ตัวเดียวกับ Pdf.gs (sheetPdfFileName / sheetPdfCashFileName / sheetPdfShopPart — test ตรวจว่าได้ชื่อเดียวกัน)
+   * kind 'cash' → CASH-<เลขที่> / ใบเสร็จรับเงิน → RC- / อื่น → INV- แล้วต่อ _<ชื่อร้านจาก snapshot ในบิล> / ไม่มีชื่อร้าน = ชื่อเดิม
+   */
+  var PDF_SHOP_MAX = 40;
+  function pdfShopPart(name) {
+    var bad = new RegExp('[' + String.fromCharCode(92) + String.fromCharCode(92) + '/:*?"<>|' +
+      String.fromCharCode(0) + '-' + String.fromCharCode(31) + String.fromCharCode(127) + ']', 'g');
+    var zw = new RegExp('[' + String.fromCharCode(0x200b) + '-' + String.fromCharCode(0x200d) + String.fromCharCode(0xfeff) + ']', 'g');
+    var s = String(name == null ? '' : name).replace(zw, '').replace(bad, ' ').trim().split(/\s+/).join('_');
+    s = Array.from(s).slice(0, PDF_SHOP_MAX).join('');
+    return s.replace(/^[_.]+|[_.]+$/g, '');
+  }
+  /** serverName = fileName ที่เซิร์ฟเวอร์ส่งมา — ใช้เมื่อบิลบนเครื่องไม่มีชื่อร้าน (เช่น ข้อมูลไม่ครบ) */
+  function pdfName(kind, docNo, docType, doc, serverName) {
+    var d = doc || {};
+    if (serverName && !(pdfShopPart(d.shop_short_name) || pdfShopPart(d.shop_legal_name))) return String(serverName);
+    var base;
+    if (kind === 'cash') {
+      base = 'CASH-' + (String(docNo) === '0' || String(docNo) === '0000' ? '0000' : (String(docNo || '').trim() || 'X'));
+    } else {
+      var n = Number(docNo);
+      base = (n !== 0 && docType === 'ใบเสร็จรับเงิน' ? 'RC-' : 'INV-') + (n === 0 ? '0000' : isFinite(n) && n > 0 ? Math.floor(n) : 'X');
+    }
+    var shop = pdfShopPart(d.shop_short_name) || pdfShopPart(d.shop_legal_name);
+    return base + (shop ? '_' + shop : '') + '.pdf';
+  }
+
   return {
+    pdfName: pdfName, pdfShopPart: pdfShopPart, // รอบ 56
     liffUrl: liffUrl, themeHex: themeHex, cardFlex: cardFlex, canShareFiles: canShareFiles, pdfFile: pdfFile, // รอบ 36
     printAs: printAs, fileDate: fileDate, // รอบ 30
     isIos: isIos, inLineBrowser: inLineBrowser, standalone: standalone, externalUrl: externalUrl, outsideHelp: outsideHelp, openOutside: openOutside, // รอบ 31
