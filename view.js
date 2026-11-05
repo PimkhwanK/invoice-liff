@@ -112,6 +112,7 @@
       '<a class="btn sm primary" id="btn-download" href="' + esc(inLine ? r.pdfUrl : webPdfUrl(r.pdfUrl)) + '" target="_blank" rel="noopener">' + iconSvg('download') + '<span>' + S.dlLabel + '</span></a></div>' +
       head(S.doc) + lineBox(r) + '<div class="pdf-pages" id="pages"></div>';
     $('btn-line').addEventListener('click', function () { sendLine(r, $('btn-line')); });
+    if ($('btn-sharefile')) $('btn-sharefile').addEventListener('click', function () { shareFile(r, $('btn-sharefile')); });
     $('btn-download').addEventListener('click', function (e) {
       if (inLine) {
         // รอบ 57: ในแอป LINE ลิงก์ Drive ได้ชื่อไฟล์จาก Drive (ไฟล์ก่อนรอบ 56 ไม่มีชื่อร้าน / ชื่อไทยใน header อาจเพี้ยน)
@@ -144,13 +145,27 @@
   }
 
   /**
-   * รอบ 58: ปุ่ม "ส่งเข้า LINE" ใต้หัวบิล — การ์ดบิล (เลขที่ ร้าน ยอดรวม ปุ่มเปิด PDF) ผ่าน shareTargetPicker ทันที
-   *   iPad / แชร์ไฟล์ไม่ได้ = ปุ่มหลัก (เมนูแชร์ของ iPad ไม่มี LINE) / iPhone ที่แชร์ไฟล์ได้ = ปุ่มรอง (ปุ่มดาวน์โหลดด้านบนส่งไฟล์ได้)
+   * รอบ 58 → 59: ปุ่มส่งใต้หัวบิล — ตัดสินจาก "แชร์ไฟล์ได้ไหม" อย่างเดียว (ไม่ดูชนิดเครื่อง) ทั้งในแอป LINE และในเว็บ
+   *   แชร์ไฟล์ได้ (และมีไฟล์ในมือแล้ว) → "ส่งไฟล์ PDF" #btn-sharefile ปุ่มหลัก + "ส่งเข้า LINE" #btn-line ปุ่มรอง
+   *   ไม่ได้ → "ส่งเข้า LINE" ปุ่มหลักปุ่มเดียว (การ์ดบิล เลขที่ ร้าน ยอดรวม ปุ่มเปิด PDF ผ่าน shareTargetPicker)
    */
+  function canSendFile(r) { return !!r.pdfBase64 && LiffApp.canShareFiles(); }
   function lineBox(r) {
-    var main = !LiffApp.fileShareFirst();
-    return '<div class="card stack no-print" id="line-box"><button type="button" class="btn block' + (main ? ' primary' : '') + '" id="btn-line">' +
+    var file = canSendFile(r);
+    return '<div class="card stack no-print" id="line-box">' +
+      (file ? '<button type="button" class="btn primary block" id="btn-sharefile">' + iconSvg('send') + '<span>ส่งไฟล์ PDF</span></button>' : '') +
+      '<button type="button" class="btn block' + (file ? '' : ' primary') + '" id="btn-line">' +
       iconSvg('send') + '<span>ส่งเข้า LINE</span></button></div>';
+  }
+
+  /** รอบ 59: "ส่งไฟล์ PDF" — เมนูแชร์ของเครื่อง ไฟล์อย่างเดียว (ชื่อมีชื่อร้าน) / ล้มเหลว (ไม่ใช่ผู้ใช้ปิดเอง) → ส่งการ์ดเข้า LINE แทน */
+  function shareFile(r, btn) {
+    var file;
+    try { file = pdfFileOf(r); } catch (e) { sendLine(r, $('btn-line')); return; }
+    navigator.share({ files: [file] }).catch(function (err) {
+      if (err && err.name === 'AbortError') return;
+      sendLine(r, $('btn-line'));
+    });
   }
 
   async function sendLine(r, btn) {

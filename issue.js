@@ -993,10 +993,11 @@
       (r.pdfUrl
         // รอบ 21: ดู PDF ในแอป (นอก LINE ไม่มีการ์ดในแชทให้กด) + ส่งต่อ (ผู้ใช้เลือกปลายทางเอง ไม่ใช้ push message)
         ? '<a class="btn block" id="btn-pdf" href="' + esc(LiffApp.viewHref(LiffApp.docNoText(r.docNo), r.document ? r.document.doc_type : '')) + '">' + iconSvg('file') + '<span>ดู PDF</span></a>' +
-          // รอบ 58: iPhone ที่แชร์ไฟล์ได้ → "ส่งไฟล์ PDF" (เมนูแชร์) + "ส่งเข้า LINE" ปุ่มรอง
-          //   iPad (เมนูแชร์ไม่มี LINE) / แชร์ไฟล์ไม่ได้ → "ส่งเข้า LINE" ปุ่มหลักปุ่มเดียว = การ์ดบิลผ่าน shareTargetPicker ทันที
-          (LiffApp.fileShareFirst()
-            ? '<button type="button" class="btn block" id="btn-share" data-how="file">' + iconSvg('send') + '<span>ส่งไฟล์ PDF</span></button>' +
+          // รอบ 59: ตัดสินจาก "แชร์ไฟล์ได้ไหม" อย่างเดียว (ไม่ดูชนิดเครื่อง) ทั้งในแอป LINE และในเว็บ
+          //   แชร์ไฟล์ได้ → "ส่งไฟล์ PDF" ปุ่มหลัก (เมนูแชร์ของเครื่อง — ในแอป LINE มี LINE ให้เลือก) + "ส่งเข้า LINE" (การ์ด) ปุ่มรองเสมอ
+          //   แชร์ไฟล์ไม่ได้ → "ส่งเข้า LINE" ปุ่มหลักปุ่มเดียว = การ์ดบิลผ่าน shareTargetPicker ทันที
+          (LiffApp.canShareFiles()
+            ? '<button type="button" class="btn primary block" id="btn-share" data-how="file">' + iconSvg('send') + '<span>ส่งไฟล์ PDF</span></button>' +
               '<button type="button" class="btn block" id="btn-line">' + iconSvg('send') + '<span>ส่งเข้า LINE</span></button>'
             : '<button type="button" class="btn primary block" id="btn-line">' + iconSvg('send') + '<span>ส่งเข้า LINE</span></button>')
         : '<div class="small muted" id="no-pdf">ยังไม่มี PDF สร้างได้ที่เมนู "ประวัติเอกสาร"</div>') +

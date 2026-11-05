@@ -765,13 +765,6 @@ var LiffApp = (function () {
     var ua = navigator.userAgent || '';
     return /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
   }
-  /** รอบ 58: iPad (UA มีคำว่า iPad หรือ iPadOS 13+ ที่บอกตัวเองว่าเป็น Mac แต่มีจอสัมผัส) — เมนูแชร์ของ iPad ไม่มี LINE ให้เลือก */
-  function isIpad() {
-    var ua = navigator.userAgent || '';
-    return /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-  }
-  /** รอบ 58: ใช้ปุ่ม "ส่งไฟล์ PDF" (เมนูแชร์ของเครื่อง) ได้ไหม — iPad ไม่ใช้ (ไม่มี LINE ในเมนู) ใช้ "ส่งเข้า LINE" ปุ่มเดียว */
-  function fileShareFirst() { return canShareFiles() && !isIpad(); }
   /** เบราว์เซอร์ในแอป LINE ที่ไม่ใช่ LIFF (เช่น แตะลิงก์ในแชท) — พิมพ์ / ดาวน์โหลดไม่ได้ */
   function inLineBrowser() { return !inClient() && /\bLine\//i.test(navigator.userAgent || ''); }
   /** แอปที่เพิ่มไว้บนหน้าจอโฮม */
@@ -976,7 +969,7 @@ var LiffApp = (function () {
 
   return {
     pdfName: pdfName, pdfShopPart: pdfShopPart, // รอบ 56
-    isIpad: isIpad, fileShareFirst: fileShareFirst, billCard: billCard, sendCard: sendCard, // รอบ 58
+    billCard: billCard, sendCard: sendCard, // รอบ 58
     liffUrl: liffUrl, themeHex: themeHex, cardFlex: cardFlex, canShareFiles: canShareFiles, pdfFile: pdfFile, // รอบ 36
     printAs: printAs, fileDate: fileDate, // รอบ 30
     isIos: isIos, inLineBrowser: inLineBrowser, standalone: standalone, externalUrl: externalUrl, outsideHelp: outsideHelp, openOutside: openOutside, // รอบ 31
