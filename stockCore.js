@@ -672,6 +672,7 @@ if (typeof module !== 'undefined' && module.exports) {
     stockBalancesFromMoves: stockBalancesFromMoves,
     stockMoveEffects: stockMoveEffects,
     stockRefShops: stockRefShops,
-    stockSyncPlan: stockSyncPlan
+    stockSyncPlan: stockSyncPlan,
+    stockSyncDocKey: stockSyncDocKey // costCore / profitCore ดึงผ่าน require (เดิมไม่ได้ export → ต้นทุน/กำไรรันได้เฉพาะแบบ global scope)
   };
 }
