@@ -104,6 +104,7 @@
         '<button type="button" data-tab="low">ของใกล้หมด <span id="low-count"></span></button>' +
         '<button type="button" data-tab="report">รายงาน</button></nav>' +
         '<div id="stock-pending-box"></div>' +
+        '<div id="stock-nocost-box"></div>' +
         '<div id="tab-all"><section class="card"><input type="search" id="stock-q" placeholder="ค้นหาชื่อสินค้า หรือบาร์โค้ด" autocomplete="off">' +
         '<div class="sum-pick"><select id="stock-sort" aria-label="เรียงตาม">' + Object.keys(SORTS).map(function (k) {
           return '<option value="' + k + '">เรียง: ' + esc(SORTS[k]) + '</option>';
@@ -118,6 +119,7 @@
         if (b.dataset.tab === 'report' && !b.classList.contains('on')) { rep = null; repData = null; scr.params = { tab: 'report' }; }
         setTab(b.dataset.tab);
       });
+      $('stock-nocost-box').addEventListener('click', function (e) { if (e.target.closest('#nocost-open')) openNoCost(); });
       $('stock-q').addEventListener('input', function (e) { term = e.target.value; drawLists(); });
       $('stock-q').value = term;
       $('stock-sort').value = currentSort();
@@ -125,6 +127,11 @@
     }
     $('stock-pending-box').innerHTML = data.pending
       ? '<section class="card alert warn" id="stock-pending">มีบิลที่ยังตัดสต็อกไม่ครบ ระบบกำลังตัดให้อัตโนมัติ ยอดอาจยังไม่ตรง</section>' : '';
+    // รอบ 63: ล็อตที่ยังไม่มีต้นทุน (แก้ในชีตเอง / บันทึกก่อนบังคับใส่ต้นทุน) → กำไรไม่ครบ
+    var nc = Number(data.noCostCount) || 0;
+    $('stock-nocost-box').innerHTML = nc > 0
+      ? '<section class="card alert warn nocost-box" id="stock-nocost"><div>มี ' + nc + ' ล็อตยังไม่มีต้นทุน กำไรของบิลที่ขายจากล็อตเหล่านี้ยังไม่ครบ</div>' +
+        '<button type="button" class="btn nocost-btn" id="nocost-open">ดูรายการ</button></section>' : '';
     drawLists();
     setTab(scr.params.tab === 'low' || scr.params.tab === 'report' ? scr.params.tab : 'all', true);
   }
@@ -252,6 +259,29 @@
       (!list.length ? '<div class="empty">ไม่พบสินค้าที่ค้นหา</div>' : '') + '</section>';
   }
 
+  // ---------- รอบ 63: ล็อตที่ยังไม่มีต้นทุน (ดูอย่างเดียว — แก้ในชีตแล้วผู้ดูแลกดเมนูคำนวณต้นทุนย้อนหลัง)
+
+  function lotDate(at) {
+    var iso = String(at || '').slice(0, 10);
+    return typeof formatThaiDateShort === 'function' && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(iso) ? formatThaiDateShort(iso) : iso;
+  }
+
+  function openNoCost() {
+    var lots = (data && data.noCostLots) || [];
+    var nc = Number(data && data.noCostCount) || lots.length;
+    var body = '<p class="small muted" id="nocost-sub">' + nc + ' ล็อต' + (nc > lots.length ? ' (แสดง ' + lots.length + ' ล็อตแรก)' : '') + '</p>' +
+      '<ul class="list" id="nocost-list">' + lots.map(function (l) {
+        var p = find(l.barcode);
+        var unit = (p && p.unit) || '';
+        return '<li class="nocost-lot"><div class="t"><div class="n">' + esc(l.name || (p && p.name) || l.barcode) + '</div>' +
+          '<div class="s">เข้า ' + esc(lotDate(l.at)) + ' · จำนวน ' + esc(qtyText(l.qty_in)) + ' ' + esc(unit) +
+          (l.qty_left !== l.qty_in ? ' (เหลือ ' + esc(qtyText(l.qty_left)) + ')' : '') + (l.source ? ' · ' + esc(l.source) : '') + '</div>' +
+          '<div class="s">แก้ที่: ' + (l.where === 'start' ? 'แท็บ "รายการ" ช่อง "ต้นทุนเริ่มต้น (บาท)"' : 'แท็บ "ความเคลื่อนไหวสต็อก" ช่อง "ต้นทุนต่อหน่วย (บาท)"') + '</div></div></li>';
+      }).join('') + '</ul>' +
+      '<p class="small" id="nocost-how">ใส่ต้นทุนในชีตตามที่บอก แล้วให้ผู้ดูแลกดเมนู "คำนวณต้นทุนย้อนหลัง"</p>';
+    LiffApp.sheet('ล็อตที่ยังไม่มีต้นทุน', body, '');
+  }
+
   // ---------- ของเข้า / ของออก / แก้ยอดตามที่นับ
 
   function openMove(kind) {
@@ -261,7 +291,10 @@
     var withCost = !!(data && data.costReady) && kind !== 'out';
     var body =
       '<input type="search" id="move-q" placeholder="ค้นหาสินค้า" autocomplete="off">' +
-      (withCost ? '<p class="small muted" id="move-cost-hint">ต้นทุนต่อหน่วย (บาท ตามที่ซื้อ) เว้นว่างได้ถ้ายังไม่รู้' + (kind === 'count' ? ' ใช้เมื่อยอดเพิ่มขึ้น' : '') + '</p>' : '') +
+      // รอบ 63: ต้นทุนต่อหน่วยจำเป็น (ไม่ใส่ = คิดกำไรไม่ได้) — แก้ยอดแบบลดไม่ต้องใส่
+      (withCost ? '<p class="small muted" id="move-cost-hint">' + (kind === 'count'
+        ? 'ถ้ายอดเพิ่มขึ้น หรือตั้งยอดครั้งแรก ต้องใส่ต้นทุนต่อหน่วย (บาท ตามที่ซื้อ)'
+        : 'ต้องใส่ต้นทุนต่อหน่วย (บาท ตามที่ซื้อ) ทุกรายการ') + '</p>' : '') +
       '<ul class="list move-list" id="move-list">' + (choices.length ? choices.map(function (p) {
         return '<li class="move-line" data-bc="' + esc(p.barcode) + '"><div class="t"><div class="n">' + esc(p.name) + '</div>' +
           '<div class="s" data-now>' + (p.tracked ? 'คงเหลือ ' + esc(qtyText(p.qty)) + ' ' + esc(p.unit) : 'ยังไม่เริ่มนับ') + '</div></div>' +
@@ -290,6 +323,14 @@
       products().forEach(function (p) { m[p.barcode] = p; });
       return m;
     }
+    /** รอบ 63: บรรทัดนี้สร้างล็อตใหม่ไหม (ของเข้า / ตั้งยอดครั้งแรก > 0 / นับได้มากกว่าระบบ) — แบบเดียวกับ stockCostNeeded ของเซิร์ฟเวอร์ */
+    function costNeeded(p, v) {
+      var q = Number(v);
+      if (v === '' || !isFinite(q) || !(q > 0)) return false;
+      if (kind === 'in') return true;
+      if (kind === 'count') return !p.tracked || q > (Number(p.qty) || 0);
+      return false;
+    }
     function refresh() {
       var ls = lines();
       var plan = stockPlanManual({ kind: kind, lines: ls, reason: el('#move-reason').value, stock: stockOf() });
@@ -301,7 +342,13 @@
         li.querySelector('[data-now]').textContent = v !== '' && m ? now + ' → ' + qtyText(m.balance) : now;
         li.classList.toggle('picked-line', v !== '');
         var c = li.querySelector('[data-cost]');
-        if (c) c.classList.toggle('hidden', v === '' && c.value.trim() === '');
+        if (c) {
+          var need = costNeeded(p, v);
+          c.classList.toggle('hidden', !need && c.value.trim() === '');
+          c.classList.toggle('need', need);
+          c.required = need;
+          c.placeholder = 'ต้นทุน/' + (p.unit || 'หน่วย') + (need ? ' (จำเป็น)' : '');
+        }
       });
       el('#move-save').disabled = !ls.length;
       el('#move-save').textContent = 'บันทึก' + K.title + (ls.length ? ' ' + ls.length + ' รายการ' : '');
@@ -319,6 +366,8 @@
       var reason = el('#move-reason').value;
       var plan = stockPlanManual({ kind: kind, lines: ls, reason: reason, stock: stockOf() });
       if (plan.errors.length) return showErr(plan.errors);
+      var costErrs = withCost ? stockCostCheck(plan.moves, ls, stockOf()) : []; // รอบ 63
+      if (costErrs.length) return showErr(costErrs);
       if (kind === 'count' && !plan.moves.length) { s.close(); return LiffApp.toast('ยอดที่นับได้ตรงกับระบบ ไม่ต้องบันทึก'); }
       var btn = el('#move-save');
       btn.disabled = true;
@@ -332,6 +381,7 @@
       }
       if (r.products) {
         data.products = r.products;
+        if (r.noCostCount !== undefined) { data.noCostCount = r.noCostCount; data.noCostLots = r.noCostLots; } // รอบ 63
         LiffApp.keep('stock', data);
       }
       s.close();

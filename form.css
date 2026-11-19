@@ -835,3 +835,10 @@ a.card:active { background: var(--theme-pressed); }
 .pb-nc .nc-where li { padding: 2px 0 0 12px; position: relative; overflow-wrap: anywhere; }
 .pb-nc .nc-where li::before { content: "•"; position: absolute; left: 0; }
 
+
+/* รอบ 63: ต้นทุนต่อหน่วยจำเป็น (ของเข้า / ตั้งยอดครั้งแรก / นับได้มากกว่าระบบ) + ป้ายล็อตที่ยังไม่มีต้นทุน */
+.move-line .move-cost.need:placeholder-shown { border-color: var(--theme-warn-border); border-width: 2px; }
+.nocost-box .nocost-btn { margin-top: 8px; min-height: 44px; }
+.nocost-lot .t { flex: 1; min-width: 0; }
+.nocost-lot .t .n { font-weight: 700; }
+.nocost-lot .t .s { font-size: 13px; color: var(--theme-text-2); }

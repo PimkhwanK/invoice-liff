@@ -279,6 +279,41 @@ function stockPlanManual(o) {
 }
 
 /**
+ * รอบ 63: รายการนี้สร้างล็อตต้นทุนใหม่ไหม (ต้องมีต้นทุนต่อหน่วย) — ของเข้า / ยอดเริ่มต้นที่มากกว่า 0 / แก้ยอดตามที่นับแบบเพิ่ม
+ * แก้ยอดแบบลด / ของออก / ขาย / คืนจากยกเลิก ไม่ต้องมี
+ */
+function stockCostNeeded(m) {
+  if (!m) return false;
+  var kind = stockKindText(m.kind);
+  var q = Number(m.qty) || 0;
+  return (kind === STOCK_KIND.in || kind === STOCK_KIND.open || kind === STOCK_KIND.count) && q > 0;
+}
+
+/**
+ * รอบ 63: ตรวจต้นทุนต่อหน่วยของรายการที่สร้างล็อตใหม่ (หน้าเว็บ + Apps Script ใช้ตัวเดียวกัน)
+ * @param {object[]} moves ผลของ stockPlanManual / lines ที่ส่งมา ([{barcode, cost}] cost = บาท) / stock = {barcode: {name}}
+ * @returns {string[]} ข้อความ (ว่าง = ผ่าน) — ต้องเป็นตัวเลขบาทมากกว่า 0 ทศนิยมไม่เกิน 2 ตำแหน่ง
+ */
+function stockCostCheck(moves, lines, stock) {
+  var costOf = {};
+  (Array.isArray(lines) ? lines : []).forEach(function (l) {
+    if (l && typeof l === 'object' && typeof l.barcode === 'string') costOf[stockText(l.barcode)] = l.cost;
+  });
+  var errors = [];
+  (moves || []).forEach(function (m) {
+    if (!stockCostNeeded(m)) return;
+    var bc = stockText(m.barcode);
+    var name = (stock && stock[bc] && stock[bc].name) || m.name || bc;
+    var v = costOf[bc];
+    var s = typeof v === 'number' ? String(v) : typeof v === 'string' ? v.trim().split(',').join('') : '';
+    if (s === '') { errors.push(name + ': กรุณาใส่ต้นทุนต่อหน่วย (บาท)'); return; }
+    if (!/^[0-9]+(\.[0-9]{1,2})?$/.test(s)) { errors.push(name + ': ต้นทุนต่อหน่วยต้องเป็นตัวเลขบาท เช่น 125 หรือ 125.50'); return; }
+    if (!(Number(s) > 0)) errors.push(name + ': ต้นทุนต่อหน่วยต้องมากกว่า 0');
+  });
+  return errors;
+}
+
+/**
  * ยอดจากแท็บความเคลื่อนไหว (ยอดจริง) — ใช้ตรวจ/ซ่อมคอลัมน์ "คงเหลือ" ในแท็บรายการ (มีคนแก้ในชีตเอง / เขียนไม่ครบ)
  * @returns {{bc: {qty, since}}} since = เวลาของ "ยอดเริ่มต้น" แรก / สินค้าที่ไม่มียอดเริ่มต้น = ไม่ติดตาม (ไม่อยู่ในผล)
  */
@@ -669,6 +704,8 @@ if (typeof module !== 'undefined' && module.exports) {
     stockPlanSale: stockPlanSale,
     stockPlanReturn: stockPlanReturn,
     stockPlanManual: stockPlanManual,
+    stockCostNeeded: stockCostNeeded,
+    stockCostCheck: stockCostCheck,
     stockBalancesFromMoves: stockBalancesFromMoves,
     stockMoveEffects: stockMoveEffects,
     stockRefShops: stockRefShops,
