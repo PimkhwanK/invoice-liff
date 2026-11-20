@@ -166,7 +166,8 @@
       '<div class="bf-row"><button type="button" class="btn" id="brands-btn">รายชื่อยี่ห้อ</button>' + // รอบ 40
       '<button type="button" class="btn" id="bf-btn">เติมยี่ห้อให้สินค้า</button></div>' + // รอบ 42
       '<p class="small muted hidden" id="cost-audit"></p>' + // รอบ 44: ผลตรวจระบบต้นทุนล่าสุด
-      '<ul class="list" id="list"></ul></section>';
+      '<ul class="list" id="list"></ul></section>' +
+      '<section class="card hidden" id="shadow-card"></section>'; // จุด B: ผลเทียบกับระบบใหม่ (เจ้าของเท่านั้น)
     var q = $('q');
     function draw() {
       var term = q.value.trim().toLowerCase();
@@ -188,6 +189,37 @@
     $('bf-btn').addEventListener('click', brandFillFlow);
     draw();
     auditLine();
+    shadowCard();
+  }
+
+  /**
+   * จุด B (ย้ายฐานข้อมูล): การ์ด "เทียบกับระบบใหม่" — เห็นเฉพาะเจ้าของ (api ของ Supabase ตอบ not_owner = ไม่แสดง)
+   * ปิด (config.js ไม่มี SHADOW_API_URL) / ล่ม = ไม่แสดง ไม่กระทบหน้านี้
+   */
+  async function shadowCard() {
+    if (typeof Shadow !== 'object') return;
+    Shadow.flush(); // ผลเทียบที่ค้าง (รอรอบซิงก์) ลองอีกครั้ง
+    var r = await Shadow.status();
+    var box = $('shadow-card');
+    if (!box || !r) return;
+    var v = r.verdict || {};
+    var mark = function (ok) { return '<span class="badge' + (ok ? '' : ' gray') + '">' + (ok ? 'ผ่าน' : 'ยังไม่') + '</span>'; };
+    var dayText = function (iso) { return typeof formatThaiDateShort === 'function' ? formatThaiDateShort(iso) : iso; };
+    var days = (r.days || []).filter(function (d) { return d.bills > 0 || d.checks > 0; }).slice(0, 7);
+    box.innerHTML = '<h2>เทียบกับระบบใหม่</h2>' +
+      '<p id="shadow-verdict"><b class="' + (v.passed ? 'audit-ok' : 'audit-bad') + '">' + (v.passed ? 'ผ่านเกณฑ์สลับแล้ว' : 'ยังไม่ผ่านเกณฑ์สลับ') + '</b></p>' +
+      '<ul class="list shadow-crit" id="shadow-crit">' +
+      '<li><span class="grow">ตรงติดกัน ' + (v.streak || 0) + ' จาก 3 วันทำการ</span>' + mark((v.streak || 0) >= 3) + '</li>' +
+      '<li><span class="grow">ในช่วงนั้นมียกเลิกบิล</span>' + mark(v.cancelled) + '</li>' +
+      '<li><span class="grow">ในช่วงนั้นมีแก้ต้นทุนมือ</span>' + mark(v.costEdited) + '</li>' +
+      '<li><span class="grow">ซิงก์ไม่มีรายการค้าง</span>' + mark(v.queueEmpty) + '</li></ul>' +
+      (days.length ? '<p class="small muted">วันที่มีบิล: เทียบ / ไม่ตรง</p><ul class="list small" id="shadow-days">' + days.map(function (d) {
+        return '<li><span class="grow">' + esc(dayText(d.day)) + ' · บิล ' + d.bills + '</span><span>เทียบ ' + d.checks + (d.bad ? ' · <b class="audit-bad">ไม่ตรง ' + d.bad + '</b>' : '') + '</span></li>';
+      }).join('') + '</ul>' : '<p class="small muted" id="shadow-days">ยังไม่มีผลเทียบ เปิดหน้าสรุปแล้วรอรอบซิงก์ถัดไป</p>') +
+      ((r.diffs || []).length ? '<p class="small muted">ช่องที่ไม่ตรงล่าสุด</p><ul class="list small" id="shadow-diffs">' + r.diffs.slice(0, 5).map(function (x) {
+        return '<li><span class="grow">' + esc(x.path) + '</span><span>' + esc(x.note) + '</span></li>';
+      }).join('') + '</ul>' : '');
+    box.classList.remove('hidden');
   }
 
   /** รอบ 44: "ตรวจต้นทุนล่าสุด: ปกติ / ผิดปกติ N รายการ (วันที่)" — ยังไม่ได้เปิดระบบต้นทุน / ยังไม่เคยตรวจ / โหลดไม่ได้ = ไม่แสดง */

@@ -106,6 +106,8 @@
       }
       fetched[year] = true;
       data[year] = r.summary;
+      // จุด B: เทียบกับ Supabase เงียบ ๆ (ผลที่โหลดอยู่แล้ว ไม่เรียก Apps Script เพิ่ม / ปิดหรือไม่ใช่เจ้าของ = ไม่ทำ)
+      if (typeof Shadow === 'object') { try { Shadow.after('summaryData', { year: year, today: r.summary.today }, r.summary); } catch (e) { /* เงียบ */ } }
       LiffApp.keep('sales-' + year, r.summary);
       if ('stockLow' in r) { stockLow = r.stockLow; LiffApp.keep('stock-low', r.stockLow); }
       if (salesOn() && yearOf() === year) draw(); // รอบ 54: มุมมองกำไรรายบิล / ใบเช็คยอด → ไม่วาดทับ

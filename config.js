@@ -12,5 +12,8 @@
 window.APP_CONFIG = {
   LIFF_ID: '2011752962-XEyAA1HD',
   API_URL: 'https://script.google.com/macros/s/AKfycbxY7jfg8K2ixWO2XNj4Q3FezsyrD4OBEkJK38za7uVl5bMJWqOYm5tDnGAhQBqzwC-9/exec',
-  LINE_OA_ID: '@292eduun'
+  LINE_OA_ID: '@292eduun',
+  // จุด B (ย้ายฐานข้อมูล): ที่อยู่ Edge Function "api" ของ Supabase เช่น https://<project-ref>.supabase.co/functions/v1/api
+  // ว่าง = ไม่เทียบรายงานกับระบบใหม่ (ไม่มีคีย์ใด ๆ ในที่อยู่นี้ — ตรวจตัวตนด้วย idToken ของ LINE + รหัสเจ้าของที่ Supabase)
+  SHADOW_API_URL: 'https://zqiuhdifenqnsltdkptx.supabase.co/functions/v1/api'
 };

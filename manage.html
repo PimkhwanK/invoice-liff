@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-4KDu94+Adp3PZUtTDNiIO4u/b4Y9urVnZI7Jsxcqczc=' https://static.line-scdn.net https://*.line-scdn.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://*.line.me https://*.line-scdn.net https://*.line-apps.com https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; frame-src https://*.line.me; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-QctcR3VFWLPr0+J3YxsonGsW4/Nuo+9xW7B47R8vlU4=' https://static.line-scdn.net https://*.line-scdn.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://*.line.me https://*.line-scdn.net https://*.line-apps.com https://cdnjs.cloudflare.com https://*.supabase.co; worker-src 'self' blob: https://cdnjs.cloudflare.com; frame-src https://*.line.me; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>ออกบิล</title>
 <link rel="stylesheet" href="form.css?v=5dd70c82">
 <link rel="stylesheet" href="theme.css?v=89b1d8ef">
@@ -31,7 +31,7 @@
   <button type="button" data-go="summary"><i data-icon="summary"></i><span>สรุป</span></button>
 </nav>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<script src="config.js?v=c039d41e"></script>
+<script src="config.js?v=7f1e2f06"></script>
 <script src="money.js?v=ec81addc"></script>
 <script src="bahtText.js?v=83b53d5b"></script>
 <script src="thaiDate.js?v=dffbe428"></script>
@@ -45,12 +45,13 @@
 <script src="icons.js?v=7a930a24"></script>
 <script src="common.js?v=1546a310"></script>
 <script src="appdata.js?v=6dcab827"></script>
+<script src="shadow.js?v=df5f71f1"></script>
 <script src="shell.js?v=54cb7190"></script>
 <script src="issue.js?v=9d2b6bce"></script>
 <script src="history.js?v=e206e446"></script>
-<script src="manage.js?v=69a5e1f0"></script>
+<script src="manage.js?v=baeac582"></script>
 <script src="view.js?v=216bbd7a"></script>
-<script src="summary.js?v=c5777ee4"></script>
+<script src="summary.js?v=cfad41a7"></script>
 <script src="xlsx.js?v=75051b9a"></script>
 <script src="stock.js?v=84f932ab"></script>
 <script src="menu.js?v=8380a468"></script>
@@ -100,6 +101,7 @@
     ['icons.js', function () { return typeof iconSvg === 'function'; }],
     ['common.js', function () { return typeof LiffApp === 'object'; }],
     ['appdata.js', function () { return typeof AppData === 'object'; }],
+    ['shadow.js', function () { return typeof Shadow === 'object'; }],
     ['shell.js', function () { return typeof Shell === 'object'; }],
     ['issue.js', function () { return Shell.has('issue'); }],
     ['history.js', function () { return Shell.has('history'); }],
