@@ -202,22 +202,35 @@
     var r = await Shadow.status();
     var box = $('shadow-card');
     if (!box || !r) return;
-    var v = r.verdict || {};
     var mark = function (ok) { return '<span class="badge' + (ok ? '' : ' gray') + '">' + (ok ? 'ผ่าน' : 'ยังไม่') + '</span>'; };
     var dayText = function (iso) { return typeof formatThaiDateShort === 'function' ? formatThaiDateShort(iso) : iso; };
-    var days = (r.days || []).filter(function (d) { return d.bills > 0 || d.checks > 0; }).slice(0, 7);
+    // api รุ่นก่อนรายงานสต็อก (มีแค่ verdict ของสรุปยอดขาย) → แสดงเฉพาะสรุปยอดขาย
+    var reports = r.reports || { summaryData: r.verdict || {} };
+    var NAMES = [['summaryData', 'สรุปยอดขาย'], ['stockData', 'รายการสต็อก'], ['stockReport', 'รายงานสต็อก']].filter(function (x) { return reports[x[0]]; });
+    var all = NAMES.every(function (x) { return reports[x[0]].passed; });
+    var first = reports[NAMES[0][0]] || {};
+    var rep = reports.stockReport && reports.stockReport.periods;
+    var days = (r.days || []).filter(function (d) { return d.bills > 0 || d.checks > 0 || (d.by && Object.keys(d.by).length); }).slice(0, 7);
+    var cnt = function (d, a) { var x = d.by && d.by[a]; return x ? x : (a === 'summaryData' ? { checks: d.checks || 0, bad: d.bad || 0 } : { checks: 0, bad: 0 }); };
     box.innerHTML = '<h2>เทียบกับระบบใหม่</h2>' +
-      '<p id="shadow-verdict"><b class="' + (v.passed ? 'audit-ok' : 'audit-bad') + '">' + (v.passed ? 'ผ่านเกณฑ์สลับแล้ว' : 'ยังไม่ผ่านเกณฑ์สลับ') + '</b></p>' +
-      '<ul class="list shadow-crit" id="shadow-crit">' +
-      '<li><span class="grow">ตรงติดกัน ' + (v.streak || 0) + ' จาก 3 วันทำการ</span>' + mark((v.streak || 0) >= 3) + '</li>' +
-      '<li><span class="grow">ในช่วงนั้นมียกเลิกบิล</span>' + mark(v.cancelled) + '</li>' +
-      '<li><span class="grow">ในช่วงนั้นมีแก้ต้นทุนมือ</span>' + mark(v.costEdited) + '</li>' +
-      '<li><span class="grow">ซิงก์ไม่มีรายการค้าง</span>' + mark(v.queueEmpty) + '</li></ul>' +
-      (days.length ? '<p class="small muted">วันที่มีบิล: เทียบ / ไม่ตรง</p><ul class="list small" id="shadow-days">' + days.map(function (d) {
-        return '<li><span class="grow">' + esc(dayText(d.day)) + ' · บิล ' + d.bills + '</span><span>เทียบ ' + d.checks + (d.bad ? ' · <b class="audit-bad">ไม่ตรง ' + d.bad + '</b>' : '') + '</span></li>';
-      }).join('') + '</ul>' : '<p class="small muted" id="shadow-days">ยังไม่มีผลเทียบ เปิดหน้าสรุปแล้วรอรอบซิงก์ถัดไป</p>') +
+      '<p id="shadow-verdict"><b class="' + (all ? 'audit-ok' : 'audit-bad') + '">' + (all ? 'ผ่านเกณฑ์สลับแล้วทุกรายงาน' : 'ยังไม่ผ่านเกณฑ์สลับ') + '</b></p>' +
+      '<ul class="list shadow-crit" id="shadow-crit">' + NAMES.map(function (x) {
+        var v = reports[x[0]];
+        return '<li data-report="' + x[0] + '"><span class="grow">' + esc(x[1]) + ': ตรงติดกัน ' + (v.streak || 0) + ' จาก 3 วันทำการ</span>' + mark(!!v.passed) + '</li>';
+      }).join('') +
+      '<li><span class="grow">ในช่วงนั้นมียกเลิกบิล</span>' + mark(first.cancelled) + '</li>' +
+      '<li><span class="grow">ในช่วงนั้นมีแก้ต้นทุนมือ</span>' + mark(first.costEdited) + '</li>' +
+      '<li><span class="grow">ซิงก์ไม่มีรายการค้าง</span>' + mark(first.queueEmpty) + '</li></ul>' +
+      (rep ? '<p class="small muted" id="shadow-periods">รายงานสต็อกที่เทียบแล้ว: วันนี้ ' + (rep.today ? 'แล้ว' : 'ยัง') + ' · เดือน ' + (rep.month ? 'แล้ว' : 'ยัง') +
+        '<br>วันนี้: ที่แท็บรายงาน กด "เลือกวันเอง" แล้วเลือกวันนี้วันเดียว / เดือน: กด "เดือนนี้" หรือ "เลือกเดือน"</p>' : '') +
+      (days.length ? '<p class="small muted">วันที่มีบิล: เทียบ / ไม่ตรง (สรุป · สต็อก · รายงาน)</p><ul class="list small" id="shadow-days">' + days.map(function (d) {
+        var bad = NAMES.reduce(function (n, x) { return n + cnt(d, x[0]).bad; }, 0);
+        return '<li><span class="grow">' + esc(dayText(d.day)) + ' · บิล ' + d.bills + '</span><span>เทียบ ' + NAMES.map(function (x) { return cnt(d, x[0]).checks; }).join(' · ') +
+          (bad ? ' · <b class="audit-bad">ไม่ตรง ' + bad + '</b>' : '') + '</span></li>';
+      }).join('') + '</ul>' : '<p class="small muted" id="shadow-days">ยังไม่มีผลเทียบ เปิดหน้าสรุป / หน้าสต็อกแล้วรอรอบซิงก์ถัดไป</p>') +
       ((r.diffs || []).length ? '<p class="small muted">ช่องที่ไม่ตรงล่าสุด</p><ul class="list small" id="shadow-diffs">' + r.diffs.slice(0, 5).map(function (x) {
-        return '<li><span class="grow">' + esc(x.path) + '</span><span>' + esc(x.note) + '</span></li>';
+        var name = (NAMES.filter(function (n) { return n[0] === x.action; })[0] || [])[1];
+        return '<li><span class="grow">' + (name ? esc(name) + ' · ' : '') + esc(x.path) + '</span><span>' + esc(x.note) + '</span></li>';
       }).join('') + '</ul>' : '');
     box.classList.remove('hidden');
   }

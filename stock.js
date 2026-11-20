@@ -48,6 +48,8 @@
       data = r;
       fetched = true;
       LiffApp.keep('stock', r);
+      // จุด B: เทียบรายการสินค้ากับ Supabase เงียบ ๆ (ผลที่โหลดอยู่แล้ว ไม่เรียก Apps Script เพิ่ม)
+      if (typeof Shadow === 'object') { try { Shadow.after('stockData', {}, r); } catch (e) { /* เงียบ */ } }
       return r;
     });
   }
@@ -597,6 +599,8 @@
       return;
     }
     repData = r;
+    // จุด B: เทียบแท็บรายงานกับ Supabase เงียบ ๆ (ช่วงที่เปิดดู — การ์ดในหน้าจัดการบอกว่าช่วงไหนเทียบแล้ว)
+    if (typeof Shadow === 'object') { try { Shadow.after('stockReport', { period: r.period, month: r.month || '', from: r.from, to: r.to, today: r.today }, r); } catch (e) { /* เงียบ */ } }
     drawReport();
   }
 
