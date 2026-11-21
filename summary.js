@@ -413,6 +413,8 @@
       if (r.ok) {
         profits[key] = r;
         if (r.ready) profitKeepNew(key, r);
+        // จุด B: เทียบการ์ดกำไรกับ Supabase เงียบ ๆ (ผลที่โหลดอยู่แล้ว ไม่เรียก Apps Script เพิ่ม)
+        if (typeof Shadow === 'object') { try { var pa = periodArg(); Shadow.after('profitData', { period: pa, kind: pa.kind, year: pa.year, month: pa.month, date: pa.date, today: today(), shopSort: shopBy, prodSort: prodBy }, r); } catch (e) { /* เงียบ */ } }
       } else if (profits[key] && profits[key].stale) {
         profits[key].failed = true; // ค่าที่จำไว้ยังแสดง + ป้าย "ยังไม่ได้อัปเดต"
       } else {
@@ -1074,6 +1076,8 @@
       Shell.drawn(scr);
       return;
     }
+    // จุด B: เทียบกำไรรายบิลหน้าแรกกับ Supabase เงียบ ๆ
+    if (typeof Shadow === 'object') { try { Shadow.after('profitBills', { limit: PB_PAGE }, r); } catch (e) { /* เงียบ */ } }
     try { billsPage(r); } catch (e) { pbList = []; renderFail('กำไรรายบิล', e); }
   }
 

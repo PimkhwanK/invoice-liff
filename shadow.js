@@ -9,15 +9,16 @@
  *   Shadow.status()                                ผลเทียบสำหรับการ์ดในหน้าจัดการ (null = ไม่แสดง)
  *   Shadow.compareSummary(a, b)                    ช่องที่ไม่ตรง [{path, note}] (ไม่มีตัวเลขเงินในผล) — test ใช้ด้วย
  *   Shadow.compareStock(a, b) / compareReport(a, b) รายงานสต็อก (2026-11-22): รายการสินค้า / แท็บรายงาน
+ *   Shadow.compareProfit(a, b) / compareBills(a, b)  รายงานกำไร (2026-11-22): การ์ดกำไร / กำไรรายบิลหน้าแรก
  */
 var Shadow = (function () {
-  var MAX_PENDING = 6; // 3 รายงาน × ช่วงที่ต่างกัน
+  var MAX_PENDING = 8; // 5 รายงาน × ช่วงที่ต่างกัน
   var MAX_DIFFS = 50;
   var KEEP_MS = 6 * 3600 * 1000; // รอเทียบได้นานสุด (เกินนี้ทิ้ง — ข้อมูลเปลี่ยนไปมากแล้ว)
   var TIMEOUT_MS = 10000;
   var running = false;
   // รายงานที่เทียบ → ช่องผลในคำตอบของ api (ฟังก์ชันเทียบกำหนดหลังประกาศ)
-  var RESULT = { summaryData: 'summary', stockData: 'stock', stockReport: 'report' };
+  var RESULT = { summaryData: 'summary', stockData: 'stock', stockReport: 'report', profitData: 'profit', profitBills: 'bills' };
   var COMPARE = {};
 
   function url() {
@@ -101,6 +102,39 @@ var Shadow = (function () {
 
   function compareReport(a, b) {
     return compareSections(reportSections(a), reportSections(b));
+  }
+
+  /** การ์ดกำไร (profitData) → ส่วนที่เทียบได้ (ร้าน/สินค้าเทียบตามคีย์ ไม่สนลำดับ) */
+  function profitSections(p) {
+    p = p || {};
+    return {
+      head: { ready: p.ready !== false, from: p.from || '', to: p.to || '', start: p.start || '', salesBeforeVat: !!p.salesBeforeVat },
+      totals: { cur: p.cur || null, prev: p.prev || null },
+      shops: keyed(p.shops, function (x) { return x.key; }),
+      products: keyed(p.products, function (x) { return x.barcode; })
+    };
+  }
+
+  function compareProfit(a, b) {
+    return compareSections(profitSections(a), profitSections(b));
+  }
+
+  /** กำไรรายบิล หน้าแรก (profitBills) — บิลเทียบตาม ประเภท+เลขที่+ชนิด / สินค้าที่ยังไม่มีต้นทุนตามบาร์โค้ด */
+  function billsSections(r) {
+    r = r || {};
+    return {
+      head: { ready: r.ready !== false, total: r.total === undefined ? null : r.total, start: r.start || '', salesBeforeVat: !!r.salesBeforeVat },
+      bills: keyed(r.bills, function (b) { return b.kind + ':' + b.no + ':' + (b.docType || ''); }, function (b) {
+        var x = JSON.parse(JSON.stringify(b));
+        x.at = timeMs(x.at);
+        return x;
+      }),
+      noCost: keyed(r.noCost, function (x) { return x.barcode; })
+    };
+  }
+
+  function compareBills(a, b) {
+    return compareSections(billsSections(a), billsSections(b));
   }
 
   function compareSections(A, B) {
@@ -202,8 +236,8 @@ var Shadow = (function () {
     return r;
   }
 
-  COMPARE = { summaryData: compareSummary, stockData: compareStock, stockReport: compareReport };
-  return { after: after, flush: flush, status: status, compareSummary: compareSummary, compareStock: compareStock, compareReport: compareReport, timeMs: timeMs };
+  COMPARE = { summaryData: compareSummary, stockData: compareStock, stockReport: compareReport, profitData: compareProfit, profitBills: compareBills };
+  return { after: after, flush: flush, status: status, compareSummary: compareSummary, compareStock: compareStock, compareReport: compareReport, compareProfit: compareProfit, compareBills: compareBills, timeMs: timeMs };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = Shadow;

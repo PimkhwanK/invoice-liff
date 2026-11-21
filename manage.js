@@ -206,10 +206,13 @@
     var dayText = function (iso) { return typeof formatThaiDateShort === 'function' ? formatThaiDateShort(iso) : iso; };
     // api รุ่นก่อนรายงานสต็อก (มีแค่ verdict ของสรุปยอดขาย) → แสดงเฉพาะสรุปยอดขาย
     var reports = r.reports || { summaryData: r.verdict || {} };
-    var NAMES = [['summaryData', 'สรุปยอดขาย'], ['stockData', 'รายการสต็อก'], ['stockReport', 'รายงานสต็อก']].filter(function (x) { return reports[x[0]]; });
+    var NAMES = [['summaryData', 'สรุปยอดขาย'], ['stockData', 'รายการสต็อก'], ['stockReport', 'รายงานสต็อก'], ['profitData', 'การ์ดกำไร'], ['profitBills', 'กำไรรายบิล']].filter(function (x) { return reports[x[0]]; });
     var all = NAMES.every(function (x) { return reports[x[0]].passed; });
     var first = reports[NAMES[0][0]] || {};
     var rep = reports.stockReport && reports.stockReport.periods;
+    var prof = reports.profitData && reports.profitData.periods;
+    var EXTRA = { thisyear: 'ปีนี้', year: 'ปีอื่น', day: 'เลือกวัน', pick: 'เลือกเดือน' };
+    var extras = prof ? (prof.seen || []).filter(function (p) { return EXTRA[p]; }).map(function (p) { return EXTRA[p]; }) : [];
     var days = (r.days || []).filter(function (d) { return d.bills > 0 || d.checks > 0 || (d.by && Object.keys(d.by).length); }).slice(0, 7);
     var cnt = function (d, a) { var x = d.by && d.by[a]; return x ? x : (a === 'summaryData' ? { checks: d.checks || 0, bad: d.bad || 0 } : { checks: 0, bad: 0 }); };
     box.innerHTML = '<h2>เทียบกับระบบใหม่</h2>' +
@@ -223,7 +226,9 @@
       '<li><span class="grow">ซิงก์ไม่มีรายการค้าง</span>' + mark(first.queueEmpty) + '</li></ul>' +
       (rep ? '<p class="small muted" id="shadow-periods">รายงานสต็อกที่เทียบแล้ว: วันนี้ ' + (rep.today ? 'แล้ว' : 'ยัง') + ' · เดือน ' + (rep.month ? 'แล้ว' : 'ยัง') +
         '<br>วันนี้: ที่แท็บรายงาน กด "เลือกวันเอง" แล้วเลือกวันนี้วันเดียว / เดือน: กด "เดือนนี้" หรือ "เลือกเดือน"</p>' : '') +
-      (days.length ? '<p class="small muted">วันที่มีบิล: เทียบ / ไม่ตรง (สรุป · สต็อก · รายงาน)</p><ul class="list small" id="shadow-days">' + days.map(function (d) {
+      (prof ? '<p class="small muted" id="shadow-profit-periods">การ์ดกำไรที่เทียบแล้ว: วันนี้ ' + (prof.today ? 'แล้ว' : 'ยัง') + ' · เดือนนี้ ' + (prof.month ? 'แล้ว' : 'ยัง') +
+        (extras.length ? ' · เสริม: ' + esc(extras.join(', ')) : '') + '<br>ที่หน้าสรุป กด "วันนี้" และ "เดือนนี้" อย่างละครั้ง (ปีนี้ / เลือกวัน นับเสริม)</p>' : '') +
+      (days.length ? '<p class="small muted">วันที่มีบิล: เทียบ / ไม่ตรง (' + NAMES.map(function (x) { return x[1]; }).join(' · ') + ')</p><ul class="list small" id="shadow-days">' + days.map(function (d) {
         var bad = NAMES.reduce(function (n, x) { return n + cnt(d, x[0]).bad; }, 0);
         return '<li><span class="grow">' + esc(dayText(d.day)) + ' · บิล ' + d.bills + '</span><span>เทียบ ' + NAMES.map(function (x) { return cnt(d, x[0]).checks; }).join(' · ') +
           (bad ? ' · <b class="audit-bad">ไม่ตรง ' + bad + '</b>' : '') + '</span></li>';
