@@ -568,6 +568,7 @@ a.card:active { background: var(--theme-pressed); }
   #sum-body[data-tab=overview] > .alert { column-span: all; }
   #sum-body:not([data-tab=overview]) > .card { max-width: 760px; margin-left: auto; margin-right: auto; }
   .screen[data-screen=summary] .sum-key { grid-template-columns: repeat(4, minmax(0, 1fr)); } /* ชนะกฎพื้นฐานที่อยู่ท้ายไฟล์ */
+  .screen[data-screen=summary] .sum-key .sum-pf-acts { grid-column: 1 / 3; } /* ปุ่มซ่อนยอดขาย/กำไรอยู่ใต้การ์ดที่ 1–2 พอดี */
 
   /* สต็อก: ต้องดู | สินค้า */
   .screen[data-screen=stock] { --w: 1100px; }

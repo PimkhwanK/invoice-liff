@@ -489,9 +489,10 @@
       '<span>' + (salesOff ? 'แสดงยอดขาย' : 'ซ่อนยอดขาย') + '</span></button>';
     // 2026-11-27: อยู่แถวเดียวกับปุ่มซ่อนกำไรเท่านั้น (ไม่มีกำไร = ไม่มีแถวปุ่ม — แถวใหม่ดันแท็บย่อยตกจอ 375×667 รอบ 34)
     if (!p || !p.ok || !p.ready) return miss;
-    return miss + '<div class="sum-pf-acts">' +
+    // ซ้าย = ซ่อนยอดขาย (ใต้การ์ดยอดขาย) / ขวา = ซ่อนกำไร (ใต้การ์ดกำไร) — ตำแหน่งตรงการ์ดทุกขนาดจอ (form.css .sum-pf-acts)
+    return miss + '<div class="sum-pf-acts">' + sales +
       '<button type="button" class="btn" id="sum-eye" aria-pressed="' + (eyeOff ? 'true' : 'false') + '">' + iconSvg(eyeOff ? 'eyeOff' : 'eye') +
-      '<span>' + (eyeOff ? 'แสดงกำไร' : 'ซ่อนกำไร') + '</span></button>' + sales + '</div>'; // รอบ 45: กำไรรายบิลอยู่แท็บ "กำไรบิล"
+      '<span>' + (eyeOff ? 'แสดงกำไร' : 'ซ่อนกำไร') + '</span></button></div>'; // รอบ 45: กำไรรายบิลอยู่แท็บ "กำไรบิล"
   }
 
   /** กำไรของร้าน/สินค้าในแท็บ (จากคำตอบ profitData) { key: แถว } */
