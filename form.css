@@ -795,7 +795,7 @@ a.card:active { background: var(--theme-pressed); }
 .pf.miss, .pf-big.miss { color: var(--theme-text-2); font-weight: 400; font-style: italic; }
 .sum-key .key b.pf-big.miss { font-size: 17px; }
 .sum-pf-miss { grid-column: 1 / -1; color: var(--theme-warn-text); padding: 0 4px; }
-.sum-pf-acts { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.sum-pf-acts { grid-column: 1 / -1; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; } /* 2026-11-27: ซ่อนกำไร + ซ่อนยอดขาย ข้างกัน */
 .sum-pf-acts .btn { min-height: 48px; }
 .sum-pf-row { display: block; }
 .pb-doc { cursor: pointer; }

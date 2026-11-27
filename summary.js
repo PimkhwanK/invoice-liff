@@ -36,6 +36,11 @@
   var profitWait = {};   // key → Promise
   var shopBy = 'sat';    // แท็บร้านค้า: ตามยอดขาย / ตามกำไร
   var eyeOff = (function () { var k = LiffApp.remember('profit-eye'); return !!(k && k.data === 'off'); })();
+  // 2026-11-27: ปุ่ม "ซ่อนยอดขาย" — ซ่อนเฉพาะตัวเลขบนการ์ด "ยอดขาย (บาท)" ที่หน้าจอ (ไม่กระทบการคำนวณ / ผลที่ส่งไปเทียบกับระบบใหม่) / จำแยกจากกำไร
+  var SALES_EYE = 'sales-eye';
+  function eyeRead(name) { try { var k = LiffApp.remember(name); return !!(k && k.data === 'off'); } catch (e) { return false; } }
+  function eyeSave(name, off) { try { LiffApp.keep(name, off ? 'off' : 'on'); } catch (e) { /* จำไม่ได้ = ใช้ได้เฉพาะรอบนี้ */ } }
+  var salesOff = eyeRead(SALES_EYE);
   var sumView = 'sales'; // รอบ 46: สรุปยอดขาย / กำไรรายบิล — รอบ 55: ไม่จำ เข้าหน้าสรุปทุกครั้ง = สรุปยอดขาย (ยกเว้น summary?bills=1)
   var COST_HINT = 'กรอกต้นทุนที่หน้าสต็อก (ปุ่มของเข้า) หรือคอลัมน์ "ต้นทุนเริ่มต้น (บาท)" ในชีต';
   var MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
@@ -145,6 +150,7 @@
     if (view.dataset.view !== 'sales') view.innerHTML = ''; // เนื้อหาของมุมมองอื่นค้างอยู่ → สร้างโครงหน้าสรุปใหม่
     profits = {}; // รอบ 44: เข้าหน้าใหม่ = คำนวณกำไรใหม่ (มีบิลใหม่ / แก้ต้นทุนแล้ว)
     eyeOff = (function () { var k = LiffApp.remember('profit-eye'); return !!(k && k.data === 'off'); })(); // รอบ 45: ใช้ร่วมกับหน้ากำไรบิล
+    salesOff = eyeRead(SALES_EYE);
     document.title = SUMMARY_TITLE; // กลับจากใบเช็คยอด (หน้าจอเดียวกัน shell ไม่ตั้งชื่อใหม่)
     setTab(params && params.tab, true);
     fetchDebt(); // รอบ 33: ลูกหนี้ (ทุกครั้งที่เข้าหน้า — ยอดเปลี่ยนตามวัน)
@@ -364,8 +370,9 @@
     var owe = dd ? dd.overdue.concat(dd.soon, dd.later, dd.noDue) : null;
     var oweSat = owe ? owe.reduce(function (x, y) { return x + y.sat; }, 0) : 0;
     box.innerHTML =
-      '<div class="key"><span class="l">ยอดขาย (บาท)</span><b class="num" id="sum-all">' + money(a.sat) + '</b>' + delta(a.pct) +
-      (a.pct === null ? '' : '<span class="small muted" id="sum-all-prev">ช่วงก่อน ' + money(a.psat) + '</span>') + '</div>' + // รอบ 45: ช่วงก่อนไม่มียอด = ป้ายบรรทัดเดียว
+      '<div class="key"><span class="l">ยอดขาย (บาท)</span><b class="num" id="sum-all">' + (salesOff ? '••••' : money(a.sat)) + '</b>' +
+      (salesOff && a.pct !== null ? '<span class="sum-delta same" id="sum-all-delta">••••</span>' : delta(a.pct)) +
+      (a.pct === null ? '' : '<span class="small muted" id="sum-all-prev">ช่วงก่อน ' + (salesOff ? '••••' : money(a.psat)) + '</span>') + '</div>' + // รอบ 45: ช่วงก่อนไม่มียอด = ป้ายบรรทัดเดียว
       profitKey() +
       '<div class="key"><span class="l">จำนวนบิล</span><b class="num" id="sum-count">' + a.n.toLocaleString('th-TH') + '</b>' +
       '<span class="small muted">เฉลี่ย <span class="num" id="sum-avg">' + money(a.avg) + '</span> / บิล</span>' +
@@ -377,6 +384,8 @@
       profitFoot();
     var eye = $('sum-eye');
     if (eye) eye.addEventListener('click', function () { eyeOff = !eyeOff; LiffApp.keep('profit-eye', eyeOff ? 'off' : 'on'); drawKey(); if (tab === 'shops' || tab === 'products') drawBody(); });
+    var se = $('sum-eye-sales');
+    if (se) se.addEventListener('click', function () { salesOff = !salesOff; eyeSave(SALES_EYE, salesOff); drawKey(); });
   }
 
   // ---------- รอบ 44: กำไร/ขาดทุน
@@ -476,9 +485,13 @@
     var p = profitNow();
     var miss = p && p.ok && p.ready && p.cur.incomplete && p.cur.profit !== null
       ? '<div class="small sum-pf-miss" id="sum-profit-miss">ต้นทุนไม่ครบ ' + p.cur.incomplete.toLocaleString('th-TH') + ' บิล (ไม่รวมในกำไร)</div>' : '';
+    var sales = '<button type="button" class="btn" id="sum-eye-sales" aria-pressed="' + (salesOff ? 'true' : 'false') + '">' + iconSvg(salesOff ? 'eyeOff' : 'eye') +
+      '<span>' + (salesOff ? 'แสดงยอดขาย' : 'ซ่อนยอดขาย') + '</span></button>';
+    // 2026-11-27: อยู่แถวเดียวกับปุ่มซ่อนกำไรเท่านั้น (ไม่มีกำไร = ไม่มีแถวปุ่ม — แถวใหม่ดันแท็บย่อยตกจอ 375×667 รอบ 34)
     if (!p || !p.ok || !p.ready) return miss;
     return miss + '<div class="sum-pf-acts">' +
-      '<button type="button" class="btn" id="sum-eye" aria-pressed="' + (eyeOff ? 'true' : 'false') + '">' + iconSvg(eyeOff ? 'eyeOff' : 'eye') + '<span>' + (eyeOff ? 'แสดงกำไร' : 'ซ่อนกำไร') + '</span></button></div>'; // รอบ 45: กำไรรายบิลอยู่แท็บ "กำไรบิล"
+      '<button type="button" class="btn" id="sum-eye" aria-pressed="' + (eyeOff ? 'true' : 'false') + '">' + iconSvg(eyeOff ? 'eyeOff' : 'eye') +
+      '<span>' + (eyeOff ? 'แสดงกำไร' : 'ซ่อนกำไร') + '</span></button>' + sales + '</div>'; // รอบ 45: กำไรรายบิลอยู่แท็บ "กำไรบิล"
   }
 
   /** กำไรของร้าน/สินค้าในแท็บ (จากคำตอบ profitData) { key: แถว } */

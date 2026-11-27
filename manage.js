@@ -213,7 +213,10 @@
     var prof = reports.profitData && reports.profitData.periods;
     var EXTRA = { thisyear: 'ปีนี้', year: 'ปีอื่น', day: 'เลือกวัน', pick: 'เลือกเดือน' };
     var extras = prof ? (prof.seen || []).filter(function (p) { return EXTRA[p]; }).map(function (p) { return EXTRA[p]; }) : [];
-    var days = (r.days || []).filter(function (d) { return d.bills > 0 || d.checks > 0 || (d.by && Object.keys(d.by).length); }).slice(0, 7);
+    // 2026-11-27: การเทียบที่ถูกข้าม แยกตามเหตุผล (api รุ่นก่อนไม่มี = ไม่แสดง) / วันนับตามเวลาที่เปิดหน้า
+    var SKIPS = [['no_sync', 'ไม่มีรอบซิงก์ใหม่'], ['changed', 'ข้อมูลเปลี่ยนหลังเวลาอ่าน'], ['other', 'อื่น ๆ']];
+    var skipOf = function (d) { var k = d.skips || {}; return SKIPS.reduce(function (n, x) { return n + Number(k[x[0]] || 0); }, 0); };
+    var days = (r.days || []).filter(function (d) { return d.bills > 0 || d.checks > 0 || (d.by && Object.keys(d.by).length) || skipOf(d) > 0; }).slice(0, 7);
     var cnt = function (d, a) { var x = d.by && d.by[a]; return x ? x : (a === 'summaryData' ? { checks: d.checks || 0, bad: d.bad || 0 } : { checks: 0, bad: 0 }); };
     box.innerHTML = '<h2>เทียบกับระบบใหม่</h2>' +
       '<p id="shadow-verdict"><b class="' + (all ? 'audit-ok' : 'audit-bad') + '">' + (all ? 'ผ่านเกณฑ์สลับแล้วทุกรายงาน' : 'ยังไม่ผ่านเกณฑ์สลับ') + '</b></p>' +
@@ -231,8 +234,10 @@
       (days.length ? '<p class="small muted">วันที่มีบิล: เทียบ / ไม่ตรง (' + NAMES.map(function (x) { return x[1]; }).join(' · ') + ')</p><ul class="list small" id="shadow-days">' + days.map(function (d) {
         var bad = NAMES.reduce(function (n, x) { return n + cnt(d, x[0]).bad; }, 0);
         return '<li><span class="grow">' + esc(dayText(d.day)) + ' · บิล ' + d.bills + '</span><span>เทียบ ' + NAMES.map(function (x) { return cnt(d, x[0]).checks; }).join(' · ') +
-          (bad ? ' · <b class="audit-bad">ไม่ตรง ' + bad + '</b>' : '') + '</span></li>';
+          (bad ? ' · <b class="audit-bad">ไม่ตรง ' + bad + '</b>' : '') + (skipOf(d) ? ' · ข้าม ' + skipOf(d) : '') + '</span></li>';
       }).join('') + '</ul>' : '<p class="small muted" id="shadow-days">ยังไม่มีผลเทียบ เปิดหน้าสรุป / หน้าสต็อกแล้วรอรอบซิงก์ถัดไป</p>') +
+      (r.skips ? '<p class="small muted" id="shadow-skips">ข้ามการเทียบ (14 วัน): ' + SKIPS.map(function (x) { return esc(x[1]) + ' ' + Number(r.skips[x[0]] || 0); }).join(' · ') +
+        (r.touchAt ? '<br>สัญญาณซิงก์ล่าสุด ' + esc(r.touchAt) + ' น.' : '') + '</p>' : '') +
       ((r.diffs || []).length ? '<p class="small muted">ช่องที่ไม่ตรงล่าสุด</p><ul class="list small" id="shadow-diffs">' + r.diffs.slice(0, 5).map(function (x) {
         var name = (NAMES.filter(function (n) { return n[0] === x.action; })[0] || [])[1];
         return '<li><span class="grow">' + (name ? esc(name) + ' · ' : '') + esc(x.path) + '</span><span>' + esc(x.note) + '</span></li>';

@@ -6,6 +6,8 @@
  *
  *   Shadow.after(action, args, ผลจาก Apps Script)  เก็บไว้เทียบ (ไม่เกิน 6 รายการ) แล้วลองเทียบ
  *   Shadow.flush()                                 ลองเทียบรายการที่ค้าง (ข้อมูลในฐานยังเก่ากว่าผลของ Apps Script = รอรอบซิงก์ถัดไป)
+ *                                                  ระหว่างหน้ายังเปิด ลองซ้ำเองที่ ~6 และ ~11 นาทีหลังได้ผล แล้วหยุด (2026-11-27)
+ *                                                  api ตอบ skip changed (ข้อมูลเปลี่ยนหลังเวลาอ่าน) = ทิ้งผลนั้น ลองซ้ำก็ไม่ผ่าน
  *   Shadow.status()                                ผลเทียบสำหรับการ์ดในหน้าจัดการ (null = ไม่แสดง)
  *   Shadow.compareSummary(a, b)                    ช่องที่ไม่ตรง [{path, note}] (ไม่มีตัวเลขเงินในผล) — test ใช้ด้วย
  *   Shadow.compareStock(a, b) / compareReport(a, b) รายงานสต็อก (2026-11-22): รายการสินค้า / แท็บรายงาน
@@ -16,7 +18,10 @@ var Shadow = (function () {
   var MAX_DIFFS = 50;
   var KEEP_MS = 6 * 3600 * 1000; // รอเทียบได้นานสุด (เกินนี้ทิ้ง — ข้อมูลเปลี่ยนไปมากแล้ว)
   var TIMEOUT_MS = 10000;
+  var RETRY_MS = [6 * 60 * 1000, 11 * 60 * 1000]; // ลองซ้ำหลังได้ผลจาก Apps Script (รอบซิงก์/touch ทุก 5 นาที) แล้วหยุด
   var running = false;
+  var timer = null;
+  var timerAt = 0;
   // รายงานที่เทียบ → ช่องผลในคำตอบของ api (ฟังก์ชันเทียบกำหนดหลังประกาศ)
   var RESULT = { summaryData: 'summary', stockData: 'stock', stockReport: 'report', profitData: 'profit', profitBills: 'bills' };
   var COMPARE = {};
@@ -189,43 +194,77 @@ var Shadow = (function () {
     return false;
   }
 
+  /** รหัสของผลที่รอเทียบ (api ใช้นับการข้ามต่อผล ไม่ซ้ำ) */
+  function newCid() {
+    var out = '';
+    while (out.length < 16) out += Math.random().toString(36).slice(2);
+    return out.slice(0, 16);
+  }
+
   function pending() {
     var k = LiffApp.remember('shadow-pending');
     var list = k && Array.isArray(k.data) ? k.data : [];
-    return list.filter(function (p) { return p && Date.now() - p.gasAt < KEEP_MS; });
+    return list.filter(function (p) { return p && Date.now() - p.gasAt < KEEP_MS; }).map(function (p) {
+      if (!/^[a-z0-9]{8,40}$/.test(String(p.cid || ''))) p.cid = newCid(); // รายการจากรุ่นก่อน
+      return p;
+    });
+  }
+
+  /** ตั้งเวลาลองครั้งถัดไป (ตัวเดียว — เลือกเวลาที่ใกล้สุด) */
+  function schedule(ms) {
+    var at = Date.now() + Math.max(0, ms);
+    if (timer && timerAt <= at) return;
+    if (timer) clearTimeout(timer);
+    timerAt = at;
+    timer = setTimeout(function () { timer = null; timerAt = 0; flush(); }, Math.max(0, ms));
+  }
+
+  /** ยังมีผลรอเทียบ → ลองซ้ำที่ ~6 / ~11 นาทีหลังได้ผล (ผ่านจุดสุดท้ายแล้ว = หยุด รอเปิดหน้าครั้งหน้า) */
+  function planRetry(list) {
+    var now = Date.now();
+    var next = 0;
+    list.forEach(function (p) {
+      RETRY_MS.forEach(function (d) {
+        var t = p.gasAt + d;
+        if (t > now && (!next || t < next)) next = t;
+      });
+    });
+    if (next) schedule(next - now);
   }
 
   function after(action, args, result) {
     if (off() || !COMPARE[action] || !result) return;
     var list = pending().filter(function (p) { return !(p.action === action && JSON.stringify(p.args) === JSON.stringify(args)); });
-    list.push({ action: action, args: args, gasAt: Date.now(), result: result });
+    list.push({ action: action, args: args, gasAt: Date.now(), result: result, cid: newCid() });
     LiffApp.keep('shadow-pending', list.slice(-MAX_PENDING));
-    setTimeout(flush, 1500); // หลังหน้าวาดเสร็จ
+    schedule(1500); // หลังหน้าวาดเสร็จ
   }
 
   async function flush() {
     if (running || off()) return;
     running = true;
+    var left = [];
     try {
       var list = pending();
-      var left = [];
       for (var i = 0; i < list.length; i++) {
         var p = list[i];
-        var r = await call(p.action, Object.assign({}, p.args, { gasAgoMs: Math.max(0, Date.now() - p.gasAt) }));
-        if (denied(r)) return;
-        if (!r.ok || !r.comparable) { left.push(p); continue; } // ข้อมูลในฐานยังไม่ทัน / ล่ม → ลองใหม่ครั้งหน้า
+        var r = await call(p.action, Object.assign({}, p.args, { gasAgoMs: Math.max(0, Date.now() - p.gasAt), cid: p.cid }));
+        if (denied(r)) { left = []; return; }
+        if (r.ok && !r.comparable && r.skip === 'changed') continue; // ข้อมูลเปลี่ยนหลังเวลาอ่าน → ผลนี้เทียบไม่ได้อีก (api จดเหตุผลแล้ว)
+        if (!r.ok || !r.comparable) { left.push(p); continue; } // ยังไม่มีรอบซิงก์ใหม่พอ / ล่ม → ลองใหม่
         var diffs = COMPARE[p.action](p.result, r[RESULT[p.action]]);
         var rep = await call('shadowReport', {
-          check: { action: p.action, args: p.args, gasAgoMs: Math.max(0, Date.now() - p.gasAt), syncReadAt: r.syncReadAt, ok: !diffs.length, diffs: diffs }
+          check: { action: p.action, args: p.args, gasAgoMs: Math.max(0, Date.now() - p.gasAt), syncReadAt: r.syncReadAt, ok: !diffs.length, diffs: diffs, cid: p.cid }
         });
-        if (denied(rep)) return;
-        if (!rep.ok) left.push(p);
+        if (denied(rep)) { left = []; return; }
+        if (!rep.ok && rep.skip !== 'changed') left.push(p);
       }
       LiffApp.keep('shadow-pending', left);
     } catch (e) {
       /* เงียบ — ไม่กระทบหน้าจอ */
     } finally {
       running = false;
+      if (left.length && !off()) planRetry(left);
     }
   }
 
