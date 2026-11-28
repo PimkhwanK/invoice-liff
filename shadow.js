@@ -250,14 +250,14 @@ var Shadow = (function () {
         var p = list[i];
         var r = await call(p.action, Object.assign({}, p.args, { gasAgoMs: Math.max(0, Date.now() - p.gasAt), cid: p.cid }));
         if (denied(r)) { left = []; return; }
-        if (r.ok && !r.comparable && r.skip === 'changed') continue; // ข้อมูลเปลี่ยนหลังเวลาอ่าน → ผลนี้เทียบไม่ได้อีก (api จดเหตุผลแล้ว)
+        if (r.ok && !r.comparable && (r.skip === 'changed' || r.drop)) continue; // ข้อมูลเปลี่ยนหลังเวลาอ่าน / ช่วงไม่ตรง → ผลนี้เทียบไม่ได้อีก (api จดเหตุผลแล้ว)
         if (!r.ok || !r.comparable) { left.push(p); continue; } // ยังไม่มีรอบซิงก์ใหม่พอ / ล่ม → ลองใหม่
         var diffs = COMPARE[p.action](p.result, r[RESULT[p.action]]);
         var rep = await call('shadowReport', {
           check: { action: p.action, args: p.args, gasAgoMs: Math.max(0, Date.now() - p.gasAt), syncReadAt: r.syncReadAt, ok: !diffs.length, diffs: diffs, cid: p.cid }
         });
         if (denied(rep)) { left = []; return; }
-        if (!rep.ok && rep.skip !== 'changed') left.push(p);
+        if (!rep.ok && rep.skip !== 'changed' && !rep.drop) left.push(p);
       }
       LiffApp.keep('shadow-pending', left);
     } catch (e) {

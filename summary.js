@@ -417,13 +417,21 @@
       var kept = profitKept(key);
       if (kept) profits[key] = Object.assign({}, kept, { stale: true });
     }
-    profitWait[key] = tapi('profitData', { period: periodArg(), shopSort: shopBy, prodSort: prodBy }).then(function (r) {
+    // 2026-11-28: จำช่วง/การเรียงตอนขอ — คำตอบกลับมาหลังผู้ใช้เปลี่ยนช่วงได้ (เดิมอ่านค่าที่เลือกอยู่ตอนคำตอบกลับ → ส่งผล "วันนี้" ไปเทียบในชื่อ "เดือนนี้")
+    var asked = { period: periodArg(), shopSort: shopBy, prodSort: prodBy, today: today() };
+    profitWait[key] = tapi('profitData', { period: asked.period, shopSort: asked.shopSort, prodSort: asked.prodSort }).then(function (r) {
       delete profitWait[key];
       if (r.ok) {
         profits[key] = r;
         if (r.ready) profitKeepNew(key, r);
-        // จุด B: เทียบการ์ดกำไรกับ Supabase เงียบ ๆ (ผลที่โหลดอยู่แล้ว ไม่เรียก Apps Script เพิ่ม)
-        if (typeof Shadow === 'object') { try { var pa = periodArg(); Shadow.after('profitData', { period: pa, kind: pa.kind, year: pa.year, month: pa.month, date: pa.date, today: today(), shopSort: shopBy, prodSort: prodBy }, r); } catch (e) { /* เงียบ */ } }
+        // จุด B: เทียบการ์ดกำไรกับ Supabase เงียบ ๆ (ผลที่โหลดอยู่แล้ว ไม่เรียก Apps Script เพิ่ม) — ใช้ค่าตอนขอ + ช่วงวันที่ในผล (api ตรวจซ้ำ)
+        if (typeof Shadow === 'object') {
+          try {
+            var pa = asked.period;
+            Shadow.after('profitData', { period: pa, kind: pa.kind, year: pa.year, month: pa.month, date: pa.date, today: asked.today, shopSort: asked.shopSort, prodSort: asked.prodSort,
+              gasFrom: r.from || '', gasTo: r.to || '' }, r);
+          } catch (e) { /* เงียบ */ }
+        }
       } else if (profits[key] && profits[key].stale) {
         profits[key].failed = true; // ค่าที่จำไว้ยังแสดง + ป้าย "ยังไม่ได้อัปเดต"
       } else {
